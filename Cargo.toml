@@ -8,7 +8,7 @@ license = "Apache-2.0"
 repository = "https://github.com/BotResources/br-llm-graph-rs"
 
 [dependencies]
-br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", branch = "main", version = "0.0.0" }
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "v0.1.0", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures-util = "0.3"
