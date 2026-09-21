@@ -4,30 +4,42 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing
+    )
+)]
 
 #[cfg(test)]
-mod scaffold {
-    use br_llm_messages as _;
-    use futures_channel::oneshot;
-    use futures_util::FutureExt;
-    use serde::{Deserialize, Serialize};
+mod testkit;
 
-    #[derive(Debug, PartialEq, Serialize, Deserialize)]
-    struct Probe {
-        ok: bool,
-    }
+pub mod error;
+pub mod graph;
+pub mod observe;
+pub mod react;
+pub mod run;
+pub mod session;
+pub mod state;
+pub mod update;
+pub mod value;
 
-    #[test]
-    fn serde_round_trips() -> Result<(), serde_json::Error> {
-        let encoded = serde_json::to_string(&Probe { ok: true })?;
-        assert_eq!(serde_json::from_str::<Probe>(&encoded)?, Probe { ok: true });
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn a_node_result_reaches_its_join() {
-        let (sender, receiver) = oneshot::channel::<Probe>();
-        assert!(sender.send(Probe { ok: true }).is_ok());
-        assert_eq!(receiver.map(Result::ok).await, Some(Probe { ok: true }));
-    }
-}
+pub use error::{GraphError, NodeFault};
+pub use graph::{
+    Always, Context, Edge, FnEdge, FnNode, Graph, GraphBuilder, IdSource, Map, Node, NodeError,
+    NodeFuture, Target,
+};
+pub use observe::{NoopObserver, Observer};
+pub use react::{
+    LlmNode, Model, ModelError, ModelFuture, OutputMode, ReactLoop, Request, Source, StreamSink,
+    Tool, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec, complete, last_turn_by_author,
+    last_turn_state, pending_calls, pending_unsafe_calls, structured, wire,
+};
+pub use run::{Checkpoint, Cursor, Inbox, Message, Outcome, RunFailure, Sender, channel, run};
+pub use session::{Ended, Session, Start};
+pub use state::{Config, Finite, Kind, SCHEMA_VERSION, Schema, SchemaBuilder, State, Value};
+pub use update::Update;
+pub use value::{EndLabel, Key, NodeId};
