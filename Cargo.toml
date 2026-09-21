@@ -1,0 +1,18 @@
+[package]
+name = "br-llm-graph"
+version = "0.0.0"
+description = "LangGraph-like orchestration over br-llm-messages: typed state, async nodes, sync edges, supersteps, react loop"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+repository = "https://github.com/BotResources/br-llm-graph-rs"
+
+[dependencies]
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", branch = "main", version = "0.0.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-util = "0.3"
+futures-channel = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
