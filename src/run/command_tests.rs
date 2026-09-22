@@ -217,6 +217,52 @@ async fn given_cancel_racing_a_fast_superstep_when_run_then_state_untouched_and_
 }
 
 #[tokio::test]
+async fn given_input_and_cancel_same_superstep_when_run_then_cancelled_with_input_kept() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("work"))
+        .node(
+            nid("work"),
+            FnNode::new(|_s: &State, _c: &Config, _x: &_| -> NodeFuture<'_> {
+                Box::pin(async {
+                    futures_util::future::pending::<()>().await;
+                    Ok(Vec::new())
+                })
+            }),
+        )
+        .edge(nid("work"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (sender, mut inbox) = channel();
+    sender.send(key("chat"), input("mid-flight"));
+    sender.cancel();
+    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap();
+    let Outcome::Cancelled { checkpoint } = cancelled else {
+        panic!("expected cancelled");
+    };
+    assert_eq!(
+        checkpoint
+            .state
+            .conversation(&key("chat"))
+            .unwrap()
+            .entries()
+            .len(),
+        1
+    );
+    assert_eq!(
+        checkpoint
+            .cursor
+            .active
+            .iter()
+            .map(|n| n.as_str())
+            .collect::<Vec<_>>(),
+        vec!["work"]
+    );
+}
+
+#[tokio::test]
 async fn given_input_and_pause_same_superstep_when_run_then_paused_with_input_applied() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("a"))

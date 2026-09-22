@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use br_llm_messages::{Text, UserBlock, UserInput, UserSource};
 
-use crate::graph::{Always, Context, GraphBuilder};
+use crate::error::{GraphError, NodeFault};
+use crate::graph::{Always, Context, FnNode, GraphBuilder, NodeFuture};
 use crate::observe::NoopObserver;
 use crate::run::inbox::channel;
 use crate::run::runner::run;
 use crate::run::test_support::*;
+use crate::state::{Config, State};
+use crate::update::Update;
 
 fn ctx() -> Context {
     Context::new(
@@ -22,6 +25,39 @@ fn input(body: &str) -> UserInput {
         vec![UserBlock::text(Text::new(body).unwrap())],
     )
     .unwrap()
+}
+
+#[tokio::test]
+async fn given_node_returns_input_on_non_conversation_key_when_run_then_not_conversation() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(
+            nid("a"),
+            FnNode::new(|_s: &State, _c: &Config, _x: &_| -> NodeFuture<'_> {
+                Box::pin(async {
+                    Ok(vec![Update::Input {
+                        key: key("count"),
+                        input: input("oops"),
+                    }])
+                })
+            }),
+        )
+        .edge(nid("a"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .err()
+        .unwrap();
+    let GraphError::NodeFailed {
+        source: NodeFault::Refused(inner),
+        ..
+    } = failure.error
+    else {
+        panic!("expected a refused node fault");
+    };
+    assert!(matches!(*inner, GraphError::NotConversation { .. }));
 }
 
 #[tokio::test]

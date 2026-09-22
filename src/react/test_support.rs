@@ -131,6 +131,18 @@ impl Model for ScriptedModel {
     }
 }
 
+pub(crate) struct FailingModel;
+
+impl Model for FailingModel {
+    fn complete<'a>(
+        &'a self,
+        _request: crate::react::model::Request,
+        _sink: &'a dyn StreamSink,
+    ) -> ModelFuture<'a> {
+        Box::pin(async { Err("boom".into()) })
+    }
+}
+
 pub(crate) struct RecordingModel {
     pub(crate) tools_seen: Mutex<Vec<String>>,
     pub(crate) system_seen: Mutex<Option<String>>,

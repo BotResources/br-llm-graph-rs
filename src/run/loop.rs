@@ -41,8 +41,7 @@ pub async fn run(
         let mut pause = step.pause;
         let results = match step.result {
             StepResult::Cancelled => {
-                let checkpoint = Checkpoint::new(state, Cursor::new(active, deferred));
-                return Ok(Outcome::Cancelled { checkpoint });
+                return cancelled(state, ctx, held_inputs, &active, &deferred);
             }
             StepResult::Done(results) => results,
         };
@@ -50,15 +49,8 @@ pub async fn run(
             ctx.observer.node_finished(id);
         }
 
-        if let Some(outcome) = drain_after_step(
-            inbox,
-            &mut held_inputs,
-            &mut pause,
-            &state,
-            &active,
-            &deferred,
-        ) {
-            return outcome;
+        if drain_after_step(inbox, &mut held_inputs, &mut pause) {
+            return cancelled(state, ctx, held_inputs, &active, &deferred);
         }
 
         let mut by_id: BTreeMap<NodeId, Result<Vec<Update>, NodeFault>> =
@@ -122,25 +114,30 @@ fn drain_after_step(
     inbox: &mut Inbox,
     held_inputs: &mut Vec<(crate::value::Key, UserInput)>,
     pause: &mut bool,
-    state: &State,
-    active: &[NodeId],
-    deferred: &[NodeId],
-) -> Option<Result<Outcome, RunFailure>> {
+) -> bool {
     while let Some(message) = inbox.try_next() {
         match message {
             Message::Input { key, input } => held_inputs.push((key, input)),
             Message::Pause => *pause = true,
             Message::Resume => {}
-            Message::Cancel => {
-                let checkpoint = Checkpoint::new(
-                    state.clone(),
-                    Cursor::new(active.to_vec(), deferred.to_vec()),
-                );
-                return Some(Ok(Outcome::Cancelled { checkpoint }));
-            }
+            Message::Cancel => return true,
         }
     }
-    None
+    false
+}
+
+fn cancelled(
+    mut state: State,
+    ctx: &Context,
+    held_inputs: Vec<(crate::value::Key, UserInput)>,
+    active: &[NodeId],
+    deferred: &[NodeId],
+) -> Result<Outcome, RunFailure> {
+    if let Err(error) = apply_inputs(&mut state, ctx, held_inputs) {
+        return Err(fail(state, active, deferred, error));
+    }
+    let checkpoint = Checkpoint::new(state, Cursor::new(active.to_vec(), deferred.to_vec()));
+    Ok(Outcome::Cancelled { checkpoint })
 }
 
 fn apply_inputs(

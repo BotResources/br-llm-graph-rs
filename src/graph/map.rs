@@ -34,7 +34,7 @@ impl Node for Map {
                 for update in &updates {
                     ctx.observer.applied(update);
                 }
-                let value = derived.value(&self.output)?.clone();
+                let value = derived.get(&self.output)?.clone();
                 appends.push(Update::Append {
                     key: self.results.clone(),
                     value,

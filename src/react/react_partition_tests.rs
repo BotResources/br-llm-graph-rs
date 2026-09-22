@@ -51,6 +51,22 @@ fn given_tool_not_covered_when_react_loop_added_then_refused() {
 }
 
 #[test]
+fn given_zero_tool_nodes_when_react_loop_added_then_tool_not_covered() {
+    let model = Arc::new(ScriptedModel::new(vec![text_step("x")]));
+    let llm = llm_node(model, vec![Arc::new(EchoTool)]);
+    let react = ReactLoop {
+        llm: nid("llm"),
+        tool_nodes: Vec::new(),
+        after: Target::End(EndLabel::new("done").unwrap()),
+    };
+    let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
+    assert!(matches!(
+        result.err(),
+        Some(crate::error::GraphError::ToolNotCovered { .. })
+    ));
+}
+
+#[test]
 fn given_tool_covered_twice_when_react_loop_added_then_refused() {
     let model = Arc::new(ScriptedModel::new(vec![text_step("x")]));
     let llm = llm_node(model, vec![Arc::new(EchoTool)]);

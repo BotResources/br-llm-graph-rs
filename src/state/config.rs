@@ -80,14 +80,10 @@ impl Config {
         })
     }
 
-    fn get(&self, key: &Key) -> Result<&Value, GraphError> {
+    pub(crate) fn get(&self, key: &Key) -> Result<&Value, GraphError> {
         self.values
             .get(key)
             .ok_or_else(|| GraphError::MissingKey { key: key.clone() })
-    }
-
-    pub(crate) fn value(&self, key: &Key) -> Result<&Value, GraphError> {
-        self.get(key)
     }
 
     pub fn int(&self, key: &Key) -> Result<i64, GraphError> {
@@ -121,14 +117,10 @@ impl Config {
     pub fn list(&self, key: &Key) -> Result<&[Value], GraphError> {
         match self.get(key)? {
             Value::List(items) => Ok(items),
-            other => Err(self.mismatch(key, self.declared_kind(key), other)),
-        }
-    }
-
-    fn declared_kind(&self, key: &Key) -> Kind {
-        match self.schema.get(key) {
-            Some(kind) => kind.clone(),
-            None => Kind::list(Kind::Str),
+            other => match self.schema.get(key) {
+                Some(expected) => Err(self.mismatch(key, expected.clone(), other)),
+                None => Err(GraphError::UnknownKey { key: key.clone() }),
+            },
         }
     }
 

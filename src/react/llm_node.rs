@@ -65,8 +65,8 @@ fn build_system(
     let mut parts: Vec<String> = Vec::new();
     for source in &node.system {
         let value = match source {
-            Source::Config(key) => config.value(key)?,
-            Source::State(key) => state.value(key)?,
+            Source::Config(key) => config.get(key)?,
+            Source::State(key) => state.get(key)?,
         };
         append_strings(source_key(source), value, &mut parts)?;
     }

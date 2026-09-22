@@ -66,6 +66,13 @@ form to decide whether a version ships.
 - Run loop: inbox inputs drained during a superstep are applied to the state
   before a node failure is reported, so a queued input survives in the failure
   checkpoint (design §8 step 2 ordering).
+- Run loop: a `Cancel` arriving alongside an input already drained from the
+  inbox now folds that input into the `Cancelled` checkpoint state instead of
+  dropping it, matching the pause and node-failure paths so a mid-flight input
+  the lib has taken ownership of survives `Session::resume` (design §8).
+- State/Config: `list()` on a non-list value now reports the key's declared
+  kind in the `KindMismatch`; the dead `list<str>` fallback that could fabricate
+  a misleading expected kind is gone.
 - Graph builder: registering a second edge for one node is refused with
   `DuplicateEdge` instead of silently overwriting the first (design §6, exactly
   one edge per node).

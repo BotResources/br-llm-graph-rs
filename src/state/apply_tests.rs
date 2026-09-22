@@ -224,6 +224,66 @@ fn given_push_result_on_non_conversation_when_applied_then_refused() {
 }
 
 #[test]
+fn given_push_step_to_awaiting_turn_when_applied_then_appended() {
+    let mut state = state();
+    let call = ToolCall {
+        id: ToolCallId::new("c1").unwrap(),
+        name: ToolName::new("echo").unwrap(),
+        arguments: serde_json::json!({}),
+    };
+    let step = Step::new(
+        vec![AssistantBlock::ToolCall(call)],
+        StopReason::AwaitingToolResults,
+        None,
+        None,
+    )
+    .unwrap();
+    let turn = Turn::new(
+        TurnId::new("t1").unwrap(),
+        Some(Author::new("agent").unwrap()),
+        step,
+    );
+    state
+        .apply_batch(&[Update::PushTurn {
+            key: key("chat"),
+            turn,
+        }])
+        .unwrap();
+    let result = ToolResult::new(
+        ToolCallId::new("c1").unwrap(),
+        ToolName::new("echo").unwrap(),
+        Vec::new(),
+        false,
+    );
+    state
+        .apply_batch(&[Update::PushResult {
+            key: key("chat"),
+            turn: TurnId::new("t1").unwrap(),
+            result,
+        }])
+        .unwrap();
+    let next = Step::new(
+        vec![AssistantBlock::Text {
+            text: Text::new("done").unwrap(),
+        }],
+        StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap();
+    state
+        .apply_batch(&[Update::PushStep {
+            key: key("chat"),
+            turn: TurnId::new("t1").unwrap(),
+            step: next,
+        }])
+        .unwrap();
+    let convo = state.conversation(&key("chat")).unwrap();
+    let turn = convo.turn(&TurnId::new("t1").unwrap()).unwrap();
+    assert_eq!(turn.items().len(), 3);
+}
+
+#[test]
 fn given_push_step_to_missing_turn_when_applied_then_message_error() {
     let mut state = state();
     let step = Step::new(

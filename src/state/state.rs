@@ -102,10 +102,6 @@ impl State {
         &mut self.values
     }
 
-    pub(crate) fn value(&self, key: &Key) -> Result<&Value, GraphError> {
-        self.get(key)
-    }
-
     pub fn int(&self, key: &Key) -> Result<i64, GraphError> {
         match self.get(key)? {
             Value::Int(v) => Ok(*v),
@@ -137,14 +133,10 @@ impl State {
     pub fn list(&self, key: &Key) -> Result<&[Value], GraphError> {
         match self.get(key)? {
             Value::List(items) => Ok(items),
-            other => Err(self.mismatch(key, self.declared_kind(key), other)),
-        }
-    }
-
-    fn declared_kind(&self, key: &Key) -> Kind {
-        match self.kind_of(key) {
-            Some(kind) => kind.clone(),
-            None => Kind::list(Kind::Str),
+            other => match self.kind_of(key) {
+                Some(expected) => Err(self.mismatch(key, expected.clone(), other)),
+                None => Err(GraphError::UnknownKey { key: key.clone() }),
+            },
         }
     }
 
