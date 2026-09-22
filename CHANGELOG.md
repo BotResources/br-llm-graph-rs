@@ -8,6 +8,15 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-22
+
+### Removed
+
+- `Message`, the inbox item type, is no longer public. It is an internal
+  detail of the run loop: a runner drives a session through
+  `Sender::send`/`pause`/`resume`/`cancel` and hands the `Inbox` to `run` or
+  `Session`, never constructing or matching an inbox item itself.
+
 ## 0.1.0 - 2026-09-22
 
 ### Added

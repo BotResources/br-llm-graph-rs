@@ -19,6 +19,7 @@ pub(crate) mod test_support;
 
 pub use checkpoint::Checkpoint;
 pub use cursor::Cursor;
-pub use inbox::{Inbox, Message, Sender, channel};
+pub(crate) use inbox::Message;
+pub use inbox::{Inbox, Sender, channel};
 pub use outcome::{Outcome, RunFailure};
 pub use runner::run;
