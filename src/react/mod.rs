@@ -6,9 +6,17 @@ mod tool;
 mod tool_node;
 
 #[cfg(test)]
+mod react_background_task_tests;
+#[cfg(test)]
+mod react_generator_critic_tests;
+#[cfg(test)]
+mod react_llm_tests;
+#[cfg(test)]
+mod react_loop_tests;
+#[cfg(test)]
 mod react_node_tests;
 #[cfg(test)]
-mod react_tests;
+mod react_partition_tests;
 #[cfg(test)]
 mod test_support;
 

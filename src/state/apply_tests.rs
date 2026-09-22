@@ -143,6 +143,18 @@ fn given_push_turn_when_conversation_then_added() {
 }
 
 #[test]
+fn given_push_turn_on_non_conversation_when_applied_then_refused() {
+    let mut state = state();
+    assert!(matches!(
+        state.apply_batch(&[Update::PushTurn {
+            key: key("count"),
+            turn: turn("t1"),
+        }]),
+        Err(GraphError::NotConversation { .. })
+    ));
+}
+
+#[test]
 fn given_push_result_on_matching_turn_when_applied_then_added() {
     let mut state = state();
     let call = ToolCall {

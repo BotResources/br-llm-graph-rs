@@ -88,12 +88,12 @@ pub async fn run(
                 }
             }
         }
+        let input_error = apply_inputs(&mut state, ctx, held_inputs).err();
         if let Some((node, source)) = failure {
             let error = GraphError::NodeFailed { node, source };
             return Err(fail(state, &active, &deferred, error));
         }
-
-        if let Err(error) = apply_inputs(&mut state, ctx, held_inputs) {
+        if let Some(error) = input_error {
             return Err(fail(state, &active, &deferred, error));
         }
 
@@ -184,6 +184,9 @@ fn evaluate_edges(
         for target in targets {
             match target {
                 Target::Node(node) => {
+                    if !graph.contains(&node) {
+                        return Err(GraphError::UnknownNode { id: node });
+                    }
                     if !produced.contains(&node) {
                         produced.push(node);
                     }

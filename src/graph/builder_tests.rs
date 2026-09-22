@@ -101,6 +101,17 @@ fn given_edge_from_unknown_node_when_build_then_refused() {
 }
 
 #[test]
+fn given_two_edges_for_one_node_when_build_then_refused() {
+    let result = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(nid("a"), noop())
+        .edge(nid("a"), done_edge())
+        .edge(nid("a"), done_edge())
+        .build();
+    assert!(matches!(result, Err(GraphError::DuplicateEdge { .. })));
+}
+
+#[test]
 fn given_map_with_bad_keys_when_build_then_refused() {
     let map = Map {
         list: crate::value::Key::new("out").unwrap(),

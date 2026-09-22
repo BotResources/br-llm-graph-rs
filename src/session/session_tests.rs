@@ -208,6 +208,21 @@ async fn given_run_failure_checkpoint_when_resumed_then_finishes_on_retry() {
 }
 
 #[tokio::test]
+async fn given_inbox_input_on_non_conversation_key_when_served_then_failed() {
+    let session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let sender = session.sender();
+    sender.send(key("count"), input("oops"));
+    let ended = session.serve(Start::OnInput).await;
+    let Ended::Failed { error, .. } = ended else {
+        panic!("expected failed");
+    };
+    assert!(matches!(
+        error,
+        crate::error::GraphError::NotConversation { .. }
+    ));
+}
+
+#[tokio::test]
 async fn given_paused_session_when_input_then_stays_paused_until_resume() {
     let session = Session::new(linear_graph(), config(), base_state(), ctx());
     let sender = session.sender();

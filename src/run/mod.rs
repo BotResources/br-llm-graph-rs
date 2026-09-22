@@ -9,6 +9,10 @@ mod superstep;
 #[cfg(test)]
 mod command_tests;
 #[cfg(test)]
+mod failure_tests;
+#[cfg(test)]
+mod map_tests;
+#[cfg(test)]
 mod run_tests;
 #[cfg(test)]
 pub(crate) mod test_support;

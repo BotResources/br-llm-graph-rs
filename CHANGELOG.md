@@ -30,7 +30,8 @@ form to decide whether a version ships.
 - Graph (`graph`): `Node`/`Edge` traits, `NodeFuture`, `Target`, `Context`,
   `IdSource`, the `FnNode`/`FnEdge`/`Always` adapters, the `Map` fan-out node,
   and `GraphBuilder`/`Graph` with build-time refusals (duplicate id, unknown
-  entry, missing edge, edge from unknown node, map key mismatch).
+  entry, missing edge, edge from unknown node, duplicate edge, map key
+  mismatch).
 - Run loop (`run`): the Pregel superstep engine with static fan-out, the single
   join rule, per-node application in declaration order, caught node panics, the
   runtime-neutral inbox (`Sender`/`Inbox`), `Pause`/`Resume`/`Cancel` commands,
@@ -55,3 +56,22 @@ form to decide whether a version ships.
 - Examples: `react_agent`, `react_goal_loop`, `generator_critic`,
   `background_task`, `external_message`, `skills`, `rehydration`, over a shared
   scripted-model and fake-tool harness in `examples/common`.
+
+### Fixed
+
+- Run loop: an edge that targets a node the graph does not contain now fails
+  closed with `UnknownNode` instead of silently dropping the branch, so a typo
+  in a dynamic edge is a loud routing error rather than an undetectable lost
+  branch.
+- Run loop: inbox inputs drained during a superstep are applied to the state
+  before a node failure is reported, so a queued input survives in the failure
+  checkpoint (design §8 step 2 ordering).
+- Graph builder: registering a second edge for one node is refused with
+  `DuplicateEdge` instead of silently overwriting the first (design §6, exactly
+  one edge per node).
+
+### Removed
+
+- Errors (`error`): dropped the never-constructed `GraphError::BadInboxInput`
+  variant; an inbox input on a non-conversation key surfaces the real
+  `NotConversation` refusal, as the design specifies.

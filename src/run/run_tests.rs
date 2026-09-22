@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::graph::{Always, Context, GraphBuilder, Map};
+use crate::graph::{Always, Context, GraphBuilder};
 use crate::observe::NoopObserver;
 use crate::run::inbox::channel;
 use crate::run::outcome::Outcome;
@@ -84,58 +84,6 @@ async fn given_unequal_branches_when_run_then_join_still_runs_once() {
     assert_eq!(joins, 1);
 }
 
-async fn run_map_over(items: Vec<&str>) -> Vec<String> {
-    let map = Map {
-        list: key("items"),
-        item: key("item"),
-        body: Box::new(item_to_out_node()),
-        output: key("out"),
-        results: key("outs"),
-    };
-    let graph = GraphBuilder::new(schema())
-        .entry(nid("m"))
-        .map(nid("m"), map)
-        .edge(nid("m"), edge(vec![end("done")]))
-        .build()
-        .unwrap();
-    let mut state = base_state();
-    state
-        .apply_batch(&[crate::update::Update::Set {
-            key: key("items"),
-            value: Value::list(items.iter().map(|s| Value::str(*s)).collect()),
-        }])
-        .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), state, None, &ctx(), &mut inbox)
-        .await
-        .map_err(|f| f.error)
-        .unwrap();
-    let Outcome::Finished { state, .. } = outcome else {
-        panic!("expected finished");
-    };
-    state
-        .list(&key("outs"))
-        .unwrap()
-        .iter()
-        .map(|v| match v {
-            Value::Str(s) => s.clone(),
-            _ => String::new(),
-        })
-        .collect()
-}
-
-#[tokio::test]
-async fn given_map_over_three_items_when_run_then_three_outputs() {
-    let outs = run_map_over(vec!["a", "b", "c"]).await;
-    assert_eq!(outs, vec!["A", "B", "C"]);
-}
-
-#[tokio::test]
-async fn given_map_over_empty_list_when_run_then_no_outputs() {
-    let outs = run_map_over(Vec::new()).await;
-    assert!(outs.is_empty());
-}
-
 #[tokio::test]
 async fn given_two_distinct_ends_in_one_superstep_when_run_then_ambiguous() {
     let graph = GraphBuilder::new(schema())
@@ -157,52 +105,6 @@ async fn given_two_distinct_ends_in_one_superstep_when_run_then_ambiguous() {
         failure.error,
         crate::error::GraphError::AmbiguousEnd { .. }
     ));
-}
-
-#[tokio::test]
-async fn given_failing_node_beside_success_when_run_then_success_kept_failure_reported() {
-    let graph = GraphBuilder::new(schema())
-        .entry(nid("start"))
-        .node(nid("start"), noop_node())
-        .node(nid("a"), set_count_node(5))
-        .node(nid("b"), failing_node())
-        .edge(nid("start"), edge(vec![to("a"), to("b")]))
-        .edge(nid("a"), Always(end("done")))
-        .edge(nid("b"), Always(end("done")))
-        .build()
-        .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
-        .await
-        .err()
-        .unwrap();
-    assert!(matches!(
-        failure.error,
-        crate::error::GraphError::NodeFailed { .. }
-    ));
-    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 5);
-}
-
-#[tokio::test]
-async fn given_panicking_node_when_run_then_node_failed_with_state_intact() {
-    let graph = GraphBuilder::new(schema())
-        .entry(nid("p"))
-        .node(nid("p"), panicking_node())
-        .edge(nid("p"), Always(end("done")))
-        .build()
-        .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
-        .await
-        .err()
-        .unwrap();
-    match failure.error {
-        crate::error::GraphError::NodeFailed { source, .. } => {
-            assert!(matches!(source, crate::error::NodeFault::Panic(_)));
-        }
-        other => panic!("expected NodeFailed, got {other}"),
-    }
-    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 0);
 }
 
 #[tokio::test]

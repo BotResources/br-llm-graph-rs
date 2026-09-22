@@ -113,6 +113,9 @@ impl GraphBuilder {
             if !nodes.contains_key(&from) {
                 return Err(GraphError::EdgeFromUnknownNode { id: from });
             }
+            if edges.contains_key(&from) {
+                return Err(GraphError::DuplicateEdge { id: from });
+            }
             edges.insert(from, edge);
         }
 

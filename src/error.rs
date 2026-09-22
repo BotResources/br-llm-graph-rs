@@ -65,6 +65,9 @@ pub enum GraphError {
     EdgeFromUnknownNode {
         id: NodeId,
     },
+    DuplicateEdge {
+        id: NodeId,
+    },
     UnknownNode {
         id: NodeId,
     },
@@ -80,9 +83,6 @@ pub enum GraphError {
     },
     AmbiguousEnd {
         labels: Vec<EndLabel>,
-    },
-    BadInboxInput {
-        key: Key,
     },
     ToolNotCovered {
         name: ToolName,
@@ -142,6 +142,9 @@ impl std::fmt::Display for GraphError {
             GraphError::EdgeFromUnknownNode { id } => {
                 write!(f, "an edge starts from unknown node {id}")
             }
+            GraphError::DuplicateEdge { id } => {
+                write!(f, "node {id} has more than one edge")
+            }
             GraphError::UnknownNode { id } => write!(f, "node {id} is not in the graph"),
             GraphError::EmptyEdge { node } => {
                 write!(f, "the edge of node {node} returned no target")
@@ -160,9 +163,6 @@ impl std::fmt::Display for GraphError {
                     "the run ended with several labels [{}]",
                     labels.join(", ")
                 )
-            }
-            GraphError::BadInboxInput { key } => {
-                write!(f, "an inbox input targets the invalid key {key}")
             }
             GraphError::ToolNotCovered { name } => {
                 write!(
