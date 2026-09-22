@@ -8,9 +8,11 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.1.0 - 2026-09-22
+
 ### Added
 
-- Repository scaffold: crate manifest at `0.0.0`, governance files (LICENSE,
+- Repository scaffold: crate manifest, governance files (LICENSE,
   CONTRIBUTING, SECURITY, SUPPORT, PR template, issue-template config),
   `.gitignore`, and `deny.toml`.
 - CI (`ci.yml`): fmt + clippy + test, MSRV 1.89 build, `cargo-deny`,
@@ -33,9 +35,11 @@ form to decide whether a version ships.
   entry, missing edge, edge from unknown node, duplicate edge, map key
   mismatch).
 - Run loop (`run`): the Pregel superstep engine with static fan-out, the single
-  join rule, per-node application in declaration order, caught node panics, the
-  runtime-neutral inbox (`Sender`/`Inbox`), `Pause`/`Resume`/`Cancel` commands,
-  `Cursor`, `Checkpoint`, `Outcome`, and `RunFailure`.
+  join rule, per-node application in declaration order, caught node panics, an
+  edge to a node the graph does not contain refused with `UnknownNode` rather
+  than a silently dropped branch, the runtime-neutral inbox (`Sender`/`Inbox`),
+  `Pause`/`Resume`/`Cancel` commands, `Cursor`, `Checkpoint`, `Outcome`, and
+  `RunFailure`.
 - Session (`session`): `Session` with `new`/`resume`/`sender`/`serve`/
   `run_once`, queueing inputs during a run and relaunching after an end.
 - Observer (`observe`): the `Observer` trait with empty defaults and
@@ -52,33 +56,10 @@ form to decide whether a version ships.
   `PendingToolUnsatisfiable`.
 - Run loop: a `Cancel` that arrives while a fast superstep is completing returns
   the still-unmutated state and reruns the superstep on resume, so no node
-  update is applied twice.
+  update is applied twice; an inbox input already drained during that superstep
+  is folded into the `Cancelled`, `Paused` and node-failure checkpoints, so an
+  input the lib has taken ownership of survives `Session::resume`.
 - Examples: `react_agent`, `react_goal_loop`, `generator_critic`,
   `background_task`, `external_message`, `skills`, `rehydration`, over a shared
   scripted-model and fake-tool harness in `examples/common`.
 
-### Fixed
-
-- Run loop: an edge that targets a node the graph does not contain now fails
-  closed with `UnknownNode` instead of silently dropping the branch, so a typo
-  in a dynamic edge is a loud routing error rather than an undetectable lost
-  branch.
-- Run loop: inbox inputs drained during a superstep are applied to the state
-  before a node failure is reported, so a queued input survives in the failure
-  checkpoint (design §8 step 2 ordering).
-- Run loop: a `Cancel` arriving alongside an input already drained from the
-  inbox now folds that input into the `Cancelled` checkpoint state instead of
-  dropping it, matching the pause and node-failure paths so a mid-flight input
-  the lib has taken ownership of survives `Session::resume` (design §8).
-- State/Config: `list()` on a non-list value now reports the key's declared
-  kind in the `KindMismatch`; the dead `list<str>` fallback that could fabricate
-  a misleading expected kind is gone.
-- Graph builder: registering a second edge for one node is refused with
-  `DuplicateEdge` instead of silently overwriting the first (design §6, exactly
-  one edge per node).
-
-### Removed
-
-- Errors (`error`): dropped the never-constructed `GraphError::BadInboxInput`
-  variant; an inbox input on a non-conversation key surfaces the real
-  `NotConversation` refusal, as the design specifies.

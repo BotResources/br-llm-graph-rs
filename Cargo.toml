@@ -1,6 +1,6 @@
 [package]
 name = "br-llm-graph"
-version = "0.0.0"
+version = "0.1.0"
 description = "LangGraph-like orchestration over br-llm-messages: typed state, async nodes, sync edges, supersteps, react loop"
 edition = "2024"
 rust-version = "1.89"
