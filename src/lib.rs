@@ -38,7 +38,7 @@ pub use react::{
     Tool, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec, complete, pending_calls,
     pending_unsafe_calls, structured, wire,
 };
-pub use run::{Checkpoint, Cursor, Inbox, Message, Outcome, RunFailure, Sender, channel, run};
+pub use run::{Checkpoint, Cursor, Inbox, Outcome, RunFailure, Sender, channel, run};
 pub use session::{Ended, Session, Start};
 pub use state::{Config, Finite, Kind, SCHEMA_VERSION, Schema, SchemaBuilder, State, Value};
 pub use update::Update;

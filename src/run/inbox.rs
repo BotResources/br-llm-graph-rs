@@ -3,7 +3,7 @@ use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 
 use crate::value::Key;
 
-pub enum Message {
+pub(crate) enum Message {
     Input { key: Key, input: UserInput },
     Pause,
     Resume,
