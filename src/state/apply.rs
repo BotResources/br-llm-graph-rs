@@ -82,14 +82,24 @@ impl State {
                 items.push(value.clone());
                 Ok(())
             }
-            _ => Err(GraphError::AppendNotList { key: key.clone() }),
+            Some(
+                Value::Int(_)
+                | Value::Float(_)
+                | Value::Str(_)
+                | Value::Bool(_)
+                | Value::Conversation(_),
+            )
+            | None => Err(GraphError::AppendNotList { key: key.clone() }),
         }
     }
 
     fn conversation_mut(&mut self, key: &Key) -> Result<&mut Conversation, GraphError> {
         match self.values_mut().get_mut(key) {
             Some(Value::Conversation(conversation)) => Ok(conversation),
-            _ => Err(GraphError::NotConversation { key: key.clone() }),
+            Some(
+                Value::Int(_) | Value::Float(_) | Value::Str(_) | Value::Bool(_) | Value::List(_),
+            )
+            | None => Err(GraphError::NotConversation { key: key.clone() }),
         }
     }
 }

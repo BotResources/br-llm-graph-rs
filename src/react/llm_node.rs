@@ -123,7 +123,11 @@ fn declared_tools(node: &LlmNode, state: &State) -> Result<Vec<ToolSpec>, GraphE
     for value in enabled {
         match value {
             Value::Str(text) => names.push(text),
-            _ => continue,
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::List(_)
+            | Value::Conversation(_) => continue,
         }
     }
     Ok(node

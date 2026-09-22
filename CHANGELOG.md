@@ -41,11 +41,17 @@ form to decide whether a version ships.
   `NoopObserver`.
 - React module (`react`): the `Model` and `Tool` traits, `Request`,
   `OutputMode`, `ToolSpec`, `StreamSink`, `ToolOutput`; the `wire`, `complete`,
-  `structured`, `pending_calls`, `pending_unsafe_calls` helpers; `LlmNode`
-  (with `Source`), `ToolNode`, and `ReactLoop` with its tool-set partition
-  check.
+  `structured`, `pending_calls` (`state`/`key`/`author` in, borrowed calls out),
+  `pending_unsafe_calls` helpers; `LlmNode` (with `Source`), `ToolNode`, and
+  `ReactLoop` with a strict tool-set partition check (a tool node tool the LLM
+  node does not declare is rejected) and a fail-closed loop edge (a pending call
+  no tool node runs is refused, never left to livelock).
 - Errors (`error`): a single `GraphError` type with a hand-written `Display`
-  and `NodeFault` for node failures.
+  and `NodeFault` for node failures, including `ToolNotDeclared` and
+  `PendingToolUnsatisfiable`.
+- Run loop: a `Cancel` that arrives while a fast superstep is completing returns
+  the still-unmutated state and reruns the superstep on resume, so no node
+  update is applied twice.
 - Examples: `react_agent`, `react_goal_loop`, `generator_critic`,
   `background_task`, `external_message`, `skills`, `rehydration`, over a shared
   scripted-model and fake-tool harness in `examples/common`.

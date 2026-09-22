@@ -36,7 +36,7 @@ impl Node for ToolNode {
                 .iter()
                 .map(|tool| (tool.spec().name, tool.clone()))
                 .collect();
-            let selected: Vec<(_, Arc<dyn Tool>)> = pending_calls(conversation, &self.author)
+            let selected: Vec<(_, Arc<dyn Tool>)> = pending_calls(state, &self.key, &self.author)?
                 .into_iter()
                 .filter_map(|call| owned.get(&call.name).map(|tool| (call, tool.clone())))
                 .collect();

@@ -11,6 +11,7 @@ use crate::graph::Context;
 use crate::observe::Observer;
 use crate::react::model::{Model, Request, StreamSink};
 use crate::react::tool::Tool;
+use crate::state::State;
 use crate::value::Key;
 
 struct ObserverSink<'a> {
@@ -58,7 +59,7 @@ pub fn structured<T: DeserializeOwned>(step: &Step) -> Result<T, GraphError> {
     })
 }
 
-pub fn last_turn_by_author<'a>(
+pub(crate) fn last_turn_by_author<'a>(
     conversation: &'a Conversation,
     author: &Author,
 ) -> Option<&'a Turn> {
@@ -72,36 +73,42 @@ pub fn last_turn_by_author<'a>(
         })
 }
 
-pub fn last_turn_state(conversation: &Conversation, author: &Author) -> Option<TurnState> {
+pub(crate) fn last_turn_state(conversation: &Conversation, author: &Author) -> Option<TurnState> {
     last_turn_by_author(conversation, author).map(Turn::state)
 }
 
-pub fn pending_calls(conversation: &Conversation, author: &Author) -> Vec<ToolCall> {
+pub fn pending_calls<'a>(
+    state: &'a State,
+    key: &Key,
+    author: &Author,
+) -> Result<Vec<&'a ToolCall>, GraphError> {
+    let conversation = state.conversation(key)?;
     let Some(turn) = last_turn_by_author(conversation, author) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let TurnState::AwaitingToolResults { pending } = turn.state() else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let mut calls = Vec::new();
     for item in turn.items() {
         if let TurnItem::Step(step) = item {
             for call in step.tool_calls() {
                 if pending.contains(&call.id) {
-                    calls.push(call.clone());
+                    calls.push(call);
                 }
             }
         }
     }
-    calls
+    Ok(calls)
 }
 
-pub fn pending_unsafe_calls(
-    conversation: &Conversation,
+pub fn pending_unsafe_calls<'a>(
+    state: &'a State,
+    key: &Key,
     author: &Author,
     registry: &[Arc<dyn Tool>],
-) -> Vec<ToolCall> {
-    pending_calls(conversation, author)
+) -> Result<Vec<&'a ToolCall>, GraphError> {
+    Ok(pending_calls(state, key, author)?
         .into_iter()
         .filter(|call| {
             registry
@@ -110,5 +117,5 @@ pub fn pending_unsafe_calls(
                 .map(|tool| !tool.safe())
                 .unwrap_or(false)
         })
-        .collect()
+        .collect())
 }

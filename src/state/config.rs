@@ -86,7 +86,7 @@ impl Config {
             .ok_or_else(|| GraphError::MissingKey { key: key.clone() })
     }
 
-    pub fn value(&self, key: &Key) -> Result<&Value, GraphError> {
+    pub(crate) fn value(&self, key: &Key) -> Result<&Value, GraphError> {
         self.get(key)
     }
 
@@ -121,7 +121,14 @@ impl Config {
     pub fn list(&self, key: &Key) -> Result<&[Value], GraphError> {
         match self.get(key)? {
             Value::List(items) => Ok(items),
-            other => Err(self.mismatch(key, Kind::list(Kind::Bool), other)),
+            other => Err(self.mismatch(key, self.declared_kind(key), other)),
+        }
+    }
+
+    fn declared_kind(&self, key: &Key) -> Kind {
+        match self.schema.get(key) {
+            Some(kind) => kind.clone(),
+            None => Kind::list(Kind::Str),
         }
     }
 

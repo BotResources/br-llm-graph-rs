@@ -35,8 +35,8 @@ pub use graph::{
 pub use observe::{NoopObserver, Observer};
 pub use react::{
     LlmNode, Model, ModelError, ModelFuture, OutputMode, ReactLoop, Request, Source, StreamSink,
-    Tool, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec, complete, last_turn_by_author,
-    last_turn_state, pending_calls, pending_unsafe_calls, structured, wire,
+    Tool, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec, complete, pending_calls,
+    pending_unsafe_calls, structured, wire,
 };
 pub use run::{Checkpoint, Cursor, Inbox, Message, Outcome, RunFailure, Sender, channel, run};
 pub use session::{Ended, Session, Start};

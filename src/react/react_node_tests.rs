@@ -10,6 +10,8 @@ use serde_json::json;
 use crate::graph::{Always, Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
 use crate::react::helpers::{pending_unsafe_calls, structured};
+use crate::react::llm_node::{LlmNode, Source};
+use crate::react::model::{Model, OutputMode};
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::react::tool_node::ToolNode;
@@ -104,6 +106,150 @@ async fn given_tool_returning_updates_when_run_then_updates_applied() {
     assert_eq!(first_result_is_error(&state), Some(false));
 }
 
+#[tokio::test]
+async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed() {
+    let state = state_with_call(tool_call_step("c1", "echo", json!({})));
+    let model: Arc<dyn Model> = Arc::new(ScriptedModel::new(vec![text_step("fresh")]));
+    let llm = LlmNode {
+        key: key("chat"),
+        author: author(),
+        model,
+        system: vec![Source::Config(key("base"))],
+        tools: vec![Arc::new(EchoTool)],
+        enabled: None,
+        output: OutputMode::Text,
+    };
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("llm"))
+        .node(nid("llm"), llm)
+        .edge(
+            nid("llm"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let failure = run(&graph, &config(), state, None, &ctx(), &mut inbox)
+        .await
+        .err()
+        .unwrap();
+    assert!(matches!(
+        failure.error,
+        crate::error::GraphError::NodeFailed { .. }
+    ));
+    assert_eq!(
+        failure
+            .checkpoint
+            .state
+            .conversation(&key("chat"))
+            .unwrap()
+            .entries()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchanged() {
+    use crate::react::model::ToolSpec;
+    use crate::react::tool::{ToolFuture, ToolOutput};
+    use crate::state::Config;
+    use crate::update::Update;
+
+    struct SetLog {
+        name: &'static str,
+    }
+    impl Tool for SetLog {
+        fn spec(&self) -> ToolSpec {
+            ToolSpec {
+                name: ToolName::new(self.name).unwrap(),
+                description: "set the log".to_owned(),
+                parameters: json!({ "type": "object" }),
+            }
+        }
+        fn safe(&self) -> bool {
+            true
+        }
+        fn call<'a>(
+            &'a self,
+            _arguments: serde_json::Value,
+            _state: &'a State,
+            _config: &'a Config,
+        ) -> ToolFuture<'a> {
+            Box::pin(async {
+                Ok(ToolOutput::text(Vec::new()).with_updates(vec![Update::Set {
+                    key: key("log"),
+                    value: Value::list(vec![Value::str("x")]),
+                }]))
+            })
+        }
+    }
+
+    let step = Step::new(
+        vec![
+            AssistantBlock::ToolCall(ToolCall {
+                id: ToolCallId::new("c1").unwrap(),
+                name: ToolName::new("seta").unwrap(),
+                arguments: json!({}),
+            }),
+            AssistantBlock::ToolCall(ToolCall {
+                id: ToolCallId::new("c2").unwrap(),
+                name: ToolName::new("setb").unwrap(),
+                arguments: json!({}),
+            }),
+        ],
+        StopReason::AwaitingToolResults,
+        None,
+        None,
+    )
+    .unwrap();
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("tools"))
+        .node(
+            nid("tools"),
+            ToolNode {
+                key: key("chat"),
+                author: author(),
+                tools: vec![
+                    Arc::new(SetLog { name: "seta" }),
+                    Arc::new(SetLog { name: "setb" }),
+                ],
+            },
+        )
+        .edge(
+            nid("tools"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let failure = run(
+        &graph,
+        &config(),
+        state_with_call(step),
+        None,
+        &ctx(),
+        &mut inbox,
+    )
+    .await
+    .err()
+    .unwrap();
+    match failure.error {
+        crate::error::GraphError::NodeFailed { source, .. } => {
+            assert!(matches!(source, crate::error::NodeFault::Refused(_)));
+        }
+        other => panic!("expected NodeFailed, got {other}"),
+    }
+    assert!(
+        failure
+            .checkpoint
+            .state
+            .list(&key("log"))
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn given_structured_step_when_read_then_deserializes() {
     #[derive(serde::Deserialize)]
@@ -148,8 +294,7 @@ fn given_mixed_calls_when_pending_unsafe_then_only_unsafe_returned() {
     .unwrap();
     let state = state_with_call(step);
     let registry: Vec<Arc<dyn Tool>> = vec![Arc::new(WriteFileTool::default()), Arc::new(EchoTool)];
-    let convo = state.conversation(&key("chat")).unwrap();
-    let unsafe_calls = pending_unsafe_calls(convo, &author(), &registry);
+    let unsafe_calls = pending_unsafe_calls(&state, &key("chat"), &author(), &registry).unwrap();
     assert_eq!(unsafe_calls.len(), 1);
     assert_eq!(unsafe_calls[0].name.as_str(), "write_file");
 }

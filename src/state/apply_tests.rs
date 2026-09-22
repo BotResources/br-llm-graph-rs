@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use br_llm_messages::AssistantBlock;
 use br_llm_messages::{
-    Author, Conversation, Step, StopReason, Text, Turn, TurnId, UserBlock, UserInput, UserSource,
+    Author, Conversation, Entry, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
+    ToolResult, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
 };
 
 use crate::error::GraphError;
@@ -139,6 +140,75 @@ fn given_push_turn_when_conversation_then_added() {
         }])
         .unwrap();
     assert_eq!(state.conversation(&key("chat")).unwrap().entries().len(), 1);
+}
+
+#[test]
+fn given_push_result_on_matching_turn_when_applied_then_added() {
+    let mut state = state();
+    let call = ToolCall {
+        id: ToolCallId::new("c1").unwrap(),
+        name: ToolName::new("echo").unwrap(),
+        arguments: serde_json::json!({}),
+    };
+    let step = Step::new(
+        vec![AssistantBlock::ToolCall(call)],
+        StopReason::AwaitingToolResults,
+        None,
+        None,
+    )
+    .unwrap();
+    let turn = Turn::new(
+        TurnId::new("t1").unwrap(),
+        Some(Author::new("agent").unwrap()),
+        step,
+    );
+    state
+        .apply_batch(&[Update::PushTurn {
+            key: key("chat"),
+            turn,
+        }])
+        .unwrap();
+    let result = ToolResult::new(
+        ToolCallId::new("c1").unwrap(),
+        ToolName::new("echo").unwrap(),
+        Vec::new(),
+        false,
+    );
+    state
+        .apply_batch(&[Update::PushResult {
+            key: key("chat"),
+            turn: TurnId::new("t1").unwrap(),
+            result,
+        }])
+        .unwrap();
+    let convo = state.conversation(&key("chat")).unwrap();
+    let has_results = convo.entries().iter().any(|entry| match entry {
+        Entry::Turn(turn) => turn
+            .items()
+            .iter()
+            .any(|item| matches!(item, TurnItem::ToolResults(_))),
+        Entry::UserInput(_) => false,
+    });
+    assert!(has_results);
+}
+
+#[test]
+fn given_push_result_on_non_conversation_when_applied_then_refused() {
+    let mut state = state();
+    let result = ToolResult::new(
+        ToolCallId::new("c1").unwrap(),
+        ToolName::new("echo").unwrap(),
+        Vec::new(),
+        false,
+    );
+    assert!(matches!(
+        state.apply_batch(&[Update::PushResult {
+            key: key("count"),
+            turn: TurnId::new("t1").unwrap(),
+            result,
+        }]),
+        Err(GraphError::NotConversation { .. })
+    ));
 }
 
 #[test]

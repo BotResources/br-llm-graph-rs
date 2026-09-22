@@ -1,3 +1,6 @@
+// Ok and Err arms both carry State; boxing the Err alone saves nothing.
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeMap;
 
 use br_llm_messages::UserInput;
@@ -13,8 +16,6 @@ use crate::state::{Config, State};
 use crate::update::Update;
 use crate::value::{EndLabel, NodeId};
 
-// RunFailure carries the run State by value like every Outcome variant; boxing only the Err half would be inconsistent.
-#[allow(clippy::result_large_err)]
 pub async fn run(
     graph: &Graph,
     config: &Config,
@@ -49,6 +50,17 @@ pub async fn run(
             ctx.observer.node_finished(id);
         }
 
+        if let Some(outcome) = drain_after_step(
+            inbox,
+            &mut held_inputs,
+            &mut pause,
+            &state,
+            &active,
+            &deferred,
+        ) {
+            return outcome;
+        }
+
         let mut by_id: BTreeMap<NodeId, Result<Vec<Update>, NodeFault>> =
             results.into_iter().collect();
         let mut failure: Option<(NodeId, NodeFault)> = None;
@@ -81,16 +93,6 @@ pub async fn run(
             return Err(fail(state, &active, &deferred, error));
         }
 
-        if let Some(outcome) = drain_after_step(
-            inbox,
-            &mut held_inputs,
-            &mut pause,
-            &state,
-            &active,
-            &deferred,
-        ) {
-            return outcome;
-        }
         if let Err(error) = apply_inputs(&mut state, ctx, held_inputs) {
             return Err(fail(state, &active, &deferred, error));
         }
@@ -220,8 +222,6 @@ fn next_sets(
     }
 }
 
-// RunFailure carries the run State by value like every Outcome variant; boxing only the Err half would be inconsistent.
-#[allow(clippy::result_large_err)]
 fn finish(
     state: State,
     active: &[NodeId],

@@ -66,6 +66,24 @@ fn given_push_turn_when_round_tripped_then_identical() {
 }
 
 #[test]
+fn given_push_step_when_round_tripped_then_identical() {
+    let step = Step::new(
+        vec![AssistantBlock::Text {
+            text: Text::new("more").unwrap(),
+        }],
+        StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap();
+    round_trip(Update::PushStep {
+        key: key("chat"),
+        turn: TurnId::new("t1").unwrap(),
+        step,
+    });
+}
+
+#[test]
 fn given_push_result_when_round_tripped_then_identical() {
     round_trip(Update::PushResult {
         key: key("chat"),

@@ -206,6 +206,74 @@ async fn given_panicking_node_when_run_then_node_failed_with_state_intact() {
 }
 
 #[tokio::test]
+async fn given_two_nodes_set_same_key_when_run_then_declaration_order_wins() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("start"))
+        .node(nid("start"), noop_node())
+        .node(nid("a"), set_count_node(1))
+        .node(nid("b"), set_count_node(2))
+        .edge(nid("start"), edge(vec![to("a"), to("b")]))
+        .edge(nid("a"), Always(end("done")))
+        .edge(nid("b"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap();
+    let Outcome::Finished { state, .. } = outcome else {
+        panic!("expected finished");
+    };
+    assert_eq!(state.int(&key("count")).unwrap(), 2);
+}
+
+#[tokio::test]
+async fn given_end_mixed_with_node_target_when_run_then_only_final_end_counts() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("start"))
+        .node(nid("start"), noop_node())
+        .node(nid("a"), noop_node())
+        .node(nid("b"), noop_node())
+        .node(nid("c"), noop_node())
+        .edge(nid("start"), edge(vec![to("a"), to("b")]))
+        .edge(nid("a"), edge(vec![end("early")]))
+        .edge(nid("b"), Always(to("c")))
+        .edge(nid("c"), edge(vec![end("late")]))
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap();
+    let Outcome::Finished { end, .. } = outcome else {
+        panic!("expected finished");
+    };
+    assert_eq!(end.as_str(), "late");
+}
+
+#[tokio::test]
+async fn given_edge_returning_no_target_when_run_then_empty_edge_error() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(nid("a"), set_count_node(3))
+        .edge(nid("a"), edge(Vec::new()))
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .err()
+        .unwrap();
+    assert!(matches!(
+        failure.error,
+        crate::error::GraphError::EmptyEdge { .. }
+    ));
+    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 3);
+}
+
+#[tokio::test]
 async fn given_observer_when_run_then_started_before_finished_before_checkpoint() {
     let recorder = Arc::new(Recorder::default());
     let ctx = context(recorder.clone());

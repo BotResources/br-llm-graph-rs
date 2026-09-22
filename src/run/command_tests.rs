@@ -163,6 +163,100 @@ async fn given_cancel_mid_superstep_when_run_then_state_untouched_and_reruns_on_
 }
 
 #[tokio::test]
+async fn given_cancel_racing_a_fast_superstep_when_run_then_state_untouched_and_reruns_once() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(nid("a"), log_node("a"))
+        .edge(nid("a"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (sender, mut inbox) = channel();
+    sender.cancel();
+    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap();
+    let Outcome::Cancelled { checkpoint } = cancelled else {
+        panic!("expected cancelled");
+    };
+    assert!(checkpoint.state.list(&key("log")).unwrap().is_empty());
+    assert_eq!(
+        checkpoint
+            .cursor
+            .active
+            .iter()
+            .map(|n| n.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a"]
+    );
+
+    let resumed = run(
+        &graph,
+        &config(),
+        checkpoint.state,
+        Some(checkpoint.cursor),
+        &ctx(),
+        &mut inbox,
+    )
+    .await
+    .map_err(|f| f.error)
+    .unwrap();
+    let Outcome::Finished { state, .. } = resumed else {
+        panic!("expected finished");
+    };
+    let log: Vec<&str> = state
+        .list(&key("log"))
+        .unwrap()
+        .iter()
+        .map(|v| match v {
+            Value::Str(s) => s.as_str(),
+            _ => "?",
+        })
+        .collect();
+    assert_eq!(log, vec!["a"]);
+}
+
+#[tokio::test]
+async fn given_input_and_pause_same_superstep_when_run_then_paused_with_input_applied() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(nid("a"), noop_node())
+        .node(nid("b"), noop_node())
+        .edge(nid("a"), Always(to("b")))
+        .edge(nid("b"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (sender, mut inbox) = channel();
+    sender.send(key("chat"), input("hello"));
+    sender.pause();
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap();
+    let Outcome::Paused { checkpoint } = outcome else {
+        panic!("expected paused");
+    };
+    assert_eq!(
+        checkpoint
+            .state
+            .conversation(&key("chat"))
+            .unwrap()
+            .entries()
+            .len(),
+        1
+    );
+    assert_eq!(
+        checkpoint
+            .cursor
+            .active
+            .iter()
+            .map(|n| n.as_str())
+            .collect::<Vec<_>>(),
+        vec!["b"]
+    );
+}
+
+#[tokio::test]
 async fn given_checkpoint_with_unknown_node_when_validated_then_refused() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("a"))

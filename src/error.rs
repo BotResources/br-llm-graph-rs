@@ -90,6 +90,12 @@ pub enum GraphError {
     ToolCoveredTwice {
         name: ToolName,
     },
+    ToolNotDeclared {
+        name: ToolName,
+    },
+    PendingToolUnsatisfiable {
+        name: ToolName,
+    },
     Model {
         message: String,
     },
@@ -166,6 +172,15 @@ impl std::fmt::Display for GraphError {
             }
             GraphError::ToolCoveredTwice { name } => {
                 write!(f, "tool {name} is run by more than one tool node")
+            }
+            GraphError::ToolNotDeclared { name } => {
+                write!(
+                    f,
+                    "tool node runs tool {name} the llm node does not declare"
+                )
+            }
+            GraphError::PendingToolUnsatisfiable { name } => {
+                write!(f, "pending tool call {name} names a tool no tool node runs")
             }
             GraphError::Model { message } => write!(f, "model call failed: {message}"),
             GraphError::Structured { message } => {

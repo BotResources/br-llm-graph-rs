@@ -76,7 +76,7 @@ impl State {
         })
     }
 
-    pub fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             schema: Schema::default(),
@@ -102,7 +102,7 @@ impl State {
         &mut self.values
     }
 
-    pub fn value(&self, key: &Key) -> Result<&Value, GraphError> {
+    pub(crate) fn value(&self, key: &Key) -> Result<&Value, GraphError> {
         self.get(key)
     }
 
@@ -137,7 +137,14 @@ impl State {
     pub fn list(&self, key: &Key) -> Result<&[Value], GraphError> {
         match self.get(key)? {
             Value::List(items) => Ok(items),
-            other => Err(self.mismatch(key, Kind::list(Kind::Bool), other)),
+            other => Err(self.mismatch(key, self.declared_kind(key), other)),
+        }
+    }
+
+    fn declared_kind(&self, key: &Key) -> Kind {
+        match self.kind_of(key) {
+            Some(kind) => kind.clone(),
+            None => Kind::list(Kind::Str),
         }
     }
 
