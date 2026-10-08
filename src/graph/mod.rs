@@ -6,6 +6,7 @@ mod graph;
 mod limit;
 mod map;
 mod node;
+mod signature;
 
 pub use builder::GraphBuilder;
 pub use context::{Context, IdSource};
@@ -14,3 +15,4 @@ pub use graph::Graph;
 pub use limit::Limit;
 pub use map::Map;
 pub use node::{FnNode, Node, NodeError, NodeFuture};
+pub use signature::Signature;

@@ -30,7 +30,7 @@ pub mod value;
 pub use error::{GraphError, NodeFault};
 pub use graph::{
     Always, Context, Edge, FnEdge, FnNode, Graph, GraphBuilder, IdSource, Limit, Map, Node,
-    NodeError, NodeFuture, Target,
+    NodeError, NodeFuture, Signature, Target,
 };
 pub use observe::{NoopObserver, Observer};
 pub use react::{

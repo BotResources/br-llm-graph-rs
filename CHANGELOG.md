@@ -44,6 +44,21 @@ form to decide whether a version ships.
 - `std::error::Error::source` for `GraphError` (the fault of a failed node, a
   message error) and for `NodeFault` (the error a node returned, a refused
   update).
+- Graph signature: `GraphBuilder::input(key)` and `GraphBuilder::output(key)`
+  declare which state keys a graph takes and gives back; `Graph::signature()`
+  lists them with their kinds (`Signature`). A key may be both. An undeclared
+  key is refused at build (`UnknownKey`), a key declared twice too
+  (`DuplicateInput`, `DuplicateOutput`). A graph without declarations has no
+  inputs and no outputs.
+- Defaults: `Kind::neutral()` (empty string, 0, 0.0, false, empty list, empty
+  conversation) and `SchemaBuilder::state_with_default(key, kind, value)` for an
+  explicit start value, checked at build (`KindMismatch`, `UnknownKey`).
+  `Schema::default_value(key)` gives the start value of a key.
+- `Graph::start_state(inputs)`: the start state of a run, from the given
+  inputs plus the defaults of every other key. Refuses a declared input that is
+  missing (`MissingInput`), a key that is not a declared input (`NotAnInput`),
+  an unknown key, a value of the wrong kind, and an input given twice
+  (`InputGivenTwice`). `State::new` is unchanged.
 
 ### Changed
 
@@ -54,6 +69,9 @@ form to decide whether a version ships.
   literals must set them.
 - Depends on `br-llm-messages` 0.2.0: the body of a framed entry is rendered
   verbatim, no longer escaped.
+- `Schema` gains the public field `defaults` (serialized only when not empty,
+  so earlier schemas and checkpoints still load) and no longer implements
+  `Eq`, since a default is a `Value`.
 
 ## 0.2.0 - 2026-09-22
 

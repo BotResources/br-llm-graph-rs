@@ -2,10 +2,11 @@ use std::collections::BTreeMap;
 
 use crate::error::GraphError;
 use crate::graph::edge::Edge;
-use crate::graph::graph::{Graph, NodeEntry};
+use crate::graph::graph::{Graph, NodeEntry, Parts};
 use crate::graph::limit::Limit;
 use crate::graph::map::Map;
 use crate::graph::node::Node;
+use crate::graph::signature::Signature;
 use crate::state::{Kind, Schema};
 use crate::value::{Key, NodeId};
 
@@ -23,6 +24,8 @@ pub struct GraphBuilder {
     nodes: Vec<(NodeId, NodeEntry)>,
     edges: Vec<(NodeId, Box<dyn Edge>)>,
     maps: Vec<(NodeId, MapKeys)>,
+    inputs: Vec<Key>,
+    outputs: Vec<Key>,
 }
 
 impl GraphBuilder {
@@ -33,7 +36,22 @@ impl GraphBuilder {
             nodes: Vec::new(),
             edges: Vec::new(),
             maps: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
         }
+    }
+
+    /// Declares a state key as an input of the graph: a run started with
+    /// `Graph::start_state` must be given its value.
+    pub fn input(mut self, key: Key) -> Self {
+        self.inputs.push(key);
+        self
+    }
+
+    /// Declares a state key as an output of the graph.
+    pub fn output(mut self, key: Key) -> Self {
+        self.outputs.push(key);
+        self
     }
 
     pub fn entry(mut self, id: NodeId) -> Self {
@@ -98,7 +116,12 @@ impl GraphBuilder {
             nodes: raw_nodes,
             edges: raw_edges,
             maps,
+            inputs,
+            outputs,
         } = self;
+
+        schema.check_defaults()?;
+        let signature = Signature::resolve(&schema, inputs, outputs)?;
 
         let mut order = Vec::with_capacity(raw_nodes.len());
         let mut nodes = BTreeMap::new();
@@ -136,7 +159,14 @@ impl GraphBuilder {
             check_map(&schema, id, keys)?;
         }
 
-        Ok(Graph::assemble(schema, entry, order, nodes, edges))
+        Ok(Graph::assemble(Parts {
+            schema,
+            signature,
+            entry,
+            order,
+            nodes,
+            edges,
+        }))
     }
 }
 

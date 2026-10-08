@@ -127,6 +127,21 @@ pub enum GraphError {
         node: NodeId,
         max_rounds: usize,
     },
+    DuplicateInput {
+        key: Key,
+    },
+    DuplicateOutput {
+        key: Key,
+    },
+    MissingInput {
+        key: Key,
+    },
+    NotAnInput {
+        key: Key,
+    },
+    InputGivenTwice {
+        key: Key,
+    },
 }
 
 impl std::fmt::Display for GraphError {
@@ -226,6 +241,19 @@ impl std::fmt::Display for GraphError {
                     "node {node} reached its limit of {max_rounds} tool rounds"
                 )
             }
+            GraphError::DuplicateInput { key } => {
+                write!(f, "key {key} is declared twice as an input of the graph")
+            }
+            GraphError::DuplicateOutput { key } => {
+                write!(f, "key {key} is declared twice as an output of the graph")
+            }
+            GraphError::MissingInput { key } => {
+                write!(f, "input {key} of the graph is not given")
+            }
+            GraphError::NotAnInput { key } => {
+                write!(f, "key {key} is not a declared input of the graph")
+            }
+            GraphError::InputGivenTwice { key } => write!(f, "input {key} is given twice"),
         }
     }
 }
@@ -263,7 +291,12 @@ impl std::error::Error for GraphError {
             | GraphError::LimitKeyMismatch { .. }
             | GraphError::LimitNotPositive { .. }
             | GraphError::FlagKeyMismatch { .. }
-            | GraphError::ToolLimitReached { .. } => None,
+            | GraphError::ToolLimitReached { .. }
+            | GraphError::DuplicateInput { .. }
+            | GraphError::DuplicateOutput { .. }
+            | GraphError::MissingInput { .. }
+            | GraphError::NotAnInput { .. }
+            | GraphError::InputGivenTwice { .. } => None,
         }
     }
 }

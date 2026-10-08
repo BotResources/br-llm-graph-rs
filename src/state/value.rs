@@ -8,6 +8,8 @@ use crate::state::kind::Kind;
 pub struct Finite(f64);
 
 impl Finite {
+    pub(crate) const ZERO: Finite = Finite(0.0);
+
     pub fn new(value: f64) -> Result<Self, GraphError> {
         if value.is_finite() {
             Ok(Self(value))
