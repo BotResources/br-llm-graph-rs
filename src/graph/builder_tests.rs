@@ -117,8 +117,6 @@ fn given_map_with_bad_keys_when_build_then_refused() {
         list: crate::value::Key::new("out").unwrap(),
         item: crate::value::Key::new("item").unwrap(),
         body: Box::new(noop()),
-        output: crate::value::Key::new("out").unwrap(),
-        results: crate::value::Key::new("outs").unwrap(),
         max_concurrency: None,
     };
     let result = GraphBuilder::new(schema())
@@ -135,8 +133,6 @@ fn given_map_with_good_keys_when_build_then_ok() {
         list: crate::value::Key::new("items").unwrap(),
         item: crate::value::Key::new("item").unwrap(),
         body: Box::new(noop()),
-        output: crate::value::Key::new("out").unwrap(),
-        results: crate::value::Key::new("outs").unwrap(),
         max_concurrency: None,
     };
     let result = GraphBuilder::new(schema())
@@ -145,4 +141,36 @@ fn given_map_with_good_keys_when_build_then_ok() {
         .edge(nid("m"), done_edge())
         .build();
     assert!(result.is_ok());
+}
+
+#[test]
+fn given_map_whose_item_key_is_not_the_list_element_kind_when_build_then_refused() {
+    let map = Map {
+        list: crate::value::Key::new("items").unwrap(),
+        item: crate::value::Key::new("outs").unwrap(),
+        body: Box::new(noop()),
+        max_concurrency: None,
+    };
+    let result = GraphBuilder::new(schema())
+        .entry(nid("m"))
+        .map(nid("m"), map)
+        .edge(nid("m"), done_edge())
+        .build();
+    assert!(matches!(result, Err(GraphError::MapKeyMismatch { .. })));
+}
+
+#[test]
+fn given_map_registered_as_a_plain_node_when_build_then_its_keys_are_checked() {
+    let map = Map {
+        list: crate::value::Key::new("out").unwrap(),
+        item: crate::value::Key::new("item").unwrap(),
+        body: Box::new(noop()),
+        max_concurrency: None,
+    };
+    let result = GraphBuilder::new(schema())
+        .entry(nid("m"))
+        .node(nid("m"), map)
+        .edge(nid("m"), done_edge())
+        .build();
+    assert!(matches!(result, Err(GraphError::MapKeyMismatch { .. })));
 }

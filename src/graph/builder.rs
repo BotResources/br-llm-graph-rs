@@ -7,7 +7,7 @@ use crate::graph::graph::{Graph, NodeEntry, Parts};
 use crate::graph::map::Map;
 use crate::graph::node::Node;
 use crate::graph::signature::Signature;
-use crate::graph::subgraph::{SubGraph, check_call};
+use crate::graph::subgraph::{Placement, SubGraph, check_call};
 use crate::state::{Kind, Schema};
 use crate::value::{Key, NodeId};
 
@@ -161,7 +161,7 @@ fn check_node(schema: &Schema, id: &NodeId, node: &dyn Node) -> Result<(), Graph
         return check_map(schema, id, map);
     }
     if let Some(call) = node.downcast_ref::<SubGraph>() {
-        return check_call(schema, id, call);
+        return check_call(schema, id, call, Placement::Node);
     }
     Ok(())
 }
@@ -175,16 +175,12 @@ fn check_map(schema: &Schema, id: &NodeId, map: &Map) -> Result<(), GraphError> 
         Some(item_kind) if *item_kind == element => {}
         Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
     }
-    let output_kind = match schema.state.get(&map.output) {
-        Some(kind) => kind.clone(),
-        None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
-    };
-    match schema.state.get(&map.results) {
-        Some(Kind::List { element }) if element.as_ref() == &output_kind => {}
-        Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
+    if let Some(limit) = &map.max_concurrency {
+        limit.check(schema)?;
     }
-    match &map.max_concurrency {
-        Some(limit) => limit.check(schema),
+    let body: &dyn Any = map.body.as_ref();
+    match body.downcast_ref::<SubGraph>() {
+        Some(call) => check_call(schema, id, call, Placement::MapBody),
         None => Ok(()),
     }
 }

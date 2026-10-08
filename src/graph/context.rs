@@ -51,6 +51,12 @@ impl Context {
         self.child(Segment::node(node.clone()))
     }
 
+    pub(crate) fn with_occurrence(&self, occurrence: OccurrenceKey) -> Context {
+        let mut context = self.clone();
+        context.origin.occurrence = occurrence;
+        context
+    }
+
     /// This context one segment deeper.
     pub fn child(&self, segment: Segment) -> Context {
         let mut child = self.clone();

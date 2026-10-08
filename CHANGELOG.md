@@ -18,6 +18,7 @@ form to decide whether a version ships.
   time (`LimitNotPositive`).
 - `Map::max_concurrency`: at most that many bodies run at once; the results
   keep the item order. `None` runs every item at once, as before.
+- `GraphError::MapKeyMismatch` now covers the list and item keys only.
 - `ToolNode::max_concurrency` and `ReactLoop::tool_concurrency`: at most that
   many pending calls of one tool node run at once; the results keep the call
   order. `None` runs every call at once, as before.
@@ -99,6 +100,21 @@ form to decide whether a version ships.
   the node's occurrence, so events of a nested run are told from the
   parent's.
 - `Context` gains a private field; build it with `Context::new`.
+- `Map` is `{ list, item, body, max_concurrency }`: the `output` and
+  `results` fields are gone. The body runs on the state with `item` set, in a
+  context for its own occurrence (`m[i]`); its updates are not applied to that
+  state. Each must be an `Update::Append` to a list of the graph and the map
+  forwards them, in item order whatever the completion order, so one body may
+  append to several lists and they stay aligned. Any other update fails the
+  map (`MapBodyNotAppend`), never silently dropped. A `SubGraph` body is
+  checked at build: every output must be an `Append` (`MapBodySet`), with kinds
+  checked against the graph's schema (the item key included). A map run
+  outside a graph, whose context names no node, fails with
+  `MapWithoutOccurrence`.
+- `Map` runs its bodies in a rolling window: at most `max_concurrency` at
+  once, a new one starting as soon as any running one finishes, never held by
+  a slow earlier item. Every body runs to its end; the first error in item
+  order fails the map.
 - `Node` has `Any` as a supertrait (every node a graph holds is `'static`), so
   `GraphBuilder::build` recognises maps and calls among its nodes: a `Map` or a
   `SubGraph` registered with `node` or `join` is now checked like one

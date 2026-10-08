@@ -69,6 +69,19 @@ impl OccurrenceKey {
         self.0.starts_with(&prefix.0)
     }
 
+    /// The occurrence of item `index` of the node this key ends with: the
+    /// last segment takes the index; when it already has one, the same node
+    /// is pushed again with the new index. `None` at top level.
+    pub(crate) fn item(&self, index: usize) -> Option<Self> {
+        let last = self.0.last()?;
+        let mut segments = self.0.clone();
+        if last.index.is_none() {
+            segments.pop();
+        }
+        segments.push(Segment::item(last.node.clone(), index));
+        Some(Self(segments))
+    }
+
     pub fn parse(text: &str) -> Result<Self, GraphError> {
         if text.is_empty() {
             return Ok(Self::root());

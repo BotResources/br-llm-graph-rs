@@ -65,18 +65,25 @@ impl State {
         Ok(())
     }
 
-    fn apply_append(&mut self, key: &Key, value: &Value) -> Result<(), GraphError> {
+    /// Whether `value` may be appended to `key`: a list of the value's kind.
+    pub(crate) fn check_append(&self, key: &Key, value: &Value) -> Result<(), GraphError> {
         let element = match self.kind_of(key) {
-            Some(Kind::List { element }) => element.as_ref().clone(),
+            Some(Kind::List { element }) => element.as_ref(),
             Some(_) | None => return Err(GraphError::AppendNotList { key: key.clone() }),
         };
-        if !value.matches(&element) {
-            return Err(GraphError::KindMismatch {
+        if value.matches(element) {
+            Ok(())
+        } else {
+            Err(GraphError::KindMismatch {
                 key: key.clone(),
-                expected: element,
+                expected: element.clone(),
                 found: value.tag(),
-            });
+            })
         }
+    }
+
+    fn apply_append(&mut self, key: &Key, value: &Value) -> Result<(), GraphError> {
+        self.check_append(key, value)?;
         match self.values_mut().get_mut(key) {
             Some(Value::List(items)) => {
                 items.push(value.clone());

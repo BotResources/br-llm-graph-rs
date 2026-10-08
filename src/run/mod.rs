@@ -11,9 +11,13 @@ mod command_tests;
 #[cfg(test)]
 mod failure_tests;
 #[cfg(test)]
+mod gates;
+#[cfg(test)]
 mod map_concurrency_tests;
 #[cfg(test)]
 mod map_tests;
+#[cfg(test)]
+mod map_window_tests;
 #[cfg(test)]
 mod origin_tests;
 #[cfg(test)]

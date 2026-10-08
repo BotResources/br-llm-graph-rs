@@ -55,8 +55,8 @@ impl Node for GaugedBody {
             }
             self.0.live.fetch_sub(1, Ordering::SeqCst);
             let item = state.str(&key("item"))?.to_owned();
-            Ok(vec![Update::Set {
-                key: key("out"),
+            Ok(vec![Update::Append {
+                key: key("outs"),
                 value: Value::str(format!("done {item}")),
             }])
         })
@@ -68,8 +68,6 @@ fn map_graph(gauge: &Arc<Gauge>, max_concurrency: Option<Limit>) -> Result<Graph
         list: key("items"),
         item: key("item"),
         body: Box::new(GaugedBody(gauge.clone())),
-        output: key("out"),
-        results: key("outs"),
         max_concurrency,
     };
     GraphBuilder::new(width_schema())

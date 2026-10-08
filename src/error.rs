@@ -189,6 +189,14 @@ pub enum GraphError {
         source: Box<GraphError>,
     },
     SubGraphSuspended,
+    MapBodyNotAppend {
+        key: Key,
+    },
+    MapBodySet {
+        node: NodeId,
+        key: Key,
+    },
+    MapWithoutOccurrence,
 }
 
 impl std::fmt::Display for GraphError {
@@ -237,10 +245,7 @@ impl std::fmt::Display for GraphError {
                 write!(f, "the edge of node {node} returned no target")
             }
             GraphError::MapKeyMismatch { node } => {
-                write!(
-                    f,
-                    "the map node {node} has inconsistent list/item/output/results keys"
-                )
+                write!(f, "the map node {node} has inconsistent list/item keys")
             }
             GraphError::NodeFailed { node, source } => write!(f, "node {node} failed: {source}"),
             GraphError::AmbiguousEnd { labels } => {
@@ -365,6 +370,17 @@ impl std::fmt::Display for GraphError {
             GraphError::SubGraphSuspended => {
                 f.write_str("the called graph stopped before its end (paused or cancelled)")
             }
+            GraphError::MapBodyNotAppend { key } => write!(
+                f,
+                "a map body may only append to a list; it returned another update of {key}"
+            ),
+            GraphError::MapBodySet { node, key } => write!(
+                f,
+                "the body of map node {node} sets {key}; a map body may only append"
+            ),
+            GraphError::MapWithoutOccurrence => {
+                f.write_str("a map runs as a node of a graph: its context names no node occurrence")
+            }
         }
     }
 }
@@ -420,7 +436,10 @@ impl std::error::Error for GraphError {
             | GraphError::SubGraphConfigMismatch { .. }
             | GraphError::SubGraphNotAnOutput { .. }
             | GraphError::SubGraphTargetMismatch { .. }
-            | GraphError::SubGraphSuspended => None,
+            | GraphError::SubGraphSuspended
+            | GraphError::MapBodyNotAppend { .. }
+            | GraphError::MapBodySet { .. }
+            | GraphError::MapWithoutOccurrence => None,
         }
     }
 }

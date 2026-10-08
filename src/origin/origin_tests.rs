@@ -59,6 +59,15 @@ fn given_paths_when_ordered_then_parents_first_and_indices_ascending() {
 }
 
 #[test]
+fn given_a_path_when_asked_for_an_item_then_the_last_segment_takes_the_index() {
+    let node = OccurrenceKey::parse("a/m").unwrap();
+    assert_eq!(node.item(4).unwrap().to_string(), "a/m[4]");
+    let item = OccurrenceKey::parse("a/m[4]").unwrap();
+    assert_eq!(item.item(1).unwrap().to_string(), "a/m[4]/m[1]");
+    assert!(OccurrenceKey::root().item(0).is_none());
+}
+
+#[test]
 fn given_a_prefix_when_checked_then_starts_with() {
     assert!(path().starts_with(&OccurrenceKey::parse("a/b[3]").unwrap()));
     assert!(path().starts_with(&OccurrenceKey::root()));

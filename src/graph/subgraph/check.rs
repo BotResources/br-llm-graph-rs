@@ -5,11 +5,20 @@ use crate::graph::subgraph::{Input, Output, SubGraph};
 use crate::state::{Kind, Schema};
 use crate::value::{Key, NodeId};
 
+/// Where a call is placed: a node of the graph, or the body of a map, whose
+/// updates may only be appends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Placement {
+    Node,
+    MapBody,
+}
+
 /// Checks a call against the schema of the graph that holds it.
 pub(crate) fn check_call(
     schema: &Schema,
     node: &NodeId,
     call: &SubGraph,
+    placement: Placement,
 ) -> Result<(), GraphError> {
     check_inputs(schema, node, call)?;
     check_config(schema, node, call)?;
@@ -21,10 +30,10 @@ pub(crate) fn check_call(
                 node: node.clone(),
                 key: child_key.clone(),
             })?;
-        check_target(schema, node, kind, target)?;
+        check_target(schema, node, kind, target, placement)?;
     }
     if let Some(target) = &call.end_label {
-        check_target(schema, node, &Kind::Str, target)?;
+        check_target(schema, node, &Kind::Str, target, placement)?;
     }
     Ok(())
 }
@@ -102,15 +111,24 @@ fn source_fits(schema: &Schema, source: &Input, kind: &Kind) -> bool {
 }
 
 /// A target receives a value of `kind`: a `Set` key of that kind, or an
-/// `Append` list of that kind.
+/// `Append` list of that kind. In a map body only appends are allowed.
 fn check_target(
     schema: &Schema,
     node: &NodeId,
     kind: &Kind,
     target: &Output,
+    placement: Placement,
 ) -> Result<(), GraphError> {
     let fits = match target {
-        Output::Set(key) => schema.state.get(key) == Some(kind),
+        Output::Set(key) => {
+            if placement == Placement::MapBody {
+                return Err(GraphError::MapBodySet {
+                    node: node.clone(),
+                    key: key.clone(),
+                });
+            }
+            schema.state.get(key) == Some(kind)
+        }
         Output::Append(key) => match schema.state.get(key) {
             Some(Kind::List { element }) => element.as_ref() == kind,
             Some(_) | None => false,
