@@ -29,14 +29,14 @@ pub mod value;
 
 pub use error::{GraphError, NodeFault};
 pub use graph::{
-    Always, Context, Edge, FnEdge, FnNode, Graph, GraphBuilder, IdSource, Map, Node, NodeError,
-    NodeFuture, Target,
+    Always, Context, Edge, FnEdge, FnNode, Graph, GraphBuilder, IdSource, Limit, Map, Node,
+    NodeError, NodeFuture, Target,
 };
 pub use observe::{NoopObserver, Observer};
 pub use react::{
-    LlmNode, Model, ModelError, ModelFuture, OutputMode, ReactLoop, Request, Source, StreamSink,
-    Tool, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec, complete, pending_calls,
-    pending_unsafe_calls, structured, wire,
+    LlmNode, Model, ModelError, ModelFuture, OnLimit, OutputMode, ReactLoop, Request, RoundLimit,
+    Source, StreamSink, Tool, ToolCalls, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec,
+    complete, pending_calls, pending_unsafe_calls, structured, wire,
 };
 pub use run::{Checkpoint, Cursor, Inbox, Outcome, RunFailure, Sender, channel, run};
 pub use session::{Ended, Session, Start};

@@ -4,9 +4,10 @@ use std::sync::Arc;
 use br_llm_messages::{ToolName, TurnState};
 
 use crate::error::GraphError;
-use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Target};
+use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Limit, Target};
 use crate::react::helpers::{last_turn_state, pending_calls};
 use crate::react::llm_node::LlmNode;
+use crate::react::round_limit::{LimitedLlm, RoundLimit, completed_rounds};
 use crate::react::tool::Tool;
 use crate::react::tool_node::ToolNode;
 use crate::value::NodeId;
@@ -15,15 +16,32 @@ pub struct ReactLoop {
     pub llm: NodeId,
     pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
     pub after: Target,
+    pub tool_concurrency: Option<Limit>,
+    pub round_limit: Option<RoundLimit>,
 }
 
 impl ReactLoop {
     pub fn add(self, builder: GraphBuilder, llm_node: LlmNode) -> Result<GraphBuilder, GraphError> {
         self.check_partition(&llm_node)?;
+        if let Some(limit) = &self.tool_concurrency {
+            limit.check(builder.schema())?;
+        }
+        if let Some(round_limit) = &self.round_limit {
+            round_limit.check(builder.schema())?;
+        }
 
         let key = llm_node.key.clone();
         let author = llm_node.author.clone();
-        let mut builder = builder.join(self.llm.clone(), llm_node);
+        let mut builder = match &self.round_limit {
+            Some(round_limit) => builder.join(
+                self.llm.clone(),
+                LimitedLlm {
+                    llm: llm_node,
+                    max_rounds: round_limit.max_rounds.clone(),
+                },
+            ),
+            None => builder.join(self.llm.clone(), llm_node),
+        };
         for (id, tools) in &self.tool_nodes {
             builder = builder.node(
                 id.clone(),
@@ -31,13 +49,17 @@ impl ReactLoop {
                     key: key.clone(),
                     author: author.clone(),
                     tools: tools.clone(),
+                    max_concurrency: self.tool_concurrency.clone(),
                 },
             );
         }
 
-        builder = builder.edge(self.llm.clone(), self.llm_edge(key, author));
+        builder = builder.edge(self.llm.clone(), self.llm_edge(key.clone(), author.clone()));
         for (id, _) in &self.tool_nodes {
             builder = builder.edge(id.clone(), Always(Target::Node(self.llm.clone())));
+        }
+        if let Some(round_limit) = &self.round_limit {
+            builder = round_limit.add_limit_node(builder, key, author, &self.llm, &self.after);
         }
         Ok(builder)
     }
@@ -82,10 +104,19 @@ impl ReactLoop {
             .flat_map(|(_, tools)| tools.iter().map(|tool| tool.spec().name))
             .collect();
         let after = self.after.clone();
-        FnEdge::new(move |state, _config| {
+        let llm = self.llm.clone();
+        let round_limit = self.round_limit.clone();
+        FnEdge::new(move |state, config| {
             let conversation = state.conversation(&key)?;
             match last_turn_state(conversation, &author) {
                 Some(TurnState::AwaitingToolResults { .. }) => {
+                    if let Some(round_limit) = &round_limit {
+                        let done = completed_rounds(conversation, &author);
+                        let max = round_limit.max_rounds.resolve(config)?.get();
+                        if done >= max {
+                            return round_limit.reached(&llm, done, max);
+                        }
+                    }
                     for call in pending_calls(state, &key, &author)? {
                         if !covered.contains(&call.name) {
                             return Err(GraphError::PendingToolUnsatisfiable {

@@ -46,6 +46,8 @@ async fn main() {
         llm: NodeId::new("llm").expect("id"),
         tool_nodes: vec![(NodeId::new("tools").expect("id"), vec![start_task])],
         after: Target::Node(NodeId::new("gate").expect("id")),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let graph = Arc::new(
         react

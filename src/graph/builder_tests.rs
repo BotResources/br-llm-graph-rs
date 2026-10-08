@@ -119,6 +119,7 @@ fn given_map_with_bad_keys_when_build_then_refused() {
         body: Box::new(noop()),
         output: crate::value::Key::new("out").unwrap(),
         results: crate::value::Key::new("outs").unwrap(),
+        max_concurrency: None,
     };
     let result = GraphBuilder::new(schema())
         .entry(nid("m"))
@@ -136,6 +137,7 @@ fn given_map_with_good_keys_when_build_then_ok() {
         body: Box::new(noop()),
         output: crate::value::Key::new("out").unwrap(),
         results: crate::value::Key::new("outs").unwrap(),
+        max_concurrency: None,
     };
     let result = GraphBuilder::new(schema())
         .entry(nid("m"))

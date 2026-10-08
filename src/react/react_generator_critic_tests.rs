@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
 use crate::react::llm_node::{LlmNode, Source};
-use crate::react::model::OutputMode;
+use crate::react::model::{OutputMode, ToolCalls};
 use crate::react::test_support::*;
 use crate::run::Outcome;
 use crate::run::channel;
@@ -78,6 +78,7 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
                     system: None,
                     messages,
                     tools: Vec::new(),
+                    tool_calls: ToolCalls::Allowed,
                     output: OutputMode::Structured { schema: json!({}) },
                 };
                 let step = complete(model.as_ref(), request, ctx, &k("chat")).await?;

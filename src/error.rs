@@ -1,12 +1,13 @@
 use br_llm_messages::MessageError;
 use br_llm_messages::ToolName;
 
+use crate::graph::NodeError;
 use crate::state::Kind;
 use crate::value::{EndLabel, Key, NodeId};
 
 #[derive(Debug)]
 pub enum NodeFault {
-    Returned(String),
+    Returned(NodeError),
     Refused(Box<GraphError>),
     Panic(String),
 }
@@ -14,9 +15,19 @@ pub enum NodeFault {
 impl std::fmt::Display for NodeFault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NodeFault::Returned(message) => write!(f, "returned an error: {message}"),
+            NodeFault::Returned(error) => write!(f, "returned an error: {error}"),
             NodeFault::Refused(error) => write!(f, "its updates were refused: {error}"),
             NodeFault::Panic(message) => write!(f, "panicked: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for NodeFault {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            NodeFault::Returned(error) => Some(error.as_ref()),
+            NodeFault::Refused(error) => Some(error.as_ref()),
+            NodeFault::Panic(_) => None,
         }
     }
 }
@@ -102,6 +113,20 @@ pub enum GraphError {
     Structured {
         message: String,
     },
+    LimitKeyMismatch {
+        key: Key,
+    },
+    LimitNotPositive {
+        key: Key,
+        value: i64,
+    },
+    FlagKeyMismatch {
+        key: Key,
+    },
+    ToolLimitReached {
+        node: NodeId,
+        max_rounds: usize,
+    },
 }
 
 impl std::fmt::Display for GraphError {
@@ -186,11 +211,62 @@ impl std::fmt::Display for GraphError {
             GraphError::Structured { message } => {
                 write!(f, "structured output could not be read: {message}")
             }
+            GraphError::LimitKeyMismatch { key } => {
+                write!(f, "limit key {key} is not an int configuration key")
+            }
+            GraphError::LimitNotPositive { key, value } => {
+                write!(f, "limit key {key} holds {value}, not a positive integer")
+            }
+            GraphError::FlagKeyMismatch { key } => {
+                write!(f, "flag key {key} is not a bool state key")
+            }
+            GraphError::ToolLimitReached { node, max_rounds } => {
+                write!(
+                    f,
+                    "node {node} reached its limit of {max_rounds} tool rounds"
+                )
+            }
         }
     }
 }
 
-impl std::error::Error for GraphError {}
+impl std::error::Error for GraphError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            GraphError::NodeFailed { source, .. } => Some(source),
+            GraphError::Message(error) => Some(error),
+            GraphError::Identifier { .. }
+            | GraphError::FloatNotFinite
+            | GraphError::MissingKey { .. }
+            | GraphError::UnknownKey { .. }
+            | GraphError::KindMismatch { .. }
+            | GraphError::SchemaMismatch { .. }
+            | GraphError::SetConflict { .. }
+            | GraphError::AppendNotList { .. }
+            | GraphError::NotConversation { .. }
+            | GraphError::DuplicateNode { .. }
+            | GraphError::MissingEntry
+            | GraphError::UnknownEntry { .. }
+            | GraphError::NodeWithoutEdge { .. }
+            | GraphError::EdgeFromUnknownNode { .. }
+            | GraphError::DuplicateEdge { .. }
+            | GraphError::UnknownNode { .. }
+            | GraphError::EmptyEdge { .. }
+            | GraphError::MapKeyMismatch { .. }
+            | GraphError::AmbiguousEnd { .. }
+            | GraphError::ToolNotCovered { .. }
+            | GraphError::ToolCoveredTwice { .. }
+            | GraphError::ToolNotDeclared { .. }
+            | GraphError::PendingToolUnsatisfiable { .. }
+            | GraphError::Model { .. }
+            | GraphError::Structured { .. }
+            | GraphError::LimitKeyMismatch { .. }
+            | GraphError::LimitNotPositive { .. }
+            | GraphError::FlagKeyMismatch { .. }
+            | GraphError::ToolLimitReached { .. } => None,
+        }
+    }
+}
 
 impl From<MessageError> for GraphError {
     fn from(error: MessageError) -> Self {

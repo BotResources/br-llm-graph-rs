@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use br_llm_graph::{
     Always, Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Kind, LlmNode, Model,
-    NodeFuture, NodeId, Outcome, OutputMode, Request, Schema, Source, State, Target, Update, Value,
-    channel, complete, run, structured, wire,
+    NodeFuture, NodeId, Outcome, OutputMode, Request, Schema, Source, State, Target, ToolCalls,
+    Update, Value, channel, complete, run, structured, wire,
 };
 use br_llm_messages::{Author, Conversation, Text, UserBlock, UserInput, UserSource};
 use serde::Deserialize;
@@ -94,6 +94,7 @@ fn critic_node(model: Arc<dyn Model>) -> impl br_llm_graph::Node {
                     system: None,
                     messages,
                     tools: Vec::new(),
+                    tool_calls: ToolCalls::Allowed,
                     output: OutputMode::Structured { schema: json!({}) },
                 };
                 let step = complete(model.as_ref(), request, ctx, &key("chat")).await?;

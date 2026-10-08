@@ -5,7 +5,7 @@ use br_llm_messages::{Author, Turn, TurnState};
 use crate::error::GraphError;
 use crate::graph::{Context, Node, NodeFuture};
 use crate::react::helpers::{complete, last_turn_by_author, wire};
-use crate::react::model::{Model, OutputMode, Request, ToolSpec};
+use crate::react::model::{Model, OutputMode, Request, ToolCalls, ToolSpec};
 use crate::react::tool::Tool;
 use crate::state::{Config, State, Value};
 use crate::update::Update;
@@ -28,6 +28,18 @@ pub struct LlmNode {
 
 impl Node for LlmNode {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
+        self.step(state, config, ctx, ToolCalls::Allowed)
+    }
+}
+
+impl LlmNode {
+    pub(crate) fn step<'a>(
+        &'a self,
+        state: &'a State,
+        config: &'a Config,
+        ctx: &'a Context,
+        tool_calls: ToolCalls,
+    ) -> NodeFuture<'a> {
         Box::pin(async move {
             let system = build_system(self, state, config)?;
             let messages = wire(state.conversation(&self.key)?, &self.author)?;
@@ -36,6 +48,7 @@ impl Node for LlmNode {
                 system,
                 messages,
                 tools,
+                tool_calls,
                 output: self.output.clone(),
             };
             let step = complete(self.model.as_ref(), request, ctx, &self.key).await?;

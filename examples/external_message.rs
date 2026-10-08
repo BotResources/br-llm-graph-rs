@@ -81,6 +81,8 @@ async fn main() {
         llm: NodeId::new("llm").expect("id"),
         tool_nodes: vec![(NodeId::new("tools").expect("id"), vec![Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").expect("label")),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let graph = react
         .add(

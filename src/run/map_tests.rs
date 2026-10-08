@@ -23,6 +23,7 @@ fn map_graph(body: Box<dyn Node>) -> crate::graph::Graph {
         body,
         output: key("out"),
         results: key("outs"),
+        max_concurrency: None,
     };
     GraphBuilder::new(schema())
         .entry(nid("m"))

@@ -46,6 +46,8 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
@@ -88,6 +90,8 @@ async fn given_two_tool_nodes_with_parallel_calls_when_run_then_both_run() {
             (nid("tally_node"), vec![Arc::new(TallyTool)]),
         ],
         after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)

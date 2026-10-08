@@ -42,6 +42,8 @@ fn given_tool_not_covered_when_react_loop_added_then_refused() {
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), Vec::new())],
         after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -58,6 +60,8 @@ fn given_zero_tool_nodes_when_react_loop_added_then_tool_not_covered() {
         llm: nid("llm"),
         tool_nodes: Vec::new(),
         after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -77,6 +81,8 @@ fn given_tool_covered_twice_when_react_loop_added_then_refused() {
             (nid("t2"), vec![Arc::new(EchoTool)]),
         ],
         after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -93,6 +99,8 @@ fn given_tool_node_tool_not_declared_when_react_loop_added_then_refused() {
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool), Arc::new(TallyTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -113,6 +121,8 @@ async fn given_model_calls_unowned_tool_when_run_then_pending_unsatisfiable() {
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)

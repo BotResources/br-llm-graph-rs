@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::error::GraphError;
 use crate::graph::edge::Edge;
 use crate::graph::graph::{Graph, NodeEntry};
+use crate::graph::limit::Limit;
 use crate::graph::map::Map;
 use crate::graph::node::Node;
 use crate::state::{Kind, Schema};
@@ -13,6 +14,7 @@ struct MapKeys {
     item: Key,
     output: Key,
     results: Key,
+    max_concurrency: Option<Limit>,
 }
 
 pub struct GraphBuilder {
@@ -67,6 +69,7 @@ impl GraphBuilder {
             item: map.item.clone(),
             output: map.output.clone(),
             results: map.results.clone(),
+            max_concurrency: map.max_concurrency.clone(),
         };
         self.maps.push((id.clone(), keys));
         self.nodes.push((
@@ -77,6 +80,10 @@ impl GraphBuilder {
             },
         ));
         self
+    }
+
+    pub(crate) fn schema(&self) -> &Schema {
+        &self.schema
     }
 
     pub fn edge(mut self, from: NodeId, edge: impl Edge + 'static) -> Self {
@@ -147,8 +154,12 @@ fn check_map(schema: &Schema, id: &NodeId, keys: &MapKeys) -> Result<(), GraphEr
         None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
     };
     match schema.state.get(&keys.results) {
-        Some(Kind::List { element }) if element.as_ref() == &output_kind => Ok(()),
-        Some(_) | None => Err(GraphError::MapKeyMismatch { node: id.clone() }),
+        Some(Kind::List { element }) if element.as_ref() == &output_kind => {}
+        Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
+    }
+    match &keys.max_concurrency {
+        Some(limit) => limit.check(schema),
+        None => Ok(()),
     }
 }
 

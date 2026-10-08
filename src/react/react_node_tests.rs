@@ -58,6 +58,7 @@ async fn run_tool_node(state: State, tools: Vec<Arc<dyn Tool>>) -> State {
                 key: key("chat"),
                 author: author(),
                 tools,
+                max_concurrency: None,
             },
         )
         .edge(
@@ -214,6 +215,7 @@ async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchang
                     Arc::new(SetLog { name: "seta" }),
                     Arc::new(SetLog { name: "setb" }),
                 ],
+                max_concurrency: None,
             },
         )
         .edge(

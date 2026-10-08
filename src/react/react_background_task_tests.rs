@@ -100,6 +100,8 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![start_task])],
         after: Target::Node(nid("gate")),
+        tool_concurrency: None,
+        round_limit: None,
     };
     let gate = FnNode::new(|_s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         Box::pin(async { Ok(Vec::new()) })

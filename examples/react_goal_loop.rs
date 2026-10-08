@@ -7,7 +7,7 @@ use std::sync::Arc;
 use br_llm_graph::{
     Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Kind, LlmNode, Model,
     NodeFuture, NodeId, Outcome, OutputMode, ReactLoop, Request, Schema, Source, State, Target,
-    Value, channel, complete, run, structured, wire,
+    ToolCalls, Value, channel, complete, run, structured, wire,
 };
 use br_llm_messages::{Author, Conversation};
 use serde::Deserialize;
@@ -51,6 +51,8 @@ async fn main() {
         llm: NodeId::new("llm").expect("id"),
         tool_nodes: Vec::new(),
         after: Target::Node(NodeId::new("goal").expect("id")),
+        tool_concurrency: None,
+        round_limit: None,
     };
 
     let graph = react
@@ -96,6 +98,7 @@ fn goal_node(model: Arc<dyn Model>) -> impl br_llm_graph::Node {
                     system: None,
                     messages,
                     tools: Vec::new(),
+                    tool_calls: ToolCalls::Allowed,
                     output: OutputMode::Structured { schema: json!({}) },
                 };
                 let step = complete(model.as_ref(), request, ctx, &key("chat")).await?;

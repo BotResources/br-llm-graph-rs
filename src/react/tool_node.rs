@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use br_llm_messages::{Author, Text, ToolName, ToolResult, ToolResultBlock, TurnId};
-use futures_util::future::join_all;
+use futures_util::StreamExt;
+use futures_util::stream;
 
-use crate::graph::{Context, Node, NodeFuture};
+use crate::graph::{Context, Limit, Node, NodeFuture};
 use crate::react::helpers::{last_turn_by_author, pending_calls};
-use crate::react::tool::Tool;
+use crate::react::tool::{Tool, ToolFuture};
 use crate::state::{Config, State};
 use crate::update::Update;
 use crate::value::Key;
@@ -15,6 +16,7 @@ pub struct ToolNode {
     pub key: Key,
     pub author: Author,
     pub tools: Vec<Arc<dyn Tool>>,
+    pub max_concurrency: Option<Limit>,
 }
 
 impl Node for ToolNode {
@@ -41,10 +43,15 @@ impl Node for ToolNode {
                 .filter_map(|call| owned.get(&call.name).map(|tool| (call, tool.clone())))
                 .collect();
 
-            let futures = selected
+            let width = match &self.max_concurrency {
+                Some(limit) => limit.resolve(config)?.get(),
+                None => selected.len().max(1),
+            };
+            let calls: Vec<ToolFuture<'_>> = selected
                 .iter()
-                .map(|(call, tool)| tool.call(call.arguments.clone(), state, config));
-            let outcomes = join_all(futures).await;
+                .map(|(call, tool)| tool.call(call.arguments.clone(), state, config))
+                .collect();
+            let outcomes: Vec<_> = stream::iter(calls).buffered(width).collect().await;
 
             let mut updates = Vec::new();
             for ((call, _tool), outcome) in selected.into_iter().zip(outcomes) {

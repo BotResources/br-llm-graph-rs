@@ -8,6 +8,53 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.3.0 - 2026-09-25
+
+### Added
+
+- `Limit`: a positive bound, given as a fixed number or read from an int
+  configuration key. A key that is not declared as an int configuration key is
+  refused at build (`LimitKeyMismatch`); a value below one is refused at run
+  time (`LimitNotPositive`).
+- `Map::max_concurrency`: at most that many bodies run at once; the results
+  keep the item order. `None` runs every item at once, as before.
+- `ToolNode::max_concurrency` and `ReactLoop::tool_concurrency`: at most that
+  many pending calls of one tool node run at once; the results keep the call
+  order. `None` runs every call at once, as before.
+- `ReactLoop::round_limit` (`RoundLimit`, `OnLimit`): bounds the tool rounds of
+  one agent turn. A round is one reply that calls tools plus the execution of
+  all its calls; the count starts again with each new turn of the agent. When
+  a reply asks for tools after the last allowed round:
+  - `OnLimit::Error` fails the run with `ToolLimitReached`;
+  - `OnLimit::Continue { node, flag }` answers each call with an error result
+    saying it was not executed, sets `flag` to true, and calls the model once
+    more with tool calls forbidden; a reply that still calls tools fails the
+    run with `ToolLimitReached`;
+  - `OnLimit::End { node, flag }` answers each call the same way, sets `flag`
+    to true, and closes the turn with a step whose stop reason is
+    `other(tool_round_limit)`, without calling the model; the loop goes on to
+    `after`.
+
+  `node` names the node the loop adds to do this. A `flag` that is not a bool
+  state key is refused at build (`FlagKeyMismatch`).
+- `Request::tool_calls` (`ToolCalls::Allowed`, `ToolCalls::Forbidden`): whether
+  the model may call tools in this reply. The tools stay declared either way; a
+  model adapter maps `Forbidden` to the provider's setting that disables tool
+  calls.
+- `std::error::Error::source` for `GraphError` (the fault of a failed node, a
+  message error) and for `NodeFault` (the error a node returned, a refused
+  update).
+
+### Changed
+
+- `NodeFault::Returned` carries the error value the node returned
+  (`NodeError`) instead of its text, so a host can downcast it to its own error
+  type.
+- `Map`, `ToolNode`, `ReactLoop` and `Request` gain the fields above; struct
+  literals must set them.
+- Depends on `br-llm-messages` 0.2.0: the body of a framed entry is rendered
+  verbatim, no longer escaped.
+
 ## 0.2.0 - 2026-09-22
 
 ### Removed

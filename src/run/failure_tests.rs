@@ -221,3 +221,60 @@ async fn given_fan_out_edge_targets_one_unknown_node_when_run_then_unknown_node_
         other => panic!("expected UnknownNode, got {other}"),
     }
 }
+
+#[derive(Debug)]
+struct Refusal {
+    code: &'static str,
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "refused: {}", self.code)
+    }
+}
+
+impl std::error::Error for Refusal {}
+
+#[tokio::test]
+async fn given_node_returns_a_typed_error_when_run_fails_then_the_host_reads_it_back() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(
+            nid("a"),
+            FnNode::new(|_s: &State, _c: &Config, _x: &_| -> NodeFuture<'_> {
+                Box::pin(async {
+                    Err(Box::new(Refusal {
+                        code: "INPUT_REFUSED",
+                    }) as crate::graph::NodeError)
+                })
+            }),
+        )
+        .edge(nid("a"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .err()
+        .unwrap();
+
+    let GraphError::NodeFailed {
+        source: NodeFault::Returned(returned),
+        ..
+    } = &failure.error
+    else {
+        panic!("expected a node failure");
+    };
+    assert_eq!(
+        returned.downcast_ref::<Refusal>().unwrap().code,
+        "INPUT_REFUSED"
+    );
+    let through_sources = std::error::Error::source(&failure.error)
+        .and_then(std::error::Error::source)
+        .and_then(|error| error.downcast_ref::<Refusal>());
+    assert!(through_sources.is_some());
+    assert_eq!(
+        failure.error.to_string(),
+        "node a failed: returned an error: refused: INPUT_REFUSED"
+    );
+}

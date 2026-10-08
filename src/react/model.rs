@@ -21,11 +21,18 @@ pub struct ToolSpec {
     pub parameters: Value,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolCalls {
+    Allowed,
+    Forbidden,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     pub system: Option<String>,
     pub messages: Vec<WireMessage>,
     pub tools: Vec<ToolSpec>,
+    pub tool_calls: ToolCalls,
     pub output: OutputMode,
 }
 

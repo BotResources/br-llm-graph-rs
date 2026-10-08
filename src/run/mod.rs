@@ -11,6 +11,8 @@ mod command_tests;
 #[cfg(test)]
 mod failure_tests;
 #[cfg(test)]
+mod map_concurrency_tests;
+#[cfg(test)]
 mod map_tests;
 #[cfg(test)]
 mod run_tests;

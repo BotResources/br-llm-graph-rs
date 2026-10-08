@@ -86,7 +86,7 @@ fn pair(
         .map(|(id, outcome)| {
             let result = match outcome {
                 Ok(Ok(updates)) => Ok(updates),
-                Ok(Err(error)) => Err(NodeFault::Returned(error.to_string())),
+                Ok(Err(error)) => Err(NodeFault::Returned(error)),
                 Err(payload) => Err(NodeFault::Panic(panic_message(payload))),
             };
             (id, result)
