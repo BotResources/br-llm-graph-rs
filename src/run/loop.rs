@@ -16,7 +16,27 @@ use crate::state::{Config, State};
 use crate::update::Update;
 use crate::value::{EndLabel, NodeId};
 
+/// Runs `graph` from `state` (and `cursor`, when resuming) until it ends,
+/// pauses, is cancelled or fails.
+///
+/// The run records pending writes in a recorder of its own, seeded with those
+/// `ctx` holds: to resume a checkpoint, pass its state, its cursor and
+/// `ctx.with_pending(checkpoint.pending)`. The checkpoint of a failure, a
+/// cancel or a pause carries the pending writes of the run.
 pub async fn run(
+    graph: &Graph,
+    config: &Config,
+    state: State,
+    cursor: Option<Cursor>,
+    ctx: &Context,
+    inbox: &mut Inbox,
+) -> Result<Outcome, RunFailure> {
+    run_nested(graph, config, state, cursor, &ctx.isolated(), inbox).await
+}
+
+/// Runs `graph` on the recorder of `ctx`, shared with the caller: a nested
+/// run records under the caller's occurrence, into the caller's checkpoint.
+pub(crate) async fn run_nested(
     graph: &Graph,
     config: &Config,
     mut state: State,
@@ -29,7 +49,7 @@ pub async fn run(
         None => (vec![graph.entry().clone()], Vec::new()),
     };
     if let Err(error) = graph.validate_cursor(&Cursor::new(active.clone(), deferred.clone())) {
-        return Err(fail(state, &active, &deferred, error));
+        return Err(fail(state, ctx, &active, &deferred, error));
     }
 
     loop {
@@ -83,15 +103,16 @@ pub async fn run(
         let input_error = apply_inputs(&mut state, ctx, held_inputs).err();
         if let Some((node, source)) = failure {
             let error = GraphError::NodeFailed { node, source };
-            return Err(fail(state, &active, &deferred, error));
+            return Err(fail(state, ctx, &active, &deferred, error));
         }
         if let Some(error) = input_error {
-            return Err(fail(state, &active, &deferred, error));
+            return Err(fail(state, ctx, &active, &deferred, error));
         }
+        ctx.drop_pending(&active);
 
         let (produced, ends) = match evaluate_edges(graph, config, &state, &active) {
             Ok(pair) => pair,
-            Err(error) => return Err(fail(state, &active, &deferred, error)),
+            Err(error) => return Err(fail(state, ctx, &active, &deferred, error)),
         };
 
         let (active_next, deferred_next) = next_sets(graph, produced, &deferred);
@@ -102,7 +123,7 @@ pub async fn run(
             return finish(state, &active, &deferred, ends, ctx);
         }
         if pause {
-            let checkpoint = Checkpoint::new(state, cursor);
+            let checkpoint = Checkpoint::new(state, cursor).with_pending(ctx.pending_here());
             return Ok(Outcome::Paused { checkpoint });
         }
         active = active_next;
@@ -134,9 +155,10 @@ fn cancelled(
     deferred: &[NodeId],
 ) -> Result<Outcome, RunFailure> {
     if let Err(error) = apply_inputs(&mut state, ctx, held_inputs) {
-        return Err(fail(state, active, deferred, error));
+        return Err(fail(state, ctx, active, deferred, error));
     }
-    let checkpoint = Checkpoint::new(state, Cursor::new(active.to_vec(), deferred.to_vec()));
+    let checkpoint = Checkpoint::new(state, Cursor::new(active.to_vec(), deferred.to_vec()))
+        .with_pending(ctx.pending_here());
     Ok(Outcome::Cancelled { checkpoint })
 }
 
@@ -246,6 +268,7 @@ fn finish(
             labels.extend(iter);
             Err(fail(
                 state,
+                ctx,
                 active,
                 deferred,
                 GraphError::AmbiguousEnd { labels },
@@ -254,9 +277,16 @@ fn finish(
     }
 }
 
-fn fail(state: State, active: &[NodeId], deferred: &[NodeId], error: GraphError) -> RunFailure {
+fn fail(
+    state: State,
+    ctx: &Context,
+    active: &[NodeId],
+    deferred: &[NodeId],
+    error: GraphError,
+) -> RunFailure {
+    let cursor = Cursor::new(active.to_vec(), deferred.to_vec());
     RunFailure {
-        checkpoint: Checkpoint::new(state, Cursor::new(active.to_vec(), deferred.to_vec())),
+        checkpoint: Checkpoint::new(state, cursor).with_pending(ctx.pending_here()),
         error,
     }
 }

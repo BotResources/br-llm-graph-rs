@@ -21,6 +21,10 @@ use crate::value::Key;
 /// At most `max_concurrency` bodies run at once (every item at once when
 /// `None`); a new body starts as soon as any running one finishes. Every body
 /// runs to its end; the first error in item order fails the map.
+///
+/// A finished item records its appends under its occurrence (`Context::record`)
+/// before the map returns. An item an earlier attempt recorded is not run
+/// again: its recorded appends are used.
 pub struct Map {
     pub list: Key,
     pub item: Key,
@@ -38,9 +42,8 @@ impl Node for Map {
             };
             let mut runs = Vec::with_capacity(items.len());
             for (index, item) in items.into_iter().enumerate() {
-                let derived = state.derive(&self.item, item)?;
                 let item_ctx = item_context(ctx, index)?;
-                runs.push(self.run_item(index, derived, config, item_ctx));
+                runs.push(self.run_item(index, item, state, config, item_ctx));
             }
             let mut results: Vec<(usize, Result<Vec<Update>, NodeError>)> =
                 stream::iter(runs).buffer_unordered(width).collect().await;
@@ -58,17 +61,30 @@ impl Map {
     async fn run_item(
         &self,
         index: usize,
-        derived: State,
+        item: Value,
+        state: &State,
         config: &Config,
         ctx: Context,
     ) -> (usize, Result<Vec<Update>, NodeError>) {
-        let result = match self.body.run(&derived, config, &ctx).await {
-            Ok(updates) => check_appends(&derived, &updates)
-                .map(|()| updates)
-                .map_err(NodeError::from),
-            Err(error) => Err(error),
-        };
-        (index, result)
+        (index, self.item_updates(item, state, config, &ctx).await)
+    }
+
+    async fn item_updates(
+        &self,
+        item: Value,
+        state: &State,
+        config: &Config,
+        ctx: &Context,
+    ) -> Result<Vec<Update>, NodeError> {
+        if let Some(updates) = ctx.recorded() {
+            check_appends(state, &updates)?;
+            return Ok(updates);
+        }
+        let derived = state.derive(&self.item, item)?;
+        let updates = self.body.run(&derived, config, ctx).await?;
+        check_appends(state, &updates)?;
+        ctx.record(&updates);
+        Ok(updates)
     }
 }
 

@@ -246,3 +246,56 @@ async fn given_paused_session_when_input_then_stays_paused_until_resume() {
     );
     assert_eq!(checkpoint.state.int(&key("count")).unwrap(), 0);
 }
+
+fn failing_map(calls: &Arc<crate::run::counted::Counted>) -> Arc<Graph> {
+    let map = crate::graph::Map {
+        list: key("items"),
+        item: key("item"),
+        body: Box::new(crate::run::counted::CountedBody {
+            counted: calls.clone(),
+            item: key("item"),
+            outs: key("outs"),
+            log: key("log"),
+        }),
+        max_concurrency: None,
+    };
+    Arc::new(
+        GraphBuilder::new(schema())
+            .entry(nid("m"))
+            .map(nid("m"), map)
+            .edge(nid("m"), Always(end("done")))
+            .build()
+            .unwrap(),
+    )
+}
+
+#[tokio::test]
+async fn given_a_failed_map_when_the_session_is_resumed_from_its_checkpoint_then_finished_items_are_skipped()
+ {
+    let calls = crate::run::counted::Counted::failing_on("b");
+    let mut state = base_state();
+    state
+        .apply_batch(&[Update::Set {
+            key: key("items"),
+            value: Value::list(["a", "b", "c"].map(Value::str).to_vec()),
+        }])
+        .unwrap();
+    let mut session = Session::new(failing_map(&calls), config(), state, ctx());
+    assert!(session.run_once().await.is_err());
+    let checkpoint = session.checkpoint();
+    assert_eq!(checkpoint.pending.len(), 2);
+
+    calls.heal();
+    let mut resumed = Session::resume(failing_map(&calls), config(), checkpoint, ctx()).unwrap();
+    assert!(matches!(
+        resumed.run_once().await.unwrap(),
+        Outcome::Finished { .. }
+    ));
+    assert_eq!(
+        resumed.state().list(&key("outs")).unwrap(),
+        &["A", "B", "C"].map(Value::str)
+    );
+    assert_eq!(calls.calls().get("a"), Some(&1));
+    assert_eq!(calls.calls().get("b"), Some(&2));
+    assert!(resumed.checkpoint().pending.is_empty());
+}

@@ -1,9 +1,11 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use br_llm_messages::TurnId;
 
 use crate::observe::Observer;
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
+use crate::run::PendingWrites;
+use crate::update::Update;
 use crate::value::NodeId;
 
 pub trait IdSource: Send + Sync {
@@ -11,26 +13,41 @@ pub trait IdSource: Send + Sync {
 }
 
 /// What the engine hands a node besides state and configuration: the
-/// observer, the id source, and where the node runs (run id and occurrence).
+/// observer, the id source, where the node runs (run id and occurrence), and
+/// the pending-writes recorder of the run.
+///
+/// The recorder is shared by every context derived from this one. `run` gives
+/// each run its own recorder, seeded with the pending writes this context
+/// holds (empty unless set with `with_pending`).
 #[derive(Clone)]
 pub struct Context {
     pub observer: Arc<dyn Observer>,
     pub ids: Arc<dyn IdSource>,
     origin: Origin,
+    pending: Arc<Mutex<PendingWrites>>,
 }
 
 impl Context {
-    /// A top-level context: empty occurrence, default run id.
+    /// A top-level context: empty occurrence, default run id, no pending
+    /// writes.
     pub fn new(observer: Arc<dyn Observer>, ids: Arc<dyn IdSource>) -> Self {
         Self {
             observer,
             ids,
             origin: Origin::default(),
+            pending: Arc::default(),
         }
     }
 
     pub fn with_run_id(mut self, run: RunId) -> Self {
         self.origin.run = run;
+        self
+    }
+
+    /// This context with a recorder of its own, holding `pending`: the way to
+    /// hand the pending writes of a checkpoint to `run` when resuming it.
+    pub fn with_pending(mut self, pending: PendingWrites) -> Self {
+        self.pending = Arc::new(Mutex::new(pending));
         self
     }
 
@@ -62,5 +79,47 @@ impl Context {
         let mut child = self.clone();
         child.origin.occurrence = self.origin.occurrence.child(segment);
         child
+    }
+
+    /// Records the updates of this finished occurrence, so that a run resumed
+    /// from a checkpoint taken before its superstep completes does not run it
+    /// again. The observer sees the record (`Observer::recorded`).
+    pub fn record(&self, updates: &[Update]) {
+        self.store()
+            .insert(self.origin.occurrence.clone(), updates.to_vec());
+        self.observer.recorded(&self.origin, updates);
+    }
+
+    /// What an earlier attempt recorded for this occurrence.
+    pub fn recorded(&self) -> Option<Vec<Update>> {
+        self.store()
+            .get(&self.origin.occurrence)
+            .map(<[Update]>::to_vec)
+    }
+
+    /// A copy of every pending write the recorder holds.
+    pub fn pending(&self) -> PendingWrites {
+        self.store().clone()
+    }
+
+    /// The pending writes at or below this context's occurrence.
+    pub(crate) fn pending_here(&self) -> PendingWrites {
+        self.store().under(&self.origin.occurrence)
+    }
+
+    /// Drops the pending writes of `nodes`, run under this context, once
+    /// their superstep has completed.
+    pub(crate) fn drop_pending(&self, nodes: &[NodeId]) {
+        self.store().drop_nodes(&self.origin.occurrence, nodes);
+    }
+
+    /// This context with a recorder of its own seeded with a copy of what
+    /// this one holds.
+    pub(crate) fn isolated(&self) -> Context {
+        self.clone().with_pending(self.pending())
+    }
+
+    fn store(&self) -> MutexGuard<'_, PendingWrites> {
+        self.pending.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }

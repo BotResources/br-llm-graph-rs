@@ -5,7 +5,9 @@ use futures_util::StreamExt;
 
 use crate::error::GraphError;
 use crate::graph::{Context, Graph};
-use crate::run::{Checkpoint, Cursor, Inbox, Message, Outcome, RunFailure, Sender, channel, run};
+use crate::run::{
+    Checkpoint, Cursor, Inbox, Message, Outcome, PendingWrites, RunFailure, Sender, channel, run,
+};
 use crate::state::{Config, State};
 use crate::value::Key;
 
@@ -31,6 +33,7 @@ pub struct Session {
     state: State,
     context: Context,
     cursor: Option<Cursor>,
+    pending: PendingWrites,
     inbox: Inbox,
     sender: Sender,
     paused: bool,
@@ -45,12 +48,15 @@ impl Session {
             state,
             context,
             cursor: None,
+            pending: PendingWrites::default(),
             inbox,
             sender,
             paused: false,
         }
     }
 
+    /// A session continuing from `checkpoint`, its pending writes included:
+    /// occurrences the checkpoint records as finished are not run again.
     pub fn resume(
         graph: Arc<Graph>,
         config: Config,
@@ -70,6 +76,7 @@ impl Session {
             state: checkpoint.state,
             context,
             cursor,
+            pending: checkpoint.pending,
             inbox,
             sender,
             paused: false,
@@ -86,17 +93,22 @@ impl Session {
 
     pub fn checkpoint(&self) -> Checkpoint {
         Checkpoint::new(self.state.clone(), self.cursor.clone().unwrap_or_default())
+            .with_pending(self.pending.clone())
     }
 
     pub async fn run_once(&mut self) -> Result<Outcome, GraphError> {
         let cursor = self.cursor.take();
         let state = std::mem::replace(&mut self.state, State::empty());
+        let context = self
+            .context
+            .clone()
+            .with_pending(std::mem::take(&mut self.pending));
         let result = run(
             self.graph.as_ref(),
             &self.config,
             state,
             cursor,
-            &self.context,
+            &context,
             &mut self.inbox,
         )
         .await;
@@ -114,18 +126,21 @@ impl Session {
             Ok(Outcome::Paused { checkpoint }) => {
                 self.state = checkpoint.state.clone();
                 self.cursor = Some(checkpoint.cursor.clone());
+                self.pending = checkpoint.pending.clone();
                 self.paused = true;
                 Ok(Outcome::Paused { checkpoint })
             }
             Ok(Outcome::Cancelled { checkpoint }) => {
                 self.state = checkpoint.state.clone();
                 self.cursor = Some(checkpoint.cursor.clone());
+                self.pending = checkpoint.pending.clone();
                 self.paused = false;
                 Ok(Outcome::Cancelled { checkpoint })
             }
             Err(RunFailure { checkpoint, error }) => {
                 self.state = checkpoint.state;
                 self.cursor = Some(checkpoint.cursor);
+                self.pending = checkpoint.pending;
                 Err(error)
             }
         }

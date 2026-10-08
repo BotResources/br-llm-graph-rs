@@ -4,7 +4,7 @@ use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::node::{Node, NodeFuture};
 use crate::graph::subgraph::{Input, OnFailure, SubGraph};
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, channel, run_nested};
 use crate::state::{Config, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key};
@@ -23,7 +23,7 @@ impl Node for SubGraph {
             // Nobody holds the sender: the nested run can neither pause nor be
             // cancelled from outside. Dropping this future cancels it.
             let (_, mut inbox) = channel();
-            let result = run(
+            let result = run_nested(
                 &self.graph,
                 &child_config,
                 child_state,

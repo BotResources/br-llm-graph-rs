@@ -80,6 +80,22 @@ form to decide whether a version ships.
   between two calls. `OnFailure::Propagate` (the default) fails the node with
   `SubGraphFailed`, whose `source()` is the child's `GraphError`. A nested run
   that stops before its end gives `SubGraphSuspended`.
+- Pending writes and resume: `PendingWrites` (occurrence key to updates,
+  with `insert`, `get`, `merge`) and `Checkpoint::pending`. A map item that
+  finishes records its appends under its occurrence (`Context::record`) while
+  the map's superstep is still open; `Context::recorded()` gives what an
+  earlier attempt recorded, and the map uses it instead of running the item
+  again. Entries of a node are dropped once its superstep completes. The
+  checkpoint of a failure, a cancel or a pause carries the run's pending
+  writes; `Session::resume` and `Context::with_pending(checkpoint.pending)`
+  (for `run`) hand them back, so a resumed run skips the finished items. Items
+  of a map inside a called graph record under the nested occurrence
+  (`each[1]/inner[0]`) and travel in the caller's checkpoint.
+- `Observer::recorded(origin, updates)` (defaulted): fires on every record, so
+  a host can persist pending writes as they come and merge them later.
+- `Checkpoint::with_pending`; `Context::pending()` copies what a recorder
+  holds.
+- Example `subgraph_map`: a map whose body calls a graph, with a resume.
 - Build-time checks of a call against the caller's schema:
   `SubGraphInputUnmapped`, `SubGraphInputTwice`, `SubGraphNotAnInput`,
   `SubGraphSourceMismatch`, `SubGraphConfigUnmapped`, `SubGraphConfigTwice`,
@@ -99,7 +115,13 @@ form to decide whether a version ships.
   carry the run's occurrence (empty at top level), events a node emits carry
   the node's occurrence, so events of a nested run are told from the
   parent's.
-- `Context` gains a private field; build it with `Context::new`.
+- `Context` gains private fields; build it with `Context::new`.
+- `run` gives each run its own pending-writes recorder, seeded with what the
+  given context holds, so two runs sharing one context never see each
+  other's records. A `SubGraph` shares its caller's recorder.
+- `Checkpoint` gains the field `pending`, read as empty from checkpoints
+  written before it and not written when empty; build one with
+  `Checkpoint::new`.
 - `Map` is `{ list, item, body, max_concurrency }`: the `output` and
   `results` fields are gone. The body runs on the state with `item` set, in a
   context for its own occurrence (`m[i]`); its updates are not applied to that

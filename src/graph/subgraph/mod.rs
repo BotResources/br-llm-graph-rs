@@ -127,6 +127,8 @@ mod subgraph_check_tests;
 #[cfg(test)]
 mod subgraph_map_tests;
 #[cfg(test)]
+mod subgraph_resume_tests;
+#[cfg(test)]
 mod subgraph_run_tests;
 #[cfg(test)]
 mod test_support;

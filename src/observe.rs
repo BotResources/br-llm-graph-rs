@@ -29,6 +29,12 @@ pub trait Observer: Send + Sync {
     fn run_finished(&self, origin: &Origin, end: &EndLabel) {
         let _ = (origin, end);
     }
+    /// A finished occurrence recorded its updates while its superstep is
+    /// still open. A host may persist these as they come and merge them into
+    /// the pending writes of a checkpoint it keeps.
+    fn recorded(&self, origin: &Origin, updates: &[Update]) {
+        let _ = (origin, updates);
+    }
 }
 
 pub struct NoopObserver;

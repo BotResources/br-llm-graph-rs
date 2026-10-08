@@ -2,12 +2,15 @@ mod checkpoint;
 mod cursor;
 mod inbox;
 mod outcome;
+mod pending;
 #[path = "loop.rs"]
 mod runner;
 mod superstep;
 
 #[cfg(test)]
 mod command_tests;
+#[cfg(test)]
+pub(crate) mod counted;
 #[cfg(test)]
 mod failure_tests;
 #[cfg(test)]
@@ -21,6 +24,8 @@ mod map_window_tests;
 #[cfg(test)]
 mod origin_tests;
 #[cfg(test)]
+mod resume_tests;
+#[cfg(test)]
 mod run_tests;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -30,4 +35,6 @@ pub use cursor::Cursor;
 pub(crate) use inbox::Message;
 pub use inbox::{Inbox, Sender, channel};
 pub use outcome::{Outcome, RunFailure};
+pub use pending::PendingWrites;
 pub use runner::run;
+pub(crate) use runner::run_nested;
