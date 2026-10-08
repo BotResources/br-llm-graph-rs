@@ -67,6 +67,23 @@ form to decide whether a version ships.
   `origin()`, `for_node(&NodeId)` and `child(Segment)`. `Context::new` gives an
   empty occurrence and the default run id. The run loop gives each node a
   context for its own occurrence.
+- `SubGraph`: a node that runs another graph to its end. `SubGraph::call(graph)`
+  then `.input(child_key, Input)` (`Input::From(parent_key)`,
+  `Input::Config(parent_config_key)`, `Input::Const(value)`),
+  `.config(child_config_key, Input)`, `.output(child_key, Output)`
+  (`Output::Set(parent_key)`, `Output::Append(parent_list)`, renaming
+  allowed), `.output_end_label(Output)` and `.on_failure(OnFailure)`;
+  registered with `GraphBuilder::subgraph(id, call)`. The child starts from
+  `Graph::start_state` with the mapped inputs and runs with a context for the
+  calling node's occurrence; its state stays private and nothing is kept
+  between two calls. `OnFailure::Propagate` (the default) fails the node with
+  `SubGraphFailed`, whose `source()` is the child's `GraphError`. A nested run
+  that stops before its end gives `SubGraphSuspended`.
+- Build-time checks of a call against the caller's schema:
+  `SubGraphInputUnmapped`, `SubGraphInputTwice`, `SubGraphNotAnInput`,
+  `SubGraphSourceMismatch`, `SubGraphConfigUnmapped`, `SubGraphConfigTwice`,
+  `SubGraphNotAConfig`, `SubGraphConfigMismatch`, `SubGraphNotAnOutput`,
+  `SubGraphTargetMismatch`.
 
 ### Changed
 
@@ -82,6 +99,10 @@ form to decide whether a version ships.
   the node's occurrence, so events of a nested run are told from the
   parent's.
 - `Context` gains a private field; build it with `Context::new`.
+- `Node` has `Any` as a supertrait (every node a graph holds is `'static`), so
+  `GraphBuilder::build` recognises maps and calls among its nodes: a `Map` or a
+  `SubGraph` registered with `node` or `join` is now checked like one
+  registered with `map` or `subgraph`.
 - `Schema` gains the public field `defaults` (serialized only when not empty,
   so earlier schemas and checkpoints still load) and no longer implements
   `Eq`, since a default is a `Value`.

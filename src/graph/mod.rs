@@ -7,6 +7,7 @@ mod limit;
 mod map;
 mod node;
 mod signature;
+mod subgraph;
 
 pub use builder::GraphBuilder;
 pub use context::{Context, IdSource};
@@ -16,3 +17,4 @@ pub use limit::Limit;
 pub use map::Map;
 pub use node::{FnNode, Node, NodeError, NodeFuture};
 pub use signature::Signature;
+pub use subgraph::{Input, OnFailure, Output, SubGraph};

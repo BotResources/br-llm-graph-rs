@@ -1,29 +1,21 @@
+use std::any::Any;
 use std::collections::BTreeMap;
 
 use crate::error::GraphError;
 use crate::graph::edge::Edge;
 use crate::graph::graph::{Graph, NodeEntry, Parts};
-use crate::graph::limit::Limit;
 use crate::graph::map::Map;
 use crate::graph::node::Node;
 use crate::graph::signature::Signature;
+use crate::graph::subgraph::{SubGraph, check_call};
 use crate::state::{Kind, Schema};
 use crate::value::{Key, NodeId};
-
-struct MapKeys {
-    list: Key,
-    item: Key,
-    output: Key,
-    results: Key,
-    max_concurrency: Option<Limit>,
-}
 
 pub struct GraphBuilder {
     schema: Schema,
     entry: Option<NodeId>,
     nodes: Vec<(NodeId, NodeEntry)>,
     edges: Vec<(NodeId, Box<dyn Edge>)>,
-    maps: Vec<(NodeId, MapKeys)>,
     inputs: Vec<Key>,
     outputs: Vec<Key>,
 }
@@ -35,7 +27,6 @@ impl GraphBuilder {
             entry: None,
             nodes: Vec::new(),
             edges: Vec::new(),
-            maps: Vec::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
         }
@@ -81,23 +72,15 @@ impl GraphBuilder {
         self
     }
 
-    pub fn map(mut self, id: NodeId, map: Map) -> Self {
-        let keys = MapKeys {
-            list: map.list.clone(),
-            item: map.item.clone(),
-            output: map.output.clone(),
-            results: map.results.clone(),
-            max_concurrency: map.max_concurrency.clone(),
-        };
-        self.maps.push((id.clone(), keys));
-        self.nodes.push((
-            id,
-            NodeEntry {
-                node: Box::new(map),
-                is_join: false,
-            },
-        ));
-        self
+    /// Registers a map node; `build` checks its keys against the schema.
+    pub fn map(self, id: NodeId, map: Map) -> Self {
+        self.node(id, map)
+    }
+
+    /// Registers a node that calls another graph; `build` checks the call
+    /// against the schema.
+    pub fn subgraph(self, id: NodeId, call: SubGraph) -> Self {
+        self.node(id, call)
     }
 
     pub(crate) fn schema(&self) -> &Schema {
@@ -115,7 +98,6 @@ impl GraphBuilder {
             entry,
             nodes: raw_nodes,
             edges: raw_edges,
-            maps,
             inputs,
             outputs,
         } = self;
@@ -155,8 +137,10 @@ impl GraphBuilder {
             }
         }
 
-        for (id, keys) in &maps {
-            check_map(&schema, id, keys)?;
+        for id in &order {
+            if let Some(entry) = nodes.get(id) {
+                check_node(&schema, id, entry.node.as_ref())?;
+            }
         }
 
         Ok(Graph::assemble(Parts {
@@ -170,24 +154,36 @@ impl GraphBuilder {
     }
 }
 
-fn check_map(schema: &Schema, id: &NodeId, keys: &MapKeys) -> Result<(), GraphError> {
-    let element = match schema.state.get(&keys.list) {
+/// The build-time checks of the nodes the builder knows: maps and calls.
+fn check_node(schema: &Schema, id: &NodeId, node: &dyn Node) -> Result<(), GraphError> {
+    let node: &dyn Any = node;
+    if let Some(map) = node.downcast_ref::<Map>() {
+        return check_map(schema, id, map);
+    }
+    if let Some(call) = node.downcast_ref::<SubGraph>() {
+        return check_call(schema, id, call);
+    }
+    Ok(())
+}
+
+fn check_map(schema: &Schema, id: &NodeId, map: &Map) -> Result<(), GraphError> {
+    let element = match schema.state.get(&map.list) {
         Some(Kind::List { element }) => element.as_ref().clone(),
         Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
     };
-    match schema.state.get(&keys.item) {
+    match schema.state.get(&map.item) {
         Some(item_kind) if *item_kind == element => {}
         Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
     }
-    let output_kind = match schema.state.get(&keys.output) {
+    let output_kind = match schema.state.get(&map.output) {
         Some(kind) => kind.clone(),
         None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
     };
-    match schema.state.get(&keys.results) {
+    match schema.state.get(&map.results) {
         Some(Kind::List { element }) if element.as_ref() == &output_kind => {}
         Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
     }
-    match &keys.max_concurrency {
+    match &map.max_concurrency {
         Some(limit) => limit.check(schema),
         None => Ok(()),
     }

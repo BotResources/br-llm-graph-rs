@@ -145,6 +145,50 @@ pub enum GraphError {
     InvalidOccurrence {
         value: String,
     },
+    SubGraphNotAnInput {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphInputTwice {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphInputUnmapped {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphSourceMismatch {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphNotAConfig {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphConfigTwice {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphConfigUnmapped {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphConfigMismatch {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphNotAnOutput {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphTargetMismatch {
+        node: NodeId,
+        key: Key,
+    },
+    SubGraphFailed {
+        source: Box<GraphError>,
+    },
+    SubGraphSuspended,
 }
 
 impl std::fmt::Display for GraphError {
@@ -260,6 +304,67 @@ impl std::fmt::Display for GraphError {
             GraphError::InvalidOccurrence { value } => {
                 write!(f, "{value:?} is not a valid occurrence key")
             }
+            GraphError::SubGraphNotAnInput { node, key } => {
+                write!(
+                    f,
+                    "node {node} maps {key}, which is not a declared input of the called graph"
+                )
+            }
+            GraphError::SubGraphInputTwice { node, key } => {
+                write!(f, "node {node} maps input {key} of the called graph twice")
+            }
+            GraphError::SubGraphInputUnmapped { node, key } => {
+                write!(
+                    f,
+                    "node {node} does not map input {key} of the called graph"
+                )
+            }
+            GraphError::SubGraphSourceMismatch { node, key } => {
+                write!(
+                    f,
+                    "node {node} maps input {key} from a source that is missing or of another kind"
+                )
+            }
+            GraphError::SubGraphNotAConfig { node, key } => {
+                write!(
+                    f,
+                    "node {node} maps {key}, which is not a configuration key of the called graph"
+                )
+            }
+            GraphError::SubGraphConfigTwice { node, key } => {
+                write!(
+                    f,
+                    "node {node} maps configuration key {key} of the called graph twice"
+                )
+            }
+            GraphError::SubGraphConfigUnmapped { node, key } => {
+                write!(
+                    f,
+                    "node {node} does not map configuration key {key} of the called graph"
+                )
+            }
+            GraphError::SubGraphConfigMismatch { node, key } => {
+                write!(
+                    f,
+                    "node {node} maps configuration key {key} from a source that is missing or of another kind"
+                )
+            }
+            GraphError::SubGraphNotAnOutput { node, key } => {
+                write!(
+                    f,
+                    "node {node} maps {key}, which is not a declared output of the called graph"
+                )
+            }
+            GraphError::SubGraphTargetMismatch { node, key } => {
+                write!(
+                    f,
+                    "node {node} writes into {key}, which is missing or cannot take the value"
+                )
+            }
+            GraphError::SubGraphFailed { source } => write!(f, "the called graph failed: {source}"),
+            GraphError::SubGraphSuspended => {
+                f.write_str("the called graph stopped before its end (paused or cancelled)")
+            }
         }
     }
 }
@@ -269,6 +374,7 @@ impl std::error::Error for GraphError {
         match self {
             GraphError::NodeFailed { source, .. } => Some(source),
             GraphError::Message(error) => Some(error),
+            GraphError::SubGraphFailed { source } => Some(source.as_ref()),
             GraphError::Identifier { .. }
             | GraphError::FloatNotFinite
             | GraphError::MissingKey { .. }
@@ -303,7 +409,18 @@ impl std::error::Error for GraphError {
             | GraphError::MissingInput { .. }
             | GraphError::NotAnInput { .. }
             | GraphError::InputGivenTwice { .. }
-            | GraphError::InvalidOccurrence { .. } => None,
+            | GraphError::InvalidOccurrence { .. }
+            | GraphError::SubGraphNotAnInput { .. }
+            | GraphError::SubGraphInputTwice { .. }
+            | GraphError::SubGraphInputUnmapped { .. }
+            | GraphError::SubGraphSourceMismatch { .. }
+            | GraphError::SubGraphNotAConfig { .. }
+            | GraphError::SubGraphConfigTwice { .. }
+            | GraphError::SubGraphConfigUnmapped { .. }
+            | GraphError::SubGraphConfigMismatch { .. }
+            | GraphError::SubGraphNotAnOutput { .. }
+            | GraphError::SubGraphTargetMismatch { .. }
+            | GraphError::SubGraphSuspended => None,
         }
     }
 }
