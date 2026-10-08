@@ -17,4 +17,4 @@ pub use limit::Limit;
 pub use map::Map;
 pub use node::{FnNode, Node, NodeError, NodeFuture};
 pub use signature::Signature;
-pub use subgraph::{Input, OnFailure, Output, SubGraph};
+pub use subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, Output, SubGraph};

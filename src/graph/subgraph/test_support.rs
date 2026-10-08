@@ -88,6 +88,7 @@ pub(crate) fn parent_schema() -> Schema {
         .state(key("items"), Kind::list(Kind::Str))
         .state(key("item"), Kind::Str)
         .state(key("counts"), Kind::list(Kind::Int))
+        .state(key("reasons"), Kind::list(Kind::Str))
         .config(key("rounds"), Kind::Int)
         .config(key("tone"), Kind::Str)
         .build()
@@ -152,4 +153,35 @@ pub(crate) async fn finished(graph: &Graph, question: &str, rounds: i64) -> Stat
         Ok(_) => panic!("the run did not finish"),
         Err(failure) => panic!("the run failed: {}", failure.error),
     }
+}
+
+/// Input `text`, output `answer` (`<text>!`). Fails on a text starting with
+/// `bad`, with the message `cannot handle <text>`.
+pub(crate) fn picky_graph() -> Arc<Graph> {
+    let schema = Schema::builder()
+        .state(key("text"), Kind::Str)
+        .state(key("answer"), Kind::Str)
+        .build();
+    let work = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
+        let text = s.str(&key("text")).map(str::to_owned);
+        Box::pin(async move {
+            let text = text?;
+            if text.starts_with("bad") {
+                return Err(format!("cannot handle {text}").into());
+            }
+            Ok(vec![Update::Set {
+                key: key("answer"),
+                value: Value::str(format!("{text}!")),
+            }])
+        })
+    });
+    let graph = GraphBuilder::new(schema)
+        .entry(nid("work"))
+        .node(nid("work"), work)
+        .edge(nid("work"), crate::graph::Always(end("done")))
+        .input(key("text"))
+        .output(key("answer"))
+        .build()
+        .unwrap();
+    Arc::new(graph)
 }

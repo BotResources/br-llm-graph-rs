@@ -80,6 +80,14 @@ form to decide whether a version ships.
   between two calls. `OnFailure::Propagate` (the default) fails the node with
   `SubGraphFailed`, whose `source()` is the child's `GraphError`. A nested run
   that stops before its end gives `SubGraphSuspended`.
+- `OnFailure::Capture(Vec<CaptureUpdate>)`: a call whose child fails returns
+  declared updates instead of its outputs, and the run goes on. Each
+  `CaptureUpdate` is `Set` or `Append` into a parent key, from a
+  `CaptureSource`: `Const(value)`, `From(parent_key)` (in a map body, the item
+  key included) or `Reason` (the child's error message). Checked at build like
+  outputs (`SubGraphCaptureMismatch`, and `MapBodySet` in a map body). Inside a
+  map the captured appends are forwarded in item order and the item is
+  recorded as finished.
 - Pending writes and resume: `PendingWrites` (occurrence key to updates,
   with `insert`, `get`, `merge`) and `Checkpoint::pending`. A map item that
   finishes records its appends under its occurrence (`Context::record`) while

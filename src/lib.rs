@@ -15,6 +15,8 @@
 )]
 
 #[cfg(test)]
+mod acceptance;
+#[cfg(test)]
 mod testkit;
 
 pub mod error;
@@ -30,8 +32,9 @@ pub mod value;
 
 pub use error::{GraphError, NodeFault};
 pub use graph::{
-    Always, Context, Edge, FnEdge, FnNode, Graph, GraphBuilder, IdSource, Input, Limit, Map, Node,
-    NodeError, NodeFuture, OnFailure, Output, Signature, SubGraph, Target,
+    Always, CaptureSource, CaptureUpdate, Context, Edge, FnEdge, FnNode, Graph, GraphBuilder,
+    IdSource, Input, Limit, Map, Node, NodeError, NodeFuture, OnFailure, Output, Signature,
+    SubGraph, Target,
 };
 pub use observe::{NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};

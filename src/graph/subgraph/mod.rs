@@ -59,6 +59,45 @@ pub enum OnFailure {
     /// The node fails with `GraphError::SubGraphFailed`, whose source is the
     /// child's error.
     Propagate,
+    /// The node returns these updates instead of its outputs: a captured
+    /// failure is a result, not a crash. Inside a map they are forwarded in
+    /// item order like outputs, and the item counts as finished.
+    Capture(Vec<CaptureUpdate>),
+}
+
+/// One update a captured failure makes in the caller's state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CaptureUpdate {
+    /// Sets a parent key of the source's kind.
+    Set(Key, CaptureSource),
+    /// Appends to a parent list of the source's kind.
+    Append(Key, CaptureSource),
+}
+
+impl CaptureUpdate {
+    pub fn target(&self) -> Output {
+        match self {
+            CaptureUpdate::Set(key, _) => Output::Set(key.clone()),
+            CaptureUpdate::Append(key, _) => Output::Append(key.clone()),
+        }
+    }
+
+    pub fn source(&self) -> &CaptureSource {
+        match self {
+            CaptureUpdate::Set(_, source) | CaptureUpdate::Append(_, source) => source,
+        }
+    }
+}
+
+/// Where the value of a capture update comes from.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CaptureSource {
+    /// A fixed value.
+    Const(Value),
+    /// A key of the caller's state (in a map body, the item key included).
+    From(Key),
+    /// The message of the child's failure, as a string.
+    Reason,
 }
 
 /// A call of a graph from a node of another graph.
@@ -122,6 +161,8 @@ impl SubGraph {
     }
 }
 
+#[cfg(test)]
+mod subgraph_capture_tests;
 #[cfg(test)]
 mod subgraph_check_tests;
 #[cfg(test)]

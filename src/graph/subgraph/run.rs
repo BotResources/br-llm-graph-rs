@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::node::{Node, NodeFuture};
-use crate::graph::subgraph::{Input, OnFailure, SubGraph};
+use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, SubGraph};
 use crate::run::{Outcome, channel, run_nested};
 use crate::state::{Config, State, Value};
 use crate::update::Update;
@@ -42,6 +42,9 @@ impl Node for SubGraph {
                         source: Box::new(failure.error),
                     }
                     .into()),
+                    OnFailure::Capture(captures) => {
+                        Ok(captured(captures, state, &failure.error.to_string())?)
+                    }
                 },
             }
         })
@@ -77,4 +80,23 @@ impl SubGraph {
         }
         Ok(updates)
     }
+}
+
+/// The updates a captured failure makes, `reason` being the child's error
+/// message.
+fn captured(
+    captures: &[CaptureUpdate],
+    state: &State,
+    reason: &str,
+) -> Result<Vec<Update>, GraphError> {
+    let mut updates = Vec::with_capacity(captures.len());
+    for capture in captures {
+        let value = match capture.source() {
+            CaptureSource::Const(value) => value.clone(),
+            CaptureSource::From(key) => state.get(key)?.clone(),
+            CaptureSource::Reason => Value::str(reason),
+        };
+        updates.push(capture.target().update(value));
+    }
+    Ok(updates)
 }

@@ -197,6 +197,10 @@ pub enum GraphError {
         key: Key,
     },
     MapWithoutOccurrence,
+    SubGraphCaptureMismatch {
+        node: NodeId,
+        key: Key,
+    },
 }
 
 impl std::fmt::Display for GraphError {
@@ -381,6 +385,10 @@ impl std::fmt::Display for GraphError {
             GraphError::MapWithoutOccurrence => {
                 f.write_str("a map runs as a node of a graph: its context names no node occurrence")
             }
+            GraphError::SubGraphCaptureMismatch { node, key } => write!(
+                f,
+                "node {node} captures a failure into {key} from a source that is missing or of a kind {key} cannot take"
+            ),
         }
     }
 }
@@ -439,7 +447,8 @@ impl std::error::Error for GraphError {
             | GraphError::SubGraphSuspended
             | GraphError::MapBodyNotAppend { .. }
             | GraphError::MapBodySet { .. }
-            | GraphError::MapWithoutOccurrence => None,
+            | GraphError::MapWithoutOccurrence
+            | GraphError::SubGraphCaptureMismatch { .. } => None,
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::error::GraphError;
-use crate::graph::subgraph::{Input, Output, SubGraph};
+use crate::graph::subgraph::{CaptureSource, Input, OnFailure, Output, SubGraph};
 use crate::state::{Kind, Schema};
 use crate::value::{Key, NodeId};
 
@@ -35,7 +35,48 @@ pub(crate) fn check_call(
     if let Some(target) = &call.end_label {
         check_target(schema, node, &Kind::Str, target, placement)?;
     }
+    if let OnFailure::Capture(captures) = &call.on_failure {
+        for capture in captures {
+            check_capture(schema, node, &capture.target(), capture.source(), placement)?;
+        }
+    }
     Ok(())
+}
+
+fn check_capture(
+    schema: &Schema,
+    node: &NodeId,
+    target: &Output,
+    source: &CaptureSource,
+    placement: Placement,
+) -> Result<(), GraphError> {
+    if let (Output::Set(key), Placement::MapBody) = (target, placement) {
+        return Err(GraphError::MapBodySet {
+            node: node.clone(),
+            key: key.clone(),
+        });
+    }
+    let receives = match target {
+        Output::Set(key) => schema.state.get(key),
+        Output::Append(key) => match schema.state.get(key) {
+            Some(Kind::List { element }) => Some(element.as_ref()),
+            Some(_) | None => None,
+        },
+    };
+    let fits = match (receives, source) {
+        (None, _) => false,
+        (Some(kind), CaptureSource::Const(value)) => value.matches(kind),
+        (Some(kind), CaptureSource::From(key)) => schema.state.get(key) == Some(kind),
+        (Some(kind), CaptureSource::Reason) => *kind == Kind::Str,
+    };
+    if fits {
+        Ok(())
+    } else {
+        Err(GraphError::SubGraphCaptureMismatch {
+            node: node.clone(),
+            key: target.key().clone(),
+        })
+    }
 }
 
 fn check_inputs(schema: &Schema, node: &NodeId, call: &SubGraph) -> Result<(), GraphError> {
