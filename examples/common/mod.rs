@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use br_llm_graph::Tool;
 use br_llm_graph::{
     Config, Context, Cursor, EndLabel, IdSource, Key, Model, ModelFuture, NoopObserver, Observer,
-    Request, Sender, State, StreamSink, ToolFuture, ToolOutput, ToolSpec, Update, Value,
+    Origin, Request, Sender, State, StreamSink, ToolFuture, ToolOutput, ToolSpec, Update, Value,
 };
 use br_llm_messages::{
     AssistantBlock, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId, ToolName,
@@ -16,20 +16,20 @@ use serde_json::{Value as Json, json};
 pub struct PrintObserver;
 
 impl Observer for PrintObserver {
-    fn node_started(&self, node: &br_llm_graph::NodeId) {
+    fn node_started(&self, _origin: &Origin, node: &br_llm_graph::NodeId) {
         println!("  node started: {node}");
     }
-    fn applied(&self, update: &Update) {
+    fn applied(&self, _origin: &Origin, update: &Update) {
         println!("  applied: {update}");
     }
-    fn checkpoint(&self, _state: &State, cursor: &Cursor) {
+    fn checkpoint(&self, _origin: &Origin, _state: &State, cursor: &Cursor) {
         let active: Vec<&str> = cursor.active.iter().map(|n| n.as_str()).collect();
         println!("  checkpoint, next active: [{}]", active.join(", "));
     }
-    fn run_finished(&self, end: &EndLabel) {
+    fn run_finished(&self, _origin: &Origin, end: &EndLabel) {
         println!("  run finished: {end}");
     }
-    fn stream(&self, _key: &Key, event: &StreamEvent) {
+    fn stream(&self, _origin: &Origin, _key: &Key, event: &StreamEvent) {
         if let StreamEvent::TextDelta { text, .. } = event {
             println!("  stream delta: {text:?}");
         }

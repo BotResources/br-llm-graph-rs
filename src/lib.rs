@@ -20,6 +20,7 @@ mod testkit;
 pub mod error;
 pub mod graph;
 pub mod observe;
+pub mod origin;
 pub mod react;
 pub mod run;
 pub mod session;
@@ -33,6 +34,7 @@ pub use graph::{
     NodeError, NodeFuture, Signature, Target,
 };
 pub use observe::{NoopObserver, Observer};
+pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
     LlmNode, Model, ModelError, ModelFuture, OnLimit, OutputMode, ReactLoop, Request, RoundLimit,
     Source, StreamSink, Tool, ToolCalls, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec,

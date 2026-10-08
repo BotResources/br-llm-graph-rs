@@ -59,6 +59,14 @@ form to decide whether a version ships.
   missing (`MissingInput`), a key that is not a declared input (`NotAnInput`),
   an unknown key, a value of the wrong kind, and an input given twice
   (`InputGivenTwice`). `State::new` is unchanged.
+- Occurrences (`origin`): `Segment { node, index }`, `OccurrenceKey` (the path
+  of a node occurrence through nested runs, empty at top level, written and
+  serialized as `a/b[3]/c`), `RunId` (an opaque id supplied by the host) and
+  `Origin` (run id and occurrence).
+- `Context` knows where it runs: `with_run_id`, `run_id()`, `occurrence()`,
+  `origin()`, `for_node(&NodeId)` and `child(Segment)`. `Context::new` gives an
+  empty occurrence and the default run id. The run loop gives each node a
+  context for its own occurrence.
 
 ### Changed
 
@@ -69,6 +77,11 @@ form to decide whether a version ships.
   literals must set them.
 - Depends on `br-llm-messages` 0.2.0: the body of a framed entry is rendered
   verbatim, no longer escaped.
+- Every `Observer` method receives an `&Origin` first. Events of the run loop
+  carry the run's occurrence (empty at top level), events a node emits carry
+  the node's occurrence, so events of a nested run are told from the
+  parent's.
+- `Context` gains a private field; build it with `Context::new`.
 - `Schema` gains the public field `defaults` (serialized only when not empty,
   so earlier schemas and checkpoints still load) and no longer implements
   `Eq`, since a default is a `Value`.

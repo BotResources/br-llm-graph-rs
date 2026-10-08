@@ -39,7 +39,7 @@ impl Node for Map {
                 let updates = output?;
                 derived.apply_batch(&updates)?;
                 for update in &updates {
-                    ctx.observer.applied(update);
+                    ctx.observer.applied(ctx.origin(), update);
                 }
                 let value = derived.get(&self.output)?.clone();
                 appends.push(Update::Append {

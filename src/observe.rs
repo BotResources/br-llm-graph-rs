@@ -1,28 +1,33 @@
 use br_llm_messages::StreamEvent;
 
+use crate::origin::Origin;
 use crate::run::Cursor;
 use crate::state::State;
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
 
+/// Receives what a run does. Every event carries its `Origin`: the run id and
+/// the occurrence it comes from. Events of the run loop carry the occurrence
+/// of the run (empty at top level, the calling node's occurrence in a nested
+/// run); events a node emits carry the node's own occurrence.
 pub trait Observer: Send + Sync {
-    fn node_started(&self, node: &NodeId) {
-        let _ = node;
+    fn node_started(&self, origin: &Origin, node: &NodeId) {
+        let _ = (origin, node);
     }
-    fn node_finished(&self, node: &NodeId) {
-        let _ = node;
+    fn node_finished(&self, origin: &Origin, node: &NodeId) {
+        let _ = (origin, node);
     }
-    fn stream(&self, key: &Key, event: &StreamEvent) {
-        let _ = (key, event);
+    fn stream(&self, origin: &Origin, key: &Key, event: &StreamEvent) {
+        let _ = (origin, key, event);
     }
-    fn applied(&self, update: &Update) {
-        let _ = update;
+    fn applied(&self, origin: &Origin, update: &Update) {
+        let _ = (origin, update);
     }
-    fn checkpoint(&self, state: &State, cursor: &Cursor) {
-        let _ = (state, cursor);
+    fn checkpoint(&self, origin: &Origin, state: &State, cursor: &Cursor) {
+        let _ = (origin, state, cursor);
     }
-    fn run_finished(&self, end: &EndLabel) {
-        let _ = end;
+    fn run_finished(&self, origin: &Origin, end: &EndLabel) {
+        let _ = (origin, end);
     }
 }
 

@@ -142,6 +142,9 @@ pub enum GraphError {
     InputGivenTwice {
         key: Key,
     },
+    InvalidOccurrence {
+        value: String,
+    },
 }
 
 impl std::fmt::Display for GraphError {
@@ -254,6 +257,9 @@ impl std::fmt::Display for GraphError {
                 write!(f, "key {key} is not a declared input of the graph")
             }
             GraphError::InputGivenTwice { key } => write!(f, "input {key} is given twice"),
+            GraphError::InvalidOccurrence { value } => {
+                write!(f, "{value:?} is not a valid occurrence key")
+            }
         }
     }
 }
@@ -296,7 +302,8 @@ impl std::error::Error for GraphError {
             | GraphError::DuplicateOutput { .. }
             | GraphError::MissingInput { .. }
             | GraphError::NotAnInput { .. }
-            | GraphError::InputGivenTwice { .. } => None,
+            | GraphError::InputGivenTwice { .. }
+            | GraphError::InvalidOccurrence { .. } => None,
         }
     }
 }

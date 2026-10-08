@@ -34,7 +34,7 @@ pub async fn run(
 
     loop {
         for id in &active {
-            ctx.observer.node_started(id);
+            ctx.observer.node_started(ctx.origin(), id);
         }
         let step = drive_superstep(graph, &state, config, ctx, &active, inbox).await;
         let mut held_inputs: Vec<(_, UserInput)> = step.held_inputs;
@@ -46,7 +46,7 @@ pub async fn run(
             StepResult::Done(results) => results,
         };
         for id in &active {
-            ctx.observer.node_finished(id);
+            ctx.observer.node_finished(ctx.origin(), id);
         }
 
         if drain_after_step(inbox, &mut held_inputs, &mut pause) {
@@ -64,7 +64,7 @@ pub async fn run(
                 Ok(updates) => match state.apply_batch(&updates) {
                     Ok(()) => {
                         for update in &updates {
-                            ctx.observer.applied(update);
+                            ctx.observer.applied(ctx.origin(), update);
                         }
                     }
                     Err(error) => {
@@ -96,7 +96,7 @@ pub async fn run(
 
         let (active_next, deferred_next) = next_sets(graph, produced, &deferred);
         let cursor = Cursor::new(active_next.clone(), deferred_next.clone());
-        ctx.observer.checkpoint(&state, &cursor);
+        ctx.observer.checkpoint(ctx.origin(), &state, &cursor);
 
         if active_next.is_empty() && deferred_next.is_empty() {
             return finish(state, &active, &deferred, ends, ctx);
@@ -154,7 +154,7 @@ fn apply_inputs(
         .collect();
     state.apply_batch(&updates)?;
     for update in &updates {
-        ctx.observer.applied(update);
+        ctx.observer.applied(ctx.origin(), update);
     }
     Ok(())
 }
@@ -238,7 +238,7 @@ fn finish(
     let mut iter = distinct.into_iter();
     match (iter.next(), iter.next()) {
         (Some(end), None) => {
-            ctx.observer.run_finished(&end);
+            ctx.observer.run_finished(ctx.origin(), &end);
             Ok(Outcome::Finished { state, end })
         }
         (first, second) => {

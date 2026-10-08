@@ -5,6 +5,7 @@ use br_llm_messages::TurnId;
 
 use crate::graph::{Context, IdSource};
 use crate::observe::Observer;
+use crate::origin::Origin;
 use crate::run::Cursor;
 use crate::state::State;
 use crate::update::Update;
@@ -47,24 +48,24 @@ impl Recorder {
 }
 
 impl Observer for Recorder {
-    fn node_started(&self, node: &NodeId) {
+    fn node_started(&self, _origin: &Origin, node: &NodeId) {
         self.push(format!("started {node}"));
     }
 
-    fn node_finished(&self, node: &NodeId) {
+    fn node_finished(&self, _origin: &Origin, node: &NodeId) {
         self.push(format!("finished {node}"));
     }
 
-    fn applied(&self, update: &Update) {
+    fn applied(&self, _origin: &Origin, update: &Update) {
         self.push(format!("applied {update}"));
     }
 
-    fn checkpoint(&self, _state: &State, cursor: &Cursor) {
+    fn checkpoint(&self, _origin: &Origin, _state: &State, cursor: &Cursor) {
         let active: Vec<&str> = cursor.active.iter().map(NodeId::as_str).collect();
         self.push(format!("checkpoint [{}]", active.join(",")));
     }
 
-    fn run_finished(&self, end: &EndLabel) {
+    fn run_finished(&self, _origin: &Origin, end: &EndLabel) {
         self.push(format!("finished run {end}"));
     }
 }

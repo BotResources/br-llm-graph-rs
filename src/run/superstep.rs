@@ -40,10 +40,11 @@ pub(crate) async fn drive_superstep(
         .filter(|id| graph.node(id).is_some())
         .cloned()
         .collect();
-    let futures = present.iter().filter_map(|id| {
+    let contexts: Vec<Context> = present.iter().map(|id| ctx.for_node(id)).collect();
+    let futures = present.iter().zip(&contexts).filter_map(|(id, node_ctx)| {
         graph
             .node(id)
-            .map(|node| AssertUnwindSafe(node.run(state, config, ctx)).catch_unwind())
+            .map(|node| AssertUnwindSafe(node.run(state, config, node_ctx)).catch_unwind())
     });
     let superstep = join_all(futures);
     futures_util::pin_mut!(superstep);

@@ -15,6 +15,8 @@ mod map_concurrency_tests;
 #[cfg(test)]
 mod map_tests;
 #[cfg(test)]
+mod origin_tests;
+#[cfg(test)]
 mod run_tests;
 #[cfg(test)]
 pub(crate) mod test_support;

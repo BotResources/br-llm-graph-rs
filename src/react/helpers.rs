@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 use crate::error::GraphError;
 use crate::graph::Context;
 use crate::observe::Observer;
+use crate::origin::Origin;
 use crate::react::model::{Model, Request, StreamSink};
 use crate::react::tool::Tool;
 use crate::state::State;
@@ -16,12 +17,13 @@ use crate::value::Key;
 
 struct ObserverSink<'a> {
     observer: &'a dyn Observer,
+    origin: &'a Origin,
     key: &'a Key,
 }
 
 impl StreamSink for ObserverSink<'_> {
     fn event(&self, event: &StreamEvent) {
-        self.observer.stream(self.key, event);
+        self.observer.stream(self.origin, self.key, event);
     }
 }
 
@@ -37,6 +39,7 @@ pub async fn complete(
 ) -> Result<Step, GraphError> {
     let sink = ObserverSink {
         observer: ctx.observer.as_ref(),
+        origin: ctx.origin(),
         key,
     };
     model
