@@ -23,6 +23,7 @@ fn map_graph(body: Box<dyn Node>) -> crate::graph::Graph {
         item: key("item"),
         body,
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(schema())
         .entry(nid("m"))
@@ -199,6 +200,7 @@ async fn given_a_map_run_outside_a_graph_when_run_then_map_without_occurrence() 
         item: key("item"),
         body: Box::new(noop_node()),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let state = seeded(vec!["a"]);
     let error = map.run(&state, &config(), &ctx()).await.err().unwrap();

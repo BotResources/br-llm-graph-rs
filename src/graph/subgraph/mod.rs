@@ -5,12 +5,14 @@ mod run;
 
 use std::sync::Arc;
 
+use crate::error::GraphError;
 use crate::graph::graph::Graph;
-use crate::state::Value;
+use crate::state::{State, Value};
 use crate::update::Update;
 use crate::value::Key;
 
 use check::check_call;
+pub(crate) use check::check_capture;
 
 /// Where the value of a child input (or child configuration key) comes from.
 #[derive(Debug, Clone, PartialEq)]
@@ -65,7 +67,8 @@ pub enum OnFailure {
     Capture(Vec<CaptureUpdate>),
 }
 
-/// One update a captured failure makes in the caller's state.
+/// One update a captured failure makes in the caller's state (of a called
+/// graph, or of a map item).
 #[derive(Debug, Clone, PartialEq)]
 pub enum CaptureUpdate {
     /// Sets a parent key of the source's kind.
@@ -98,6 +101,25 @@ pub enum CaptureSource {
     From(Key),
     /// The message of the child's failure, as a string.
     Reason,
+}
+
+/// The updates `captures` make for a failure whose message is `reason`, `From`
+/// sources read from `state`.
+pub(crate) fn captured(
+    captures: &[CaptureUpdate],
+    state: &State,
+    reason: &str,
+) -> Result<Vec<Update>, GraphError> {
+    let mut updates = Vec::with_capacity(captures.len());
+    for capture in captures {
+        let value = match capture.source() {
+            CaptureSource::Const(value) => value.clone(),
+            CaptureSource::From(key) => state.get(key)?.clone(),
+            CaptureSource::Reason => Value::str(reason),
+        };
+        updates.push(capture.target().update(value));
+    }
+    Ok(updates)
 }
 
 /// A call of a graph from a node of another graph.

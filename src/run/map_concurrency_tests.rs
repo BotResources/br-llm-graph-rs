@@ -69,6 +69,7 @@ fn map_graph(gauge: &Arc<Gauge>, max_concurrency: Option<Limit>) -> Result<Graph
         item: key("item"),
         body: Box::new(GaugedBody(gauge.clone())),
         max_concurrency,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(width_schema())
         .entry(nid("m"))

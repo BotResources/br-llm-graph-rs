@@ -26,6 +26,7 @@ fn map_then_next(body: impl Node + 'static) -> Graph {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(schema())
         .entry(nid("m"))

@@ -154,6 +154,7 @@ async fn given_a_map_that_finished_before_its_sibling_failed_when_resumed_then_t
             log: key("log"),
         }),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let failing = Arc::new(AtomicBool::new(true));
     let graph = siblings(map, failing_while(&failing));

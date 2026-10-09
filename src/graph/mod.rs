@@ -14,7 +14,7 @@ pub use context::{Context, IdSource};
 pub use edge::{Always, Edge, FnEdge, Target};
 pub use graph::Graph;
 pub use limit::Limit;
-pub use map::Map;
+pub use map::{ItemFailure, Map};
 pub use node::{FnNode, Node, NodeError, NodeFuture};
 pub use signature::Signature;
 pub use subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, Output, SubGraph};

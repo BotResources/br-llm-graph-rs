@@ -118,6 +118,7 @@ fn given_map_with_bad_keys_when_build_then_refused() {
         item: crate::value::Key::new("item").unwrap(),
         body: Box::new(noop()),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let result = GraphBuilder::new(schema())
         .entry(nid("m"))
@@ -137,6 +138,7 @@ fn given_map_with_good_keys_when_build_then_ok() {
         item: crate::value::Key::new("item").unwrap(),
         body: Box::new(noop()),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let result = GraphBuilder::new(schema())
         .entry(nid("m"))
@@ -153,6 +155,7 @@ fn given_map_whose_item_key_is_not_the_list_element_kind_when_build_then_refused
         item: crate::value::Key::new("outs").unwrap(),
         body: Box::new(noop()),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let result = GraphBuilder::new(schema())
         .entry(nid("m"))
@@ -172,6 +175,7 @@ fn given_map_registered_as_a_plain_node_when_build_then_its_keys_are_checked() {
         item: crate::value::Key::new("item").unwrap(),
         body: Box::new(noop()),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let result = GraphBuilder::new(schema())
         .entry(nid("m"))

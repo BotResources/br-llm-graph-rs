@@ -258,6 +258,7 @@ fn failing_map(calls: &Arc<crate::run::counted::Counted>) -> Arc<Graph> {
             log: key("log"),
         }),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     Arc::new(
         GraphBuilder::new(schema())

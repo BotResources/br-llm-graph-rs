@@ -17,6 +17,8 @@ mod failure_tests;
 #[cfg(test)]
 mod gates;
 #[cfg(test)]
+mod item_failure_tests;
+#[cfg(test)]
 mod map_concurrency_tests;
 #[cfg(test)]
 mod map_tests;

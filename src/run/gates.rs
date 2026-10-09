@@ -77,6 +77,17 @@ impl Gates {
         panic!("the condition never held; log: {:?}", self.log());
     }
 
+    /// Logs the start of `item`, waits until its gate is open (if it has
+    /// one), then logs its end.
+    pub(crate) async fn pass(&self, item: &str) {
+        self.push(format!("start {item}"));
+        let gate = self.waiting.lock().unwrap().remove(item);
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        self.push(format!("end {item}"));
+    }
+
     /// Opens `item` once it has started and waits until it has finished.
     pub(crate) async fn release(&self, item: &str) {
         self.until(|gates| gates.started().iter().any(|s| s == item))
@@ -104,12 +115,7 @@ impl Node for GatedBody {
     ) -> NodeFuture<'a> {
         Box::pin(async move {
             let item = state.str(&self.item)?.to_owned();
-            self.gates.push(format!("start {item}"));
-            let gate = self.gates.waiting.lock().unwrap().remove(&item);
-            if let Some(gate) = gate {
-                let _ = gate.await;
-            }
-            self.gates.push(format!("end {item}"));
+            self.gates.pass(&item).await;
             let mut updates = Vec::new();
             for (position, list) in self.lists.iter().enumerate() {
                 let value = if position == 0 {
@@ -123,6 +129,57 @@ impl Node for GatedBody {
                 });
             }
             Ok(updates)
+        })
+    }
+}
+
+/// Waits on the gate of its item, then panics on `panicking`, fails on the
+/// items in `failing` (`item <item> failed`), or appends the item to `outs`
+/// and `ok` to `log`.
+pub(crate) struct PickyBody {
+    pub gates: Arc<Gates>,
+    pub failing: Arc<Mutex<Vec<String>>>,
+    pub panicking: Arc<Mutex<Option<String>>>,
+}
+
+impl PickyBody {
+    pub(crate) fn new(gates: &Arc<Gates>, failing: &[&str]) -> Self {
+        Self {
+            gates: gates.clone(),
+            failing: Arc::new(Mutex::new(
+                failing.iter().map(|item| (*item).to_owned()).collect(),
+            )),
+            panicking: Arc::default(),
+        }
+    }
+}
+
+impl Node for PickyBody {
+    fn run<'a>(
+        &'a self,
+        state: &'a State,
+        _config: &'a Config,
+        _ctx: &'a Context,
+    ) -> NodeFuture<'a> {
+        Box::pin(async move {
+            let item = state.str(&Key::new("item")?)?.to_owned();
+            self.gates.pass(&item).await;
+            if self.panicking.lock().unwrap().as_deref() == Some(item.as_str()) {
+                panic!("item {item} panicked");
+            }
+            if self.failing.lock().unwrap().contains(&item) {
+                return Err(format!("item {item} failed").into());
+            }
+            Ok(vec![
+                Update::Append {
+                    key: Key::new("outs")?,
+                    value: Value::str(item),
+                },
+                Update::Append {
+                    key: Key::new("log")?,
+                    value: Value::str("ok"),
+                },
+            ])
         })
     }
 }

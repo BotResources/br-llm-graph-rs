@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use super::test_support::*;
 use crate::error::GraphError;
 use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, Output, SubGraph};
-use crate::graph::{Always, Graph, GraphBuilder, Map};
+use crate::graph::{Always, Graph, GraphBuilder, ItemFailure, Map};
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
 use crate::run::Outcome;
@@ -77,6 +77,7 @@ fn mapped(body: SubGraph) -> Result<Graph, GraphError> {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(parent_schema())
         .entry(nid("each"))
@@ -209,7 +210,7 @@ fn given_a_capture_from_a_missing_source_or_into_a_target_of_another_kind_when_b
         let call = picky_call().on_failure(OnFailure::Capture(vec![capture.clone()]));
         let error = crate::testkit::refusal(parent_with(call));
         assert!(
-            matches!(error, GraphError::SubGraphCaptureMismatch { ref key, .. } if *key == *capture.target().key()),
+            matches!(error, GraphError::CaptureMismatch { ref key, .. } if *key == *capture.target().key()),
             "{capture:?} gave {error}"
         );
     }
@@ -218,4 +219,48 @@ fn given_a_capture_from_a_missing_source_or_into_a_target_of_another_kind_when_b
         CaptureUpdate::Set(key("steps"), CaptureSource::Const(Value::int(-1))),
     ]));
     assert!(parent_with(call).is_ok());
+}
+
+#[tokio::test]
+async fn given_a_map_that_captures_item_failures_when_its_call_body_fails_then_the_map_lists_them()
+{
+    let map = Map {
+        list: key("items"),
+        item: key("item"),
+        body: Box::new(per_item(OnFailure::Propagate)),
+        max_concurrency: None,
+        on_item_failure: ItemFailure::Capture(vec![
+            CaptureUpdate::Append(key("labels"), CaptureSource::From(key("item"))),
+            CaptureUpdate::Append(key("reasons"), CaptureSource::Reason),
+        ]),
+    };
+    let graph = GraphBuilder::new(parent_schema())
+        .entry(nid("each"))
+        .map(nid("each"), map)
+        .edge(nid("each"), Always(end("done")))
+        .input(key("items"))
+        .build()
+        .unwrap();
+    let items = ["ok1", "bad1", "ok2"];
+    let outcome = run_parent(
+        &graph,
+        start(&graph, &items),
+        &parent_config(1),
+        Arc::new(NoopObserver),
+    )
+    .await;
+    let Ok(Outcome::Finished { state, .. }) = outcome else {
+        panic!("a captured item failure must not fail the run");
+    };
+    assert_eq!(
+        state.list(&key("results")).unwrap(),
+        &["ok1!", "ok2!"].map(Value::str)
+    );
+    assert_eq!(state.list(&key("labels")).unwrap(), &[Value::str("bad1")]);
+    assert_eq!(
+        state.list(&key("reasons")).unwrap(),
+        &[Value::str(
+            "the called graph failed: node work failed: returned an error: cannot handle bad1"
+        )]
+    );
 }

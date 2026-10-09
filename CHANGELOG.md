@@ -84,7 +84,7 @@ form to decide whether a version ships.
   `CaptureUpdate` is `Set` or `Append` into a parent key, from a
   `CaptureSource`: `Const(value)`, `From(parent_key)` (in a map body, the item
   key included) or `Reason` (the child's error message). Checked at build like
-  outputs (`SubGraphCaptureMismatch`). Inside a map the captured appends are
+  outputs (`CaptureMismatch`). Inside a map the captured appends are
   forwarded in item order and the item is recorded as finished.
 - Pending writes and resume: `PendingWrites` (occurrence key to
   `PendingEntry { updates, witness }`, with `insert`, `get`, `merge`) and
@@ -101,27 +101,39 @@ form to decide whether a version ships.
   applied. The checkpoint of a failure, a cancel or a pause carries the run's
   pending writes; `Session::resume` and `Context::with_pending(checkpoint.pending)`
   (for `run`) hand them back, so a resumed run skips the finished nodes and
-  items. Items
-  of a map inside a called graph record under the nested occurrence
-  (`each[1]/inner[0]`) and travel in the caller's checkpoint.
+  items. Inside a called graph, nodes and map items record under the nested
+  occurrence (`each[1]/inner[0]`) and travel in the caller's checkpoint.
 - `Observer::recorded(origin, entry)` (defaulted): fires on every record, so a
   host can persist pending entries, witness included, as they come and insert
   them later under `origin.occurrence`.
 - `Checkpoint::with_pending`; `Context::pending()` copies what a recorder
   holds.
+- `Map::on_item_failure` (`ItemFailure`), what a map does when the body of an
+  item returns an error:
+  - `Finish` (the default): every item runs to its end and the finished ones
+    are recorded, then the map fails with the first error in item order;
+  - `FailFast`: no item starts after the first error; items already running
+    finish and are recorded, then the map fails with the first error in item
+    order among the items that ended; items that never started are not
+    recorded;
+  - `Capture(Vec<CaptureUpdate>)`: the item yields these appends instead,
+    forwarded in item order and recorded like a result, so the map does not
+    fail because of an item error. `From(key)` reads the item's own state,
+    `Reason` is the error's message. A panic is not captured. Checked at build
+    like a call's captures; a `Set` is refused (`MapBodySet`).
 - Example `subgraph_map`: a map whose body calls a graph, with a resume.
 - `Node::check(&self, &Schema)`, defaulted to accept: a node checks itself
   against the schema of the graph it runs in. `GraphBuilder::build` calls it on
   every node, however registered (`node`, `join`, `map`, `subgraph`), and
   refuses the graph with `InvalidNode { node, source }`, `source` being the
   reason. `SubGraph` checks its mappings, `Map` its list and item keys, its
-  limit, then its body against the same schema. A node that wraps another
-  forwards `check` to it.
-- Reasons a call is refused: `SubGraphInputUnmapped`, `SubGraphInputTwice`,
-  `SubGraphNotAnInput`, `SubGraphSourceMismatch`, `SubGraphConfigUnmapped`,
-  `SubGraphConfigTwice`, `SubGraphNotAConfig`, `SubGraphConfigMismatch`,
-  `SubGraphNotAnOutput`, `SubGraphTargetMismatch`, `SubGraphCaptureMismatch`,
-  each naming the key.
+  limit and its captures, then its body against the same schema. A node that
+  wraps another forwards `check` to it.
+- Reasons a call or a map is refused: `SubGraphInputUnmapped`,
+  `SubGraphInputTwice`, `SubGraphNotAnInput`, `SubGraphSourceMismatch`,
+  `SubGraphConfigUnmapped`, `SubGraphConfigTwice`, `SubGraphNotAConfig`,
+  `SubGraphConfigMismatch`, `SubGraphNotAnOutput`, `SubGraphTargetMismatch`,
+  `CaptureMismatch` and `MapBodySet`, each naming the key.
 
 ### Changed
 
@@ -143,8 +155,8 @@ form to decide whether a version ships.
 - `Checkpoint` gains the field `pending`, read as empty from checkpoints
   written before it and not written when empty; build one with
   `Checkpoint::new`.
-- `Map` is `{ list, item, body, max_concurrency }`: the `output` and
-  `results` fields are gone. The body runs on the state with `item` set, in a
+- `Map` is `{ list, item, body, max_concurrency, on_item_failure }`: the
+  `output` and `results` fields are gone. The body runs on the state with `item` set, in a
   context for its own occurrence (`m[i]`); its updates are not applied to that
   state. Each must be an `Update::Append` to a list of the graph and the map
   forwards them, in item order whatever the completion order, so one body may
@@ -164,8 +176,7 @@ form to decide whether a version ships.
   applied.
 - `Map` runs its bodies in a rolling window: at most `max_concurrency` at
   once, a new one starting as soon as any running one finishes, never held by
-  a slow earlier item. Every body runs to its end; the first error in item
-  order fails the map.
+  a slow earlier item.
 - `GraphError::MapKeyMismatch` is `{ list, item }` and covers the list and
   item keys only; like every build-time reason of a node, it reaches the
   caller inside `InvalidNode`. A `Map` registered with `node` or `join` is now

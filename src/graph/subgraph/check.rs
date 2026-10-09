@@ -133,7 +133,7 @@ pub(crate) fn check_capture(
     if fits {
         Ok(())
     } else {
-        Err(GraphError::SubGraphCaptureMismatch {
+        Err(GraphError::CaptureMismatch {
             key: target.key().clone(),
         })
     }

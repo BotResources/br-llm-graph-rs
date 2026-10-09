@@ -10,8 +10,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use br_llm_graph::{
-    Always, Config, Context, EndLabel, FnNode, Graph, GraphBuilder, Input, Kind, Map, NodeFuture,
-    NodeId, Outcome, Output, Schema, State, SubGraph, Target, Update, Value, channel, run,
+    Always, Config, Context, EndLabel, FnNode, Graph, GraphBuilder, Input, ItemFailure, Kind, Map,
+    NodeFuture, NodeId, Outcome, Output, Schema, State, SubGraph, Target, Update, Value, channel,
+    run,
 };
 
 use common::{key, quiet_context};
@@ -73,6 +74,7 @@ fn each_item(child: Arc<Graph>) -> Graph {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: None,
+        on_item_failure: ItemFailure::Finish,
     };
     GraphBuilder::new(schema)
         .entry(id("each"))

@@ -92,6 +92,7 @@ fn child(script: &Arc<Script>) -> Arc<Graph> {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let graph = GraphBuilder::new(schema)
         .entry(nid("list"))

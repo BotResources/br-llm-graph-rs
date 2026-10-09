@@ -30,6 +30,7 @@ fn gated_graph(gates: &Arc<Gates>, lists: &[&str], width: Option<usize>) -> Grap
             lists: lists.iter().map(|name| key(name)).collect(),
         }),
         max_concurrency: width.map(|w| Limit::Fixed(NonZeroUsize::new(w).unwrap())),
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(schema())
         .entry(nid("m"))

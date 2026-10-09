@@ -187,7 +187,7 @@ pub enum GraphError {
         key: Key,
     },
     MapWithoutOccurrence,
-    SubGraphCaptureMismatch {
+    CaptureMismatch {
         key: Key,
     },
     InvalidNode {
@@ -354,12 +354,12 @@ impl std::fmt::Display for GraphError {
                 "a map body may only append to a list; it returned another update of {key}"
             ),
             GraphError::MapBodySet { key } => {
-                write!(f, "a map body would set {key}; a map body may only append")
+                write!(f, "a map only appends to lists; {key} would be set")
             }
             GraphError::MapWithoutOccurrence => {
                 f.write_str("a map runs as a node of a graph: its context names no node occurrence")
             }
-            GraphError::SubGraphCaptureMismatch { key } => write!(
+            GraphError::CaptureMismatch { key } => write!(
                 f,
                 "a failure is captured into {key} from a source that is missing or of a kind {key} cannot take"
             ),
@@ -426,7 +426,7 @@ impl std::error::Error for GraphError {
             | GraphError::MapBodyNotAppend { .. }
             | GraphError::MapBodySet { .. }
             | GraphError::MapWithoutOccurrence
-            | GraphError::SubGraphCaptureMismatch { .. } => None,
+            | GraphError::CaptureMismatch { .. } => None,
         }
     }
 }

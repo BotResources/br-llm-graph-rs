@@ -24,6 +24,7 @@ fn mapped(body: SubGraph) -> Result<Graph, GraphError> {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(parent_schema())
         .entry(nid("each"))

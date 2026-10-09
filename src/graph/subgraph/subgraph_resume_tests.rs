@@ -62,6 +62,7 @@ fn split_and_join(calls: &Arc<Counted>) -> Arc<Graph> {
             log: key("trail"),
         }),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let graph = GraphBuilder::new(schema)
         .entry(nid("split"))
@@ -87,6 +88,7 @@ fn each_item(calls: &Arc<Counted>) -> Graph {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(parent_schema())
         .entry(nid("each"))

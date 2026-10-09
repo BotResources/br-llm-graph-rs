@@ -199,6 +199,7 @@ pub(crate) fn caller(body: SubGraph) -> Result<Graph, crate::GraphError> {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(5).unwrap())),
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     GraphBuilder::new(caller_schema())
         .entry(nid("each"))

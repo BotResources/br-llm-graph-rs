@@ -45,6 +45,7 @@ fn map_of(body: impl Node + 'static) -> Map {
         item: key("item"),
         body: Box::new(body),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     }
 }
 
@@ -88,6 +89,7 @@ fn given_a_map_with_keys_that_do_not_fit_when_built_then_the_map_is_refused_befo
         item: key("item"),
         body: Box::new(wrong_call()),
         max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
     };
     let error = crate::testkit::refusal(single(|b| b.map(nid("ask"), map)));
     assert!(matches!(error, GraphError::MapKeyMismatch { list, .. } if list == key("question")));

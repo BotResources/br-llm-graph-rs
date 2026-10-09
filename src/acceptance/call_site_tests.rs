@@ -53,6 +53,6 @@ fn given_wrong_call_sites_when_built_then_each_is_refused_with_its_own_error() {
         )]));
     assert!(matches!(
         refused(wrong_capture),
-        GraphError::SubGraphCaptureMismatch { .. }
+        GraphError::CaptureMismatch { .. }
     ));
 }
