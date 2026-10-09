@@ -4,6 +4,9 @@ use crate::error::GraphError;
 use crate::state::{Config, Kind, Schema};
 use crate::value::Key;
 
+/// A positive bound, given as a fixed number or read from an int
+/// configuration key, so the host decides at run time. `Count` is its
+/// counterpart that may be zero.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Limit {
     Fixed(NonZeroUsize),
@@ -21,7 +24,21 @@ impl Limit {
         }
     }
 
-    pub(crate) fn resolve(&self, config: &Config) -> Result<NonZeroUsize, GraphError> {
+    /// The bound for this run: the fixed number, or the value of the
+    /// configuration key. A configuration value below one is refused
+    /// (`LimitNotPositive`), a key missing from `config` too (`MissingKey`,
+    /// or `KindMismatch` when it holds another kind).
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use br_llm_graph::{Config, Key, Kind, Limit, Schema, Value};
+    ///
+    /// let width = Key::new("width").unwrap();
+    /// let schema = Schema::builder().config(width.clone(), Kind::Int).build();
+    /// let config = Config::new(&schema, BTreeMap::from([(width.clone(), Value::int(4))])).unwrap();
+    /// assert_eq!(Limit::Config(width).resolve(&config).unwrap().get(), 4);
+    /// ```
+    pub fn resolve(&self, config: &Config) -> Result<NonZeroUsize, GraphError> {
         match self {
             Limit::Fixed(value) => Ok(*value),
             Limit::Config(key) => {

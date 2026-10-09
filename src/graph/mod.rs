@@ -1,5 +1,6 @@
 mod builder;
 mod context;
+mod count;
 mod edge;
 #[allow(clippy::module_inception)]
 mod graph;
@@ -12,6 +13,7 @@ mod switch;
 
 pub use builder::GraphBuilder;
 pub use context::{Context, IdSource};
+pub use count::Count;
 pub use edge::{Always, Edge, FnEdge, Target};
 pub use graph::Graph;
 pub use limit::Limit;

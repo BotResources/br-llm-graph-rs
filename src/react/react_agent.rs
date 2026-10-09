@@ -3,7 +3,9 @@ use std::sync::Arc;
 use br_llm_messages::Author;
 
 use crate::error::GraphError;
-use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target};
+use crate::graph::{
+    Always, Context, Count, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
+};
 use crate::react::helpers::{final_step, last_turn_by_author};
 use crate::react::llm_node::{LlmNode, Source};
 use crate::react::model::{Model, OutputMode};
@@ -138,6 +140,14 @@ pub(crate) fn declare_limit(schema: SchemaBuilder, limit: Option<&Limit>) -> Sch
     match limit {
         Some(Limit::Config(key)) => schema.config(key.clone(), Kind::Int),
         Some(Limit::Fixed(_)) | None => schema,
+    }
+}
+
+/// Declares the configuration key a count reads, as an int.
+pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuilder {
+    match count {
+        Count::Config(key) => schema.config(key.clone(), Kind::Int),
+        Count::Fixed(_) => schema,
     }
 }
 

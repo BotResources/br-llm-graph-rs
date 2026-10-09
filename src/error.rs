@@ -124,6 +124,13 @@ pub enum GraphError {
     SwitchKeyMismatch {
         key: Key,
     },
+    CountKeyMismatch {
+        key: Key,
+    },
+    CountNegative {
+        key: Key,
+        value: i64,
+    },
     SameAuthor {
         author: Author,
     },
@@ -291,6 +298,15 @@ impl std::fmt::Display for GraphError {
             GraphError::SwitchKeyMismatch { key } => {
                 write!(f, "switch key {key} is not a bool configuration key")
             }
+            GraphError::CountKeyMismatch { key } => {
+                write!(f, "count key {key} is not an int configuration key")
+            }
+            GraphError::CountNegative { key, value } => {
+                write!(
+                    f,
+                    "count key {key} holds {value}, not a count of zero or more"
+                )
+            }
             GraphError::SameAuthor { author } => write!(
                 f,
                 "the generator and the critic are both written by {author}; each seat needs its own author"
@@ -418,6 +434,8 @@ impl std::error::Error for GraphError {
             | GraphError::LimitKeyMismatch { .. }
             | GraphError::LimitNotPositive { .. }
             | GraphError::SwitchKeyMismatch { .. }
+            | GraphError::CountKeyMismatch { .. }
+            | GraphError::CountNegative { .. }
             | GraphError::SameAuthor { .. }
             | GraphError::FlagKeyMismatch { .. }
             | GraphError::ToolLimitReached { .. }

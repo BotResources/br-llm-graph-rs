@@ -9,12 +9,11 @@
 mod common;
 
 use std::collections::BTreeMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use br_llm_graph::{
-    Always, Config, CriticSeat, EndLabel, GeneratorCritic, GeneratorSeat, GraphBuilder, Input,
-    Kind, Limit, NodeId, Outcome, Output, OutputMode, Schema, SubGraph, Switch, Target, Value,
+    Always, Config, Count, CriticSeat, EndLabel, GeneratorCritic, GeneratorSeat, GraphBuilder,
+    Input, Kind, NodeId, Outcome, Output, OutputMode, Schema, SubGraph, Switch, Target, Value,
     channel, run,
 };
 use br_llm_messages::{Author, Conversation, Entry};
@@ -55,13 +54,9 @@ async fn main() {
         ])),
         thinking: Some(Switch::Config(key("critic_thinking"))),
     };
-    let duo = GeneratorCritic::new(
-        generator,
-        critic,
-        Limit::Fixed(NonZeroUsize::new(3).expect("non-zero")),
-    )
-    .graph()
-    .expect("generator-critic graph");
+    let duo = GeneratorCritic::new(generator, critic, Count::Fixed(3))
+        .graph()
+        .expect("generator-critic graph");
 
     let schema = Schema::builder()
         .state(key("chat"), Kind::Conversation)

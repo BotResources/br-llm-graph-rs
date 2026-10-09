@@ -11,8 +11,8 @@ use serde_json::{Value as Json, json};
 
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{
-    Always, Context, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Output, SubGraph, Switch,
-    Target,
+    Always, Context, Count, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Output, SubGraph,
+    Switch, Target,
 };
 use crate::observe::NoopObserver;
 use crate::react::generator_critic::{CriticSeat, GeneratorCritic, GeneratorSeat, verdict_schema};
@@ -79,7 +79,11 @@ fn critic(model: Arc<LoggingModel>) -> CriticSeat {
 }
 
 fn duo(generator_model: Arc<LoggingModel>, critic_model: Arc<LoggingModel>) -> GeneratorCritic {
-    GeneratorCritic::new(generator(generator_model), critic(critic_model), limit(3))
+    GeneratorCritic::new(
+        generator(generator_model),
+        critic(critic_model),
+        Count::Fixed(3),
+    )
 }
 
 fn ctx() -> Context {
@@ -248,7 +252,7 @@ async fn given_every_answer_rejected_with_a_final_generation_when_run_then_exhau
     let graph = GeneratorCritic::new(
         generator(generator_model),
         critic(critic_model.clone()),
-        limit(1),
+        Count::Fixed(1),
     )
     .graph()
     .unwrap();
@@ -277,7 +281,7 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
         ..GeneratorCritic::new(
             generator(generator_model.clone()),
             critic(critic_model),
-            limit(2),
+            Count::Fixed(2),
         )
     }
     .graph()
@@ -298,6 +302,128 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
         ]
     );
     assert_eq!(generator_model.requests().len(), 2);
+}
+
+fn zero_budget(
+    generator_model: Arc<LoggingModel>,
+    critic_model: Arc<LoggingModel>,
+    max_critiques: Count,
+    final_generation: bool,
+) -> Arc<Graph> {
+    GeneratorCritic {
+        final_generation,
+        ..GeneratorCritic::new(
+            generator(generator_model),
+            critic(critic_model),
+            max_critiques,
+        )
+    }
+    .graph()
+    .unwrap()
+}
+
+#[tokio::test]
+async fn given_a_critique_budget_of_zero_when_run_then_one_generation_no_critic_and_exhausted() {
+    for final_generation in [true, false] {
+        let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
+        let critic_model = Arc::new(LoggingModel::new(Vec::new()));
+        let graph = zero_budget(
+            generator_model.clone(),
+            critic_model.clone(),
+            Count::Fixed(0),
+            final_generation,
+        );
+        let state = ended(call(&graph, question("explain")).await, "exhausted");
+        assert!(!state.bool(&key("validated")).unwrap());
+        assert_eq!(state.int(&key("generations")).unwrap(), 1);
+        assert_eq!(state.str(&key("last_critique")).unwrap(), "");
+        assert_eq!(shape_of(&state, "answer"), ["writer:draft"]);
+        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+        assert_eq!(generator_model.requests().len(), 1);
+        assert!(critic_model.requests().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn given_histories_ending_on_a_critique_with_a_budget_of_zero_when_called_again_then_exhausted_without_generating()
+ {
+    let mut conversation = question("explain");
+    for (id, author, text) in [("g1", writer(), "a"), ("c1", reviewer(), "fix it")] {
+        conversation
+            .push_turn(Turn::new(
+                TurnId::new(id).unwrap(),
+                Some(author),
+                text_step(text),
+            ))
+            .unwrap();
+    }
+    let generator_model = Arc::new(LoggingModel::new(Vec::new()));
+    let graph = zero_budget(
+        generator_model.clone(),
+        Arc::new(LoggingModel::new(Vec::new())),
+        Count::Fixed(0),
+        true,
+    );
+    let state = ended(
+        call_with(&graph, conversation.clone(), conversation, BTreeMap::new()).await,
+        "exhausted",
+    );
+    assert_eq!(state.int(&key("generations")).unwrap(), 1);
+    assert_eq!(shape_of(&state, "answer"), ["writer:a"]);
+    assert!(generator_model.requests().is_empty());
+}
+
+#[tokio::test]
+async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_skips_the_critic_and_one_calls_it()
+ {
+    let budget = || Count::Config(key("critiques"));
+    let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
+    let critic_model = Arc::new(LoggingModel::new(Vec::new()));
+    let graph = zero_budget(generator_model, critic_model.clone(), budget(), true);
+    assert_eq!(
+        graph.schema().config.get(&key("critiques")),
+        Some(&Kind::Int)
+    );
+    let config = BTreeMap::from([(key("critiques"), Value::int(0))]);
+    let state = ended(
+        call_with(&graph, question("explain"), Conversation::new(), config).await,
+        "exhausted",
+    );
+    assert_eq!(state.int(&key("generations")).unwrap(), 1);
+    assert!(critic_model.requests().is_empty());
+
+    let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
+    let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+    let graph = zero_budget(generator_model, critic_model.clone(), budget(), true);
+    let config = BTreeMap::from([(key("critiques"), Value::int(1))]);
+    ended(
+        call_with(&graph, question("explain"), Conversation::new(), config).await,
+        "validated",
+    );
+    assert_eq!(critic_model.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn given_a_negative_critique_budget_in_the_configuration_when_run_then_count_negative() {
+    let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
+    let critic_model = Arc::new(LoggingModel::new(Vec::new()));
+    let graph = zero_budget(
+        generator_model,
+        critic_model.clone(),
+        Count::Config(key("critiques")),
+        true,
+    );
+    let config = BTreeMap::from([(key("critiques"), Value::int(-1))]);
+    let failure = call_with(&graph, question("explain"), Conversation::new(), config)
+        .await
+        .err()
+        .unwrap();
+    assert!(
+        matches!(failure.error, GraphError::CountNegative { value: -1, .. }),
+        "{}",
+        failure.error
+    );
+    assert!(critic_model.requests().is_empty());
 }
 
 fn property_names(schema: &Json) -> Vec<String> {
@@ -340,7 +466,7 @@ async fn critic_request(
             thinking,
             ..critic(critic_model.clone())
         },
-        limit(1),
+        Count::Fixed(1),
     )
     .graph()
     .unwrap();
@@ -393,7 +519,7 @@ fn given_a_critic_switch_on_a_key_of_another_kind_when_built_then_refused() {
             thinking: Some(Switch::Config(key("rounds"))),
             ..critic(Arc::new(LoggingModel::new(Vec::new())))
         },
-        Limit::Config(key("rounds")),
+        Count::Config(key("rounds")),
     )
     .graph();
     assert!(matches!(
@@ -410,7 +536,7 @@ fn given_both_seats_with_one_author_when_built_then_same_author() {
             author: writer(),
             ..critic(Arc::new(LoggingModel::new(Vec::new())))
         },
-        limit(1),
+        Count::Fixed(1),
     )
     .graph();
     assert!(matches!(built, Err(GraphError::SameAuthor { .. })));
@@ -459,7 +585,7 @@ async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_o
             ..generator(generator_model)
         },
         critic(critic_model),
-        limit(3),
+        Count::Fixed(3),
     )
     .graph()
     .unwrap();
@@ -505,7 +631,7 @@ async fn given_histories_ending_on_the_last_allowed_rejection_without_a_final_ge
         ..GeneratorCritic::new(
             generator(generator_model.clone()),
             critic(critic_model.clone()),
-            limit(1),
+            Count::Fixed(1),
         )
     }
     .graph()

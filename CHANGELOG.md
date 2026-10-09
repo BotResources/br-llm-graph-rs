@@ -20,6 +20,12 @@ form to decide whether a version ships.
   configuration key, so the host decides at run time. A key that is not
   declared as a bool configuration key is refused at build
   (`SwitchKeyMismatch`).
+- `Count`: a bound that may be zero, given as a fixed number or read from an
+  int configuration key. A key that is not declared as an int configuration
+  key is refused at build (`CountKeyMismatch`); a negative value is refused at
+  run time (`CountNegative`).
+- `Switch::resolve`, `Limit::resolve` and `Count::resolve` are public, so a
+  node of the caller reads the same configuration as the graph.
 - `Request::thinking` (`Option<bool>`): whether the model thinks natively
   before replying, `None` leaving the provider's default. Each model adapter
   translates it for its provider. `LlmNode::thinking` (`Option<Switch>`) is
@@ -163,7 +169,7 @@ form to decide whether a version ships.
   thinking read from the caller's configuration.
 - `GeneratorCritic`: a generator and a critic writing in one shared history,
   as a graph with a declared signature. Built with
-  `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Limit)`
+  `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Count)`
   (`final_generation` defaults to true) then `.graph()`. `GeneratorSeat {
   author, model, output, thinking, tools, tool_nodes, tool_concurrency,
   round_limit }`, `CriticSeat { author, model, thinking }`; two seats with one
@@ -196,7 +202,9 @@ form to decide whether a version ships.
     critic. After a rejection, the generator answers again while fewer than
     `max_critiques` answers were given; at `max_critiques` it answers once more,
     unassessed, when `final_generation`, else the run ends `exhausted` on the
-    rejected answer.
+    rejected answer. A `max_critiques` of 0 gives one generation and no critic
+    call: the run ends `exhausted` (`validated` false, `generations` 1),
+    whatever `final_generation`.
   - With tools, the generation is the `ReactLoop` fragment inline in the graph;
     each generation opens a new generator turn, so the round limit counts per
     generation.

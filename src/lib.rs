@@ -32,7 +32,7 @@ pub mod value;
 
 pub use error::{GraphError, NodeFault};
 pub use graph::{
-    Always, CaptureSource, CaptureUpdate, CheckSite, Context, Edge, FnEdge, FnNode, Graph,
+    Always, CaptureSource, CaptureUpdate, CheckSite, Context, Count, Edge, FnEdge, FnNode, Graph,
     GraphBuilder, IdSource, Input, ItemFailure, Limit, Map, Node, NodeError, NodeFuture, OnFailure,
     Output, Signature, SubGraph, Switch, Target,
 };

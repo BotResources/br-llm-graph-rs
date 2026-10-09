@@ -21,7 +21,20 @@ impl Switch {
         }
     }
 
-    pub(crate) fn resolve(&self, config: &Config) -> Result<bool, GraphError> {
+    /// The setting for this run: the fixed value, or the value of the
+    /// configuration key (`MissingKey` when `config` lacks it, `KindMismatch`
+    /// when it holds another kind).
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use br_llm_graph::{Config, Key, Kind, Schema, Switch, Value};
+    ///
+    /// let deep = Key::new("deep").unwrap();
+    /// let schema = Schema::builder().config(deep.clone(), Kind::Bool).build();
+    /// let config = Config::new(&schema, BTreeMap::from([(deep.clone(), Value::bool(true))])).unwrap();
+    /// assert!(Switch::Config(deep).resolve(&config).unwrap());
+    /// ```
+    pub fn resolve(&self, config: &Config) -> Result<bool, GraphError> {
         match self {
             Switch::Fixed(value) => Ok(*value),
             Switch::Config(key) => config.bool(key),

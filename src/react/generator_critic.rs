@@ -5,12 +5,12 @@ use serde_json::json;
 
 use crate::error::GraphError;
 use crate::graph::{
-    CheckSite, Context, FnEdge, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
+    CheckSite, Context, Count, FnEdge, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
 };
 use crate::react::helpers::{complete, final_step, last_turn_by_author, structured, wire};
 use crate::react::llm_node::{LlmNode, Source};
 use crate::react::model::{Model, OutputMode, Request, ToolCalls};
-use crate::react::react_agent::{declare_limit, declare_switch, round_limit_flag};
+use crate::react::react_agent::{declare_count, declare_limit, declare_switch, round_limit_flag};
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
 use crate::react::tool::Tool;
@@ -71,6 +71,8 @@ pub struct CriticSeat {
 /// a rejection sends the generator back, until `max_critiques` answers were
 /// rejected: then the generator answers once more, unassessed, when
 /// `final_generation`, else the run ends `exhausted` on the rejected answer.
+/// A `max_critiques` of 0 gives one generation and no critic call: the run
+/// ends `exhausted`, whatever `final_generation`.
 ///
 /// With tools, the generation is the `ReactLoop` fragment inline in this
 /// graph; each generation opens a new generator turn, so the round limit
@@ -78,7 +80,7 @@ pub struct CriticSeat {
 pub struct GeneratorCritic {
     pub generator: GeneratorSeat,
     pub critic: CriticSeat,
-    pub max_critiques: Limit,
+    pub max_critiques: Count,
     pub final_generation: bool,
 }
 
@@ -125,7 +127,7 @@ struct Router {
     conversation: Key,
     validated: Key,
     generator: Author,
-    max_critiques: Limit,
+    max_critiques: Count,
     final_generation: bool,
     generate: NodeId,
     critique: NodeId,
@@ -147,7 +149,7 @@ impl Router {
 
     fn after_answer(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
         let generations = self.generations(state)?;
-        let max = self.max_critiques.resolve(config)?.get();
+        let max = self.max_critiques.resolve(config)?;
         let next = if generations > max {
             &self.finish
         } else {
@@ -165,8 +167,8 @@ impl Router {
 
     fn after_rejection(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
         let generations = self.generations(state)?;
-        let max = self.max_critiques.resolve(config)?.get();
-        let next = if generations < max || self.final_generation {
+        let max = self.max_critiques.resolve(config)?;
+        let next = if generations < max || (self.final_generation && max > 0) {
             &self.generate
         } else {
             &self.finish
@@ -183,7 +185,7 @@ impl Router {
 }
 
 impl GeneratorCritic {
-    pub fn new(generator: GeneratorSeat, critic: CriticSeat, max_critiques: Limit) -> Self {
+    pub fn new(generator: GeneratorSeat, critic: CriticSeat, max_critiques: Count) -> Self {
         Self {
             generator,
             critic,
@@ -213,7 +215,7 @@ impl GeneratorCritic {
             .state(names.last_critique.clone(), Kind::Str);
         schema = declare_switch(schema, generator.thinking.as_ref());
         schema = declare_switch(schema, critic.thinking.as_ref());
-        schema = declare_limit(schema, Some(&self.max_critiques));
+        schema = declare_count(schema, &self.max_critiques);
         schema = declare_limit(schema, generator.tool_concurrency.as_ref());
         if let Some(round_limit) = &generator.round_limit {
             schema = declare_limit(schema, Some(&round_limit.max_rounds));
