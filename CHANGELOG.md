@@ -92,8 +92,8 @@ form to decide whether a version ships.
   occurrence with the item as witness (`Context::record_item`) while the map's
   superstep is still open; `Context::recorded_item(item)` gives what an earlier
   attempt recorded only when it ran on the same item value, and the map uses
-  it instead of running the item again. A record made on another value (a
-  restarted called graph whose list changed) is ignored and replaced.
+  it instead of running the item again. A record made on another value is
+  ignored and replaced.
   Every node of a superstep that returns updates records them the same way
   under its own occurrence (`Context::record`), and a node recorded by an
   earlier attempt is not run again (`Context::recorded`), a map that finished
@@ -101,8 +101,16 @@ form to decide whether a version ships.
   applied. The checkpoint of a failure, a cancel or a pause carries the run's
   pending writes; `Session::resume` and `Context::with_pending(checkpoint.pending)`
   (for `run`) hand them back, so a resumed run skips the finished nodes and
-  items. Inside a called graph, nodes and map items record under the nested
-  occurrence (`each[1]/inner[0]`) and travel in the caller's checkpoint.
+  items. Pending writes belong to the run being resumed: its nodes, the items
+  of its maps and of a map directly inside one of them (`m[0]/m[1]`).
+- A called graph restarts whole. When a call starts, the pending entries below
+  its occurrence are removed, and inside it nothing is recorded or reused
+  (`record` and `record_item` do nothing, `recorded` and `recorded_item` find
+  nothing), however deep: the child rebuilds its own state, so an entry made
+  inside it may come from a value or a loop round the restart does not
+  reproduce. The call's own result is recorded by the run or the map that
+  holds it, so a map whose items call a graph still skips its finished items
+  on resume.
 - `Observer::recorded(origin, entry)` (defaulted): fires on every record, so a
   host can persist pending entries, witness included, as they come and insert
   them later under `origin.occurrence`.
@@ -151,7 +159,7 @@ form to decide whether a version ships.
 - `Context` gains private fields; build it with `Context::new`.
 - `run` gives each run its own pending-writes recorder, seeded with what the
   given context holds, so two runs sharing one context never see each
-  other's records. A `SubGraph` shares its caller's recorder.
+  other's records.
 - `Checkpoint` gains the field `pending`, read as empty from checkpoints
   written before it and not written when empty; build one with
   `Checkpoint::new`.

@@ -1,5 +1,5 @@
-//! A called graph restarted after a failure may list its items differently:
-//! a recorded item is reused only for the same item value.
+//! A called graph restarted after a failure may list its items differently.
+//! It restarts whole: nothing recorded inside it is kept or reused.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -130,8 +130,8 @@ async fn fail_then_resume(script: &Arc<Script>) -> Vec<Value> {
         .unwrap();
     let checkpoint = failure.checkpoint;
     assert!(
-        !checkpoint.pending.is_empty(),
-        "the finished item is pending"
+        checkpoint.pending.is_empty(),
+        "nothing below the call is pending"
     );
     script.attempt.store(1, Ordering::SeqCst);
     let (_sender, mut inbox) = channel();
@@ -160,10 +160,10 @@ async fn given_a_restarted_child_whose_items_moved_when_resumed_then_each_item_i
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn given_a_restarted_child_with_the_same_item_at_the_same_index_when_resumed_then_it_is_reused()
+async fn given_a_restarted_child_with_the_same_first_item_when_resumed_then_the_call_runs_whole_again()
  {
     let script = Script::new(vec![vec!["x", "y"], vec!["x", "z"]]);
     let result = fail_then_resume(&script).await;
     assert_eq!(result, vec![Value::str("X"), Value::str("Z")]);
-    assert_eq!(script.calls("x"), 1);
+    assert_eq!(script.calls("x"), 2);
 }

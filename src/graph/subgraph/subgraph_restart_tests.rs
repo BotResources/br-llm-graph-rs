@@ -1,5 +1,5 @@
-//! A called graph that failed restarts from its entry on resume, while its
-//! pending entries are keyed by occurrence only.
+//! A called graph that failed restarts from its entry on resume: nothing
+//! recorded inside it may be reused, since a loop may be on another round.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use super::test_support::*;
 use crate::graph::subgraph::{Output, SubGraph};
 use crate::graph::{Always, Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Target};
 use crate::observe::NoopObserver;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, PendingEntry, PendingWrites, channel, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 
@@ -79,7 +79,6 @@ fn two_rounds(failing: &Arc<AtomicBool>) -> Arc<Graph> {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "known limit: a called graph restarts from its entry and reuses a node-level entry recorded in a later round"]
 async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_round_runs_its_own_nodes()
  {
     let failing = Arc::new(AtomicBool::new(true));
@@ -110,6 +109,67 @@ async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_
         &config,
         checkpoint.state,
         Some(checkpoint.cursor),
+        &resumed,
+        &mut inbox,
+    )
+    .await;
+    let Ok(Outcome::Finished { state, .. }) = outcome else {
+        panic!("expected finished");
+    };
+    assert_eq!(
+        state.list(&key("result")).unwrap(),
+        &[Value::str("a1"), Value::str("a2")]
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn given_stale_entries_below_a_call_when_it_runs_then_they_are_ignored_and_cleared() {
+    let failing = Arc::new(AtomicBool::new(true));
+    let schema = Schema::builder()
+        .state(key("result"), Kind::list(Kind::Str))
+        .build();
+    let call = SubGraph::call(two_rounds(&failing)).output(key("seen"), Output::Set(key("result")));
+    let caller = GraphBuilder::new(schema.clone())
+        .entry(nid("call"))
+        .subgraph(nid("call"), call)
+        .edge(nid("call"), Always(end("done")))
+        .build()
+        .unwrap();
+    let config = Config::new(&schema, BTreeMap::new()).unwrap();
+    let mut stale = PendingWrites::new();
+    stale.insert(
+        "call/a".parse().unwrap(),
+        PendingEntry::new(vec![Update::Append {
+            key: key("seen"),
+            value: Value::str("stale"),
+        }]),
+    );
+    stale.insert(
+        "call/tick".parse().unwrap(),
+        PendingEntry::new(vec![Update::Set {
+            key: key("count"),
+            value: Value::int(9),
+        }]),
+    );
+    let ctx = context(Arc::new(NoopObserver)).with_pending(stale.clone());
+    let (_sender, mut inbox) = channel();
+    let state = caller.start_state(Vec::new()).unwrap();
+    let failure = run(&caller, &config, state, None, &ctx, &mut inbox)
+        .await
+        .err()
+        .unwrap();
+    assert!(failure.checkpoint.pending.is_empty());
+
+    failing.store(false, Ordering::SeqCst);
+    let mut pending = failure.checkpoint.pending;
+    pending.merge(stale);
+    let (_sender, mut inbox) = channel();
+    let resumed = context(Arc::new(NoopObserver)).with_pending(pending);
+    let outcome = run(
+        &caller,
+        &config,
+        failure.checkpoint.state,
+        Some(failure.checkpoint.cursor),
         &resumed,
         &mut inbox,
     )

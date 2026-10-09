@@ -92,3 +92,14 @@ fn given_entries_of_several_nodes_when_a_superstep_completes_then_only_its_nodes
     assert_eq!(pending.len(), 2);
     assert_eq!(pending.under(&OccurrenceKey::root()).len(), 2);
 }
+
+#[test]
+fn given_entries_around_an_occurrence_when_dropped_below_then_only_deeper_ones_go() {
+    let mut pending = PendingWrites::new();
+    for key in ["call", "call/a", "call/m[1]/b", "callee/a", "m[0]"] {
+        pending.insert(occurrence(key), entry(key));
+    }
+    pending.drop_below(&occurrence("call"));
+    let left: Vec<String> = pending.iter().map(|(key, _)| key.to_string()).collect();
+    assert_eq!(left, vec!["call", "callee/a", "m[0]"]);
+}

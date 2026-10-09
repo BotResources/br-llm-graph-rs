@@ -28,8 +28,9 @@ use crate::value::Key;
 /// A finished item records its appends under its occurrence, with the item as
 /// witness (`Context::record_item`), before the map returns. An item an
 /// earlier attempt recorded on the same item value is not run again: its
-/// recorded appends are used. A record made on another value (the list
-/// changed) is ignored and replaced.
+/// recorded appends are used. A record made on another value is ignored and
+/// replaced. Inside a called graph nothing is recorded: the call restarts
+/// whole (see `SubGraph`).
 ///
 /// At build, `check` refuses a list key that is not a list whose element kind
 /// is the item key's kind, checks the limit and the capture updates, then

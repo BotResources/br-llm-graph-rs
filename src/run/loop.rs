@@ -29,7 +29,10 @@ use crate::value::NodeId;
 /// `ctx` holds: to resume a checkpoint, pass its state, its cursor and
 /// `ctx.with_pending(checkpoint.pending)`. The checkpoint of a failure, a
 /// cancel or a pause carries the pending entries of the run; those of a
-/// superstep are dropped once it is applied.
+/// superstep are dropped once it is applied. Pending entries belong to the run
+/// being resumed: its own nodes and the items of its maps (a map directly in
+/// a map included). A called graph restarts whole, so nothing inside it is
+/// recorded or reused.
 pub async fn run(
     graph: &Graph,
     config: &Config,

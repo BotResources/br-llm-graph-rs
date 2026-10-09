@@ -25,6 +25,8 @@ mod map_tests;
 #[cfg(test)]
 mod map_window_tests;
 #[cfg(test)]
+mod nested_map_tests;
+#[cfg(test)]
 mod origin_tests;
 #[cfg(test)]
 mod resume_tests;

@@ -118,7 +118,8 @@ fn summaries() -> Vec<Value> {
 }
 
 #[tokio::test]
-async fn given_nested_maps_when_run_then_each_item_records_under_its_full_occurrence() {
+async fn given_items_that_call_a_graph_with_an_inner_map_when_run_then_only_the_outer_run_records()
+{
     let graph = each_item(&Arc::new(Counted::default()));
     let records = Arc::new(Records::default());
     let outcome = run_parent(&graph, start(&graph), &parent_config(1), records.clone()).await;
@@ -128,28 +129,11 @@ async fn given_nested_maps_when_run_then_each_item_records_under_its_full_occurr
     assert_eq!(state.list(&key("results")).unwrap(), summaries().as_slice());
     let mut seen = records.0.lock().unwrap().clone();
     seen.sort();
-    assert_eq!(
-        seen,
-        vec![
-            "each",
-            "each[0]",
-            "each[0]/inner",
-            "each[0]/inner[0]",
-            "each[0]/inner[1]",
-            "each[0]/join",
-            "each[0]/split",
-            "each[1]",
-            "each[1]/inner",
-            "each[1]/inner[0]",
-            "each[1]/inner[1]",
-            "each[1]/join",
-            "each[1]/split"
-        ]
-    );
+    assert_eq!(seen, vec!["each", "each[0]", "each[1]"]);
 }
 
 #[tokio::test]
-async fn given_a_nested_item_failing_when_resumed_then_finished_outer_and_inner_items_are_not_run_again()
+async fn given_an_inner_item_failing_inside_a_call_when_resumed_then_finished_outer_items_are_skipped_and_the_call_restarts_whole()
  {
     let calls = Counted::failing_on("y2");
     let graph = each_item(&calls);
@@ -168,7 +152,7 @@ async fn given_a_nested_item_failing_when_resumed_then_finished_outer_and_inner_
         .iter()
         .map(|(key, _)| key.to_string())
         .collect();
-    assert_eq!(pending, vec!["each[0]", "each[1]/inner[0]"]);
+    assert_eq!(pending, vec!["each[0]"]);
 
     calls.heal();
     let checkpoint = failure.checkpoint;
@@ -187,7 +171,7 @@ async fn given_a_nested_item_failing_when_resumed_then_finished_outer_and_inner_
         panic!("expected finished");
     };
     assert_eq!(state.list(&key("results")).unwrap(), summaries().as_slice());
-    let expected: BTreeMap<String, usize> = [("x1", 1), ("x2", 1), ("y1", 1), ("y2", 2)]
+    let expected: BTreeMap<String, usize> = [("x1", 1), ("x2", 1), ("y1", 2), ("y2", 2)]
         .into_iter()
         .map(|(item, count)| (item.to_owned(), count))
         .collect();

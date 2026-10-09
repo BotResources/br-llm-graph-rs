@@ -22,13 +22,19 @@ pub trait IdSource: Send + Sync {
 /// every item (with the item as witness). It is shared by every context
 /// derived from this one; `run` gives each run its own recorder, seeded with
 /// the pending writes this context holds (empty unless set with
-/// `with_pending`), and a called graph shares its caller's.
+/// `with_pending`).
+///
+/// Pending writes belong to the run being resumed. A called graph restarts
+/// whole: inside it recording is off, for every context derived from it, so
+/// `record` and `record_item` do nothing and `recorded` and `recorded_item`
+/// find nothing.
 #[derive(Clone)]
 pub struct Context {
     pub observer: Arc<dyn Observer>,
     pub ids: Arc<dyn IdSource>,
     origin: Origin,
     pending: Arc<Mutex<PendingWrites>>,
+    recording: bool,
 }
 
 impl Context {
@@ -40,6 +46,7 @@ impl Context {
             ids,
             origin: Origin::default(),
             pending: Arc::default(),
+            recording: true,
         }
     }
 
@@ -100,6 +107,9 @@ impl Context {
     /// What an earlier attempt recorded for this occurrence, recorded with
     /// `record`.
     pub fn recorded(&self) -> Option<Vec<Update>> {
+        if !self.recording {
+            return None;
+        }
         self.store()
             .matching(&self.origin.occurrence, None)
             .map(<[Update]>::to_vec)
@@ -108,14 +118,29 @@ impl Context {
     /// What an earlier attempt recorded for this map item, only when it ran on
     /// the same `item`: an entry for another item at this index is ignored.
     pub fn recorded_item(&self, item: &Value) -> Option<Vec<Update>> {
+        if !self.recording {
+            return None;
+        }
         self.store()
             .matching(&self.origin.occurrence, Some(item))
             .map(<[Update]>::to_vec)
     }
 
     fn keep(&self, entry: PendingEntry) {
+        if !self.recording {
+            return;
+        }
         self.observer.recorded(&self.origin, &entry);
         self.store().insert(self.origin.occurrence.clone(), entry);
+    }
+
+    /// The context a called graph runs in: the entries strictly below this
+    /// occurrence are removed, and recording is off from here down.
+    pub(crate) fn restart_whole(&self) -> Context {
+        self.store().drop_below(&self.origin.occurrence);
+        let mut scope = self.clone();
+        scope.recording = false;
+        scope
     }
 
     /// A copy of every pending write the recorder holds.
@@ -141,9 +166,11 @@ impl Context {
     }
 
     /// This context with a recorder of its own seeded with a copy of what
-    /// this one holds.
+    /// this one holds, recording on: a run records into its own recorder.
     pub(crate) fn isolated(&self) -> Context {
-        self.clone().with_pending(self.pending())
+        let mut context = self.clone().with_pending(self.pending());
+        context.recording = true;
+        context
     }
 
     fn store(&self) -> MutexGuard<'_, PendingWrites> {

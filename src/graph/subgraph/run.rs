@@ -24,12 +24,13 @@ impl Node for SubGraph {
             // Nobody holds the sender: the nested run can neither pause nor be
             // cancelled from outside. Dropping this future cancels it.
             let (_, mut inbox) = channel();
+            let scope = ctx.restart_whole();
             let result = run_nested(
                 &self.graph,
                 &child_config,
                 child_state,
                 None,
-                ctx,
+                &scope,
                 &mut inbox,
             )
             .await;

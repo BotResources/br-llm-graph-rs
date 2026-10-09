@@ -99,6 +99,13 @@ impl PendingWrites {
         )
     }
 
+    /// Drops the entries strictly below `occurrence`; its own entry stays.
+    pub(crate) fn drop_below(&mut self, occurrence: &OccurrenceKey) {
+        let depth = occurrence.segments().len();
+        self.0
+            .retain(|key, _| !(key.starts_with(occurrence) && key.segments().len() > depth));
+    }
+
     /// Drops the entries of the occurrences of `nodes` run directly under
     /// `run`, whatever their item index, and everything nested in them.
     pub(crate) fn drop_nodes(&mut self, run: &OccurrenceKey, nodes: &[NodeId]) {

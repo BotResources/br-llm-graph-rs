@@ -128,6 +128,11 @@ pub(crate) fn captured(
 /// from the caller, to its end, with a context for the calling node's
 /// occurrence. Nothing else crosses: the declared outputs mapped here become
 /// the node's updates. The child keeps no memory between two calls.
+///
+/// A call restarts whole: when it starts, the pending entries below its
+/// occurrence are removed, and nothing inside the child is recorded or reused.
+/// Only the call's own result can be recorded, by the run or the map that
+/// holds it.
 pub struct SubGraph {
     pub(crate) graph: Arc<Graph>,
     pub(crate) inputs: Vec<(Key, Input)>,
