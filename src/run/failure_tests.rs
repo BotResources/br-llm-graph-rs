@@ -61,7 +61,7 @@ async fn given_node_returns_input_on_non_conversation_key_when_run_then_not_conv
 }
 
 #[tokio::test]
-async fn given_failing_node_beside_success_when_run_then_success_kept_failure_reported() {
+async fn given_failing_node_beside_success_when_run_then_nothing_applied_and_the_success_pending() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("start"))
         .node(nid("start"), noop_node())
@@ -81,7 +81,14 @@ async fn given_failing_node_beside_success_when_run_then_success_kept_failure_re
         failure.error,
         crate::error::GraphError::NodeFailed { .. }
     ));
-    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 5);
+    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 0);
+    let pending: Vec<String> = failure
+        .checkpoint
+        .pending
+        .iter()
+        .map(|(occurrence, _)| occurrence.to_string())
+        .collect();
+    assert_eq!(pending, vec!["a"]);
 }
 
 #[tokio::test]
@@ -107,7 +114,7 @@ async fn given_panicking_node_when_run_then_node_failed_with_state_intact() {
 }
 
 #[tokio::test]
-async fn given_panicking_node_beside_success_when_run_then_success_kept_and_panic_reported() {
+async fn given_panicking_node_beside_success_when_run_then_nothing_applied_and_panic_reported() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("start"))
         .node(nid("start"), noop_node())
@@ -129,7 +136,14 @@ async fn given_panicking_node_beside_success_when_run_then_success_kept_and_pani
         }
         other => panic!("expected NodeFailed, got {other}"),
     }
-    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 5);
+    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 0);
+    let pending: Vec<String> = failure
+        .checkpoint
+        .pending
+        .iter()
+        .map(|(occurrence, _)| occurrence.to_string())
+        .collect();
+    assert_eq!(pending, vec!["a"]);
 }
 
 #[tokio::test]

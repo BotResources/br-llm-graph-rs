@@ -94,11 +94,14 @@ form to decide whether a version ships.
   attempt recorded only when it ran on the same item value, and the map uses
   it instead of running the item again. A record made on another value (a
   restarted called graph whose list changed) is ignored and replaced.
-  `Context::record` and `Context::recorded` do the same without a witness.
-  Entries of a node are dropped once its superstep completes. The
-  checkpoint of a failure, a cancel or a pause carries the run's pending
-  writes; `Session::resume` and `Context::with_pending(checkpoint.pending)`
-  (for `run`) hand them back, so a resumed run skips the finished items. Items
+  Every node of a superstep that returns updates records them the same way
+  under its own occurrence (`Context::record`), and a node recorded by an
+  earlier attempt is not run again (`Context::recorded`), a map that finished
+  as a whole included. Entries of a node are dropped once its superstep is
+  applied. The checkpoint of a failure, a cancel or a pause carries the run's
+  pending writes; `Session::resume` and `Context::with_pending(checkpoint.pending)`
+  (for `run`) hand them back, so a resumed run skips the finished nodes and
+  items. Items
   of a map inside a called graph record under the nested occurrence
   (`each[1]/inner[0]`) and travel in the caller's checkpoint.
 - `Observer::recorded(origin, entry)` (defaulted): fires on every record, so a
@@ -150,6 +153,15 @@ form to decide whether a version ships.
   output or capture of a `SubGraph` body, which its own `check` cannot see as a
   map body. A map run outside a graph, whose context names no node, fails with
   `MapWithoutOccurrence`.
+- A superstep is applied as a whole. When one of its nodes fails or panics,
+  its updates are refused, or its edges or the end label cannot be resolved,
+  nothing of it reaches the state: the failure checkpoint holds the state from
+  before the superstep (plus the inputs received meanwhile), the cursor of the
+  whole superstep and the pending entries of the nodes that finished. Before,
+  the updates of the nodes that succeeded were applied, and a resume applied
+  them a second time. A node whose updates are refused is not kept pending, so
+  a resume runs it again. Observers see `applied` only for a superstep that is
+  applied.
 - `Map` runs its bodies in a rolling window: at most `max_concurrency` at
   once, a new one starting as soon as any running one finishes, never held by
   a slow earlier item. Every body runs to its end; the first error in item

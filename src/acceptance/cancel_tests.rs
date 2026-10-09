@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use super::support::*;
 use crate::{NoopObserver, Observer, Origin, Outcome, PendingEntry, Sender, channel, run};
 
-/// Cancels the run once `after` items have recorded their result.
+/// Cancels the run once `after` items of the map have recorded their result.
 struct CancelAfter {
     after: usize,
     seen: Mutex<usize>,
@@ -11,7 +11,10 @@ struct CancelAfter {
 }
 
 impl Observer for CancelAfter {
-    fn recorded(&self, _origin: &Origin, _entry: &PendingEntry) {
+    fn recorded(&self, origin: &Origin, entry: &PendingEntry) {
+        if entry.witness.is_none() || origin.occurrence.segments().len() != 1 {
+            return;
+        }
         let mut seen = self.seen.lock().unwrap();
         *seen += 1;
         if *seen == self.after {

@@ -28,9 +28,12 @@ impl Observer for Trace {
         self.0.lock().unwrap().push(entry);
     }
 
-    fn recorded(&self, origin: &Origin, _entry: &PendingEntry) {
-        let entry = ("recorded".to_owned(), origin.occurrence.to_string());
-        self.0.lock().unwrap().push(entry);
+    /// Only the records of the map's own items.
+    fn recorded(&self, origin: &Origin, entry: &PendingEntry) {
+        if entry.witness.is_some() && origin.occurrence.segments().len() == 1 {
+            let entry = ("recorded".to_owned(), origin.occurrence.to_string());
+            self.0.lock().unwrap().push(entry);
+        }
     }
 }
 

@@ -156,7 +156,8 @@ async fn given_end_mixed_with_node_target_when_run_then_only_final_end_counts() 
 }
 
 #[tokio::test]
-async fn given_edge_returning_no_target_when_run_then_empty_edge_error() {
+async fn given_edge_returning_no_target_when_run_then_empty_edge_error_and_the_step_left_unapplied()
+{
     let graph = GraphBuilder::new(schema())
         .entry(nid("a"))
         .node(nid("a"), set_count_node(3))
@@ -172,7 +173,8 @@ async fn given_edge_returning_no_target_when_run_then_empty_edge_error() {
         failure.error,
         crate::error::GraphError::EmptyEdge { .. }
     ));
-    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 3);
+    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 0);
+    assert_eq!(failure.checkpoint.pending.len(), 1);
 }
 
 #[tokio::test]

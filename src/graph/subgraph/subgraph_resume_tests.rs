@@ -129,12 +129,19 @@ async fn given_nested_maps_when_run_then_each_item_records_under_its_full_occurr
     assert_eq!(
         seen,
         vec![
+            "each",
             "each[0]",
+            "each[0]/inner",
             "each[0]/inner[0]",
             "each[0]/inner[1]",
+            "each[0]/join",
+            "each[0]/split",
             "each[1]",
+            "each[1]/inner",
             "each[1]/inner[0]",
-            "each[1]/inner[1]"
+            "each[1]/inner[1]",
+            "each[1]/join",
+            "each[1]/split"
         ]
     );
 }

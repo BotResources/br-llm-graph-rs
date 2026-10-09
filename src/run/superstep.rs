@@ -6,7 +6,7 @@ use futures_util::future::{Either, join_all, select};
 use futures_util::{FutureExt, StreamExt};
 
 use crate::error::NodeFault;
-use crate::graph::{Context, Graph, NodeError};
+use crate::graph::{Context, Graph, Node, NodeError};
 use crate::run::inbox::{Inbox, Message};
 use crate::state::{Config, State};
 use crate::update::Update;
@@ -44,7 +44,7 @@ pub(crate) async fn drive_superstep(
     let futures = present.iter().zip(&contexts).filter_map(|(id, node_ctx)| {
         graph
             .node(id)
-            .map(|node| AssertUnwindSafe(node.run(state, config, node_ctx)).catch_unwind())
+            .map(|node| run_recorded(node, state, config, node_ctx))
     });
     let superstep = join_all(futures);
     futures_util::pin_mut!(superstep);
@@ -75,6 +75,28 @@ pub(crate) async fn drive_superstep(
         held_inputs,
         pause,
     }
+}
+
+/// Runs a node of the superstep in its own occurrence. A node an earlier
+/// attempt recorded is not run: its recorded updates are used. A node that
+/// returns updates records them as soon as it finishes, so a failure or a
+/// cancel of the superstep keeps them; an error or a panic records nothing.
+async fn run_recorded(
+    node: &dyn Node,
+    state: &State,
+    config: &Config,
+    ctx: &Context,
+) -> RawOutcome {
+    if let Some(updates) = ctx.recorded() {
+        return Ok(Ok(updates));
+    }
+    let outcome = AssertUnwindSafe(node.run(state, config, ctx))
+        .catch_unwind()
+        .await;
+    if let Ok(Ok(updates)) = &outcome {
+        ctx.record(updates);
+    }
+    outcome
 }
 
 fn pair(

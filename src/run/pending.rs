@@ -72,6 +72,10 @@ impl PendingWrites {
         self.0.iter()
     }
 
+    pub(crate) fn remove(&mut self, occurrence: &OccurrenceKey) {
+        self.0.remove(occurrence);
+    }
+
     /// The updates recorded for `occurrence` when its witness is `witness`.
     pub(crate) fn matching(
         &self,

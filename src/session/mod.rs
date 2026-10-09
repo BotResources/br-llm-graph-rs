@@ -56,7 +56,10 @@ impl Session {
     }
 
     /// A session continuing from `checkpoint`, its pending writes included:
-    /// occurrences the checkpoint records as finished are not run again.
+    /// the nodes and map items the checkpoint records as finished are not run
+    /// again, and the interrupted superstep is applied once all its nodes are
+    /// done. Between two `run_once` calls the session keeps the pending
+    /// writes of the last outcome.
     pub fn resume(
         graph: Arc<Graph>,
         config: Config,

@@ -170,6 +170,8 @@ mod subgraph_hook_tests;
 #[cfg(test)]
 mod subgraph_map_tests;
 #[cfg(test)]
+mod subgraph_restart_tests;
+#[cfg(test)]
 mod subgraph_resume_tests;
 #[cfg(test)]
 mod subgraph_run_tests;

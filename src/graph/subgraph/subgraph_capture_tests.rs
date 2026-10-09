@@ -145,7 +145,11 @@ async fn given_failing_items_with_capture_when_mapped_then_failures_are_listed_i
             value: Value::str("bad1")
         })
     );
-    assert_eq!(records.len(), 5);
+    let items = records
+        .iter()
+        .filter(|(occurrence, _)| occurrence.starts_with("each[") && !occurrence.contains('/'))
+        .count();
+    assert_eq!(items, 5);
 }
 
 #[tokio::test]

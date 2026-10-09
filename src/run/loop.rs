@@ -1,28 +1,35 @@
 // Ok and Err arms both carry State; boxing the Err alone saves nothing.
 #![allow(clippy::result_large_err)]
 
-use std::collections::BTreeMap;
-
 use br_llm_messages::UserInput;
 
-use crate::error::{GraphError, NodeFault};
-use crate::graph::{Context, Graph, Target};
+use crate::error::GraphError;
+use crate::graph::{Context, Graph};
 use crate::run::checkpoint::Checkpoint;
 use crate::run::cursor::Cursor;
 use crate::run::inbox::{Inbox, Message};
 use crate::run::outcome::{Outcome, RunFailure};
+use crate::run::settle::settle;
 use crate::run::superstep::{StepResult, drive_superstep};
 use crate::state::{Config, State};
 use crate::update::Update;
-use crate::value::{EndLabel, NodeId};
+use crate::value::NodeId;
 
 /// Runs `graph` from `state` (and `cursor`, when resuming) until it ends,
 /// pauses, is cancelled or fails.
 ///
-/// The run records pending writes in a recorder of its own, seeded with those
+/// A superstep runs its nodes together and is applied as a whole: when one of
+/// them fails, its updates are refused, or the edges or the end cannot be
+/// resolved, nothing of the superstep reaches the state, and the failure
+/// checkpoint holds the state from before it with the cursor of the whole
+/// superstep. Each node that finished recorded its updates under its
+/// occurrence (a pending entry), so a resume skips it and runs only the others.
+///
+/// The run keeps pending entries in a recorder of its own, seeded with those
 /// `ctx` holds: to resume a checkpoint, pass its state, its cursor and
 /// `ctx.with_pending(checkpoint.pending)`. The checkpoint of a failure, a
-/// cancel or a pause carries the pending writes of the run.
+/// cancel or a pause carries the pending entries of the run; those of a
+/// superstep are dropped once it is applied.
 pub async fn run(
     graph: &Graph,
     config: &Config,
@@ -73,61 +80,43 @@ pub(crate) async fn run_nested(
             return cancelled(state, ctx, held_inputs, &active, &deferred);
         }
 
-        let mut by_id: BTreeMap<NodeId, Result<Vec<Update>, NodeFault>> =
-            results.into_iter().collect();
-        let mut failure: Option<(NodeId, NodeFault)> = None;
-        for id in graph.order() {
-            let Some(result) = by_id.remove(id) else {
-                continue;
-            };
-            match result {
-                Ok(updates) => match state.apply_batch(&updates) {
-                    Ok(()) => {
-                        for update in &updates {
-                            ctx.observer.applied(ctx.origin(), update);
-                        }
-                    }
-                    Err(error) => {
-                        if failure.is_none() {
-                            failure = Some((id.clone(), NodeFault::Refused(Box::new(error))));
-                        }
-                    }
-                },
-                Err(fault) => {
-                    if failure.is_none() {
-                        failure = Some((id.clone(), fault));
-                    }
-                }
+        let inputs = input_updates(held_inputs);
+        let settled = match settle(
+            graph,
+            config,
+            &state,
+            results,
+            &inputs,
+            (&active, &deferred),
+            ctx,
+        ) {
+            Ok(settled) => settled,
+            Err(error) => {
+                // Nothing of the superstep reaches the state; the held inputs
+                // do, as they would have on any other outcome.
+                let state = with_inputs(state, ctx, &inputs);
+                return Err(fail(state, ctx, &active, &deferred, error));
             }
-        }
-        let input_error = apply_inputs(&mut state, ctx, held_inputs).err();
-        if let Some((node, source)) = failure {
-            let error = GraphError::NodeFailed { node, source };
-            return Err(fail(state, ctx, &active, &deferred, error));
-        }
-        if let Some(error) = input_error {
-            return Err(fail(state, ctx, &active, &deferred, error));
+        };
+        state = settled.state;
+        for update in &settled.applied {
+            ctx.observer.applied(ctx.origin(), update);
         }
         ctx.drop_pending(&active);
 
-        let (produced, ends) = match evaluate_edges(graph, config, &state, &active) {
-            Ok(pair) => pair,
-            Err(error) => return Err(fail(state, ctx, &active, &deferred, error)),
-        };
-
-        let (active_next, deferred_next) = next_sets(graph, produced, &deferred);
-        let cursor = Cursor::new(active_next.clone(), deferred_next.clone());
+        let cursor = Cursor::new(settled.active.clone(), settled.deferred.clone());
         ctx.observer.checkpoint(ctx.origin(), &state, &cursor);
 
-        if active_next.is_empty() && deferred_next.is_empty() {
-            return finish(state, &active, &deferred, ends, ctx);
+        if let Some(end) = settled.end {
+            ctx.observer.run_finished(ctx.origin(), &end);
+            return Ok(Outcome::Finished { state, end });
         }
         if pause {
             let checkpoint = Checkpoint::new(state, cursor).with_pending(ctx.pending_here());
             return Ok(Outcome::Paused { checkpoint });
         }
-        active = active_next;
-        deferred = deferred_next;
+        active = settled.active;
+        deferred = settled.deferred;
     }
 }
 
@@ -154,127 +143,33 @@ fn cancelled(
     active: &[NodeId],
     deferred: &[NodeId],
 ) -> Result<Outcome, RunFailure> {
-    if let Err(error) = apply_inputs(&mut state, ctx, held_inputs) {
+    let inputs = input_updates(held_inputs);
+    if let Err(error) = state.apply_batch(&inputs) {
         return Err(fail(state, ctx, active, deferred, error));
+    }
+    for update in &inputs {
+        ctx.observer.applied(ctx.origin(), update);
     }
     let checkpoint = Checkpoint::new(state, Cursor::new(active.to_vec(), deferred.to_vec()))
         .with_pending(ctx.pending_here());
     Ok(Outcome::Cancelled { checkpoint })
 }
 
-fn apply_inputs(
-    state: &mut State,
-    ctx: &Context,
-    held_inputs: Vec<(crate::value::Key, UserInput)>,
-) -> Result<(), GraphError> {
-    if held_inputs.is_empty() {
-        return Ok(());
-    }
-    let updates: Vec<Update> = held_inputs
+fn input_updates(held_inputs: Vec<(crate::value::Key, UserInput)>) -> Vec<Update> {
+    held_inputs
         .into_iter()
         .map(|(key, input)| Update::Input { key, input })
-        .collect();
-    state.apply_batch(&updates)?;
-    for update in &updates {
-        ctx.observer.applied(ctx.origin(), update);
-    }
-    Ok(())
+        .collect()
 }
 
-fn evaluate_edges(
-    graph: &Graph,
-    config: &Config,
-    state: &State,
-    active: &[NodeId],
-) -> Result<(Vec<NodeId>, Vec<EndLabel>), GraphError> {
-    let mut produced: Vec<NodeId> = Vec::new();
-    let mut ends: Vec<EndLabel> = Vec::new();
-    for id in graph.order() {
-        if !active.contains(id) {
-            continue;
-        }
-        let edge = graph
-            .edge(id)
-            .ok_or_else(|| GraphError::NodeWithoutEdge { id: id.clone() })?;
-        let targets = edge.next(state, config)?;
-        if targets.is_empty() {
-            return Err(GraphError::EmptyEdge { node: id.clone() });
-        }
-        for target in targets {
-            match target {
-                Target::Node(node) => {
-                    if !graph.contains(&node) {
-                        return Err(GraphError::UnknownNode { id: node });
-                    }
-                    if !produced.contains(&node) {
-                        produced.push(node);
-                    }
-                }
-                Target::End(label) => ends.push(label),
-            }
+/// `state` with the held inputs, when it takes them; unchanged otherwise.
+fn with_inputs(mut state: State, ctx: &Context, inputs: &[Update]) -> State {
+    if !inputs.is_empty() && state.apply_batch(inputs).is_ok() {
+        for update in inputs {
+            ctx.observer.applied(ctx.origin(), update);
         }
     }
-    Ok((produced, ends))
-}
-
-fn next_sets(
-    graph: &Graph,
-    produced: Vec<NodeId>,
-    deferred: &[NodeId],
-) -> (Vec<NodeId>, Vec<NodeId>) {
-    let mut pending: Vec<NodeId> = Vec::new();
-    for id in produced.into_iter().chain(deferred.iter().cloned()) {
-        if !pending.contains(&id) {
-            pending.push(id);
-        }
-    }
-    let mut joins: Vec<NodeId> = Vec::new();
-    let mut plain: Vec<NodeId> = Vec::new();
-    for id in pending {
-        if graph.is_join(&id) {
-            joins.push(id);
-        } else {
-            plain.push(id);
-        }
-    }
-    if plain.is_empty() {
-        (joins, Vec::new())
-    } else {
-        (plain, joins)
-    }
-}
-
-fn finish(
-    state: State,
-    active: &[NodeId],
-    deferred: &[NodeId],
-    ends: Vec<EndLabel>,
-    ctx: &Context,
-) -> Result<Outcome, RunFailure> {
-    let mut distinct: Vec<EndLabel> = Vec::new();
-    for label in ends {
-        if !distinct.contains(&label) {
-            distinct.push(label);
-        }
-    }
-    let mut iter = distinct.into_iter();
-    match (iter.next(), iter.next()) {
-        (Some(end), None) => {
-            ctx.observer.run_finished(ctx.origin(), &end);
-            Ok(Outcome::Finished { state, end })
-        }
-        (first, second) => {
-            let mut labels: Vec<EndLabel> = first.into_iter().chain(second).collect();
-            labels.extend(iter);
-            Err(fail(
-                state,
-                ctx,
-                active,
-                deferred,
-                GraphError::AmbiguousEnd { labels },
-            ))
-        }
-    }
+    state
 }
 
 fn fail(

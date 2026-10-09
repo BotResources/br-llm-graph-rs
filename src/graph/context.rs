@@ -17,9 +17,12 @@ pub trait IdSource: Send + Sync {
 /// observer, the id source, where the node runs (run id and occurrence), and
 /// the pending-writes recorder of the run.
 ///
-/// The recorder is shared by every context derived from this one. `run` gives
-/// each run its own recorder, seeded with the pending writes this context
-/// holds (empty unless set with `with_pending`).
+/// The recorder holds an entry per finished occurrence whose superstep is
+/// still open: the run loop records every node that returns updates, a map
+/// every item (with the item as witness). It is shared by every context
+/// derived from this one; `run` gives each run its own recorder, seeded with
+/// the pending writes this context holds (empty unless set with
+/// `with_pending`), and a called graph shares its caller's.
 #[derive(Clone)]
 pub struct Context {
     pub observer: Arc<dyn Observer>,
@@ -129,6 +132,12 @@ impl Context {
     /// their superstep has completed.
     pub(crate) fn drop_pending(&self, nodes: &[NodeId]) {
         self.store().drop_nodes(&self.origin.occurrence, nodes);
+    }
+
+    /// Forgets the pending entry of node `node` run under this context.
+    pub(crate) fn forget_node(&self, node: &NodeId) {
+        let occurrence = self.origin.occurrence.child(Segment::node(node.clone()));
+        self.store().remove(&occurrence);
     }
 
     /// This context with a recorder of its own seeded with a copy of what

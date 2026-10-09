@@ -5,6 +5,7 @@ mod outcome;
 mod pending;
 #[path = "loop.rs"]
 mod runner;
+mod settle;
 mod superstep;
 
 #[cfg(test)]
@@ -27,6 +28,8 @@ mod origin_tests;
 mod resume_tests;
 #[cfg(test)]
 mod run_tests;
+#[cfg(test)]
+mod superstep_resume_tests;
 #[cfg(test)]
 pub(crate) mod test_support;
 

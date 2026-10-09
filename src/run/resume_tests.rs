@@ -192,6 +192,7 @@ async fn given_a_map_superstep_that_completed_when_paused_then_items_were_record
     assert_eq!(
         seen,
         vec![
+            ("m".to_owned(), 6),
             ("m[0]".to_owned(), 2),
             ("m[1]".to_owned(), 2),
             ("m[2]".to_owned(), 2)
