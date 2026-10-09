@@ -130,13 +130,16 @@ form to decide whether a version ships.
     `Reason` is the error's message. A panic is not captured. Checked at build
     like a call's captures; a `Set` is refused (`MapBodySet`).
 - Example `subgraph_map`: a map whose body calls a graph, with a resume.
-- `Node::check(&self, &Schema)`, defaulted to accept: a node checks itself
-  against the schema of the graph it runs in. `GraphBuilder::build` calls it on
-  every node, however registered (`node`, `join`, `map`, `subgraph`), and
-  refuses the graph with `InvalidNode { node, source }`, `source` being the
-  reason. `SubGraph` checks its mappings, `Map` its list and item keys, its
-  limit and its captures, then its body against the same schema. A node that
-  wraps another forwards `check` to it.
+- `Node::check(&self, &Schema, CheckSite)`, defaulted to accept: a node checks
+  itself against the schema of the graph it runs in, at a site
+  (`CheckSite::Graph` or `CheckSite::MapBody`, non-exhaustive).
+  `GraphBuilder::build` calls it on every node, however registered (`node`,
+  `join`, `map`, `subgraph`), with `Graph`, and refuses the graph with
+  `InvalidNode { node, source }`, `source` being the reason. `SubGraph` checks
+  its mappings and, as a map body, refuses every output and capture that is
+  not an `Append` (`MapBodySet`); `Map` checks its list and item keys, its
+  limit and its captures, then its body with `MapBody`. A node that wraps
+  another forwards `check` to it, site included.
 - Reasons a call or a map is refused: `SubGraphInputUnmapped`,
   `SubGraphInputTwice`, `SubGraphNotAnInput`, `SubGraphSourceMismatch`,
   `SubGraphConfigUnmapped`, `SubGraphConfigTwice`, `SubGraphNotAConfig`,
@@ -169,10 +172,9 @@ form to decide whether a version ships.
   state. Each must be an `Update::Append` to a list of the graph and the map
   forwards them, in item order whatever the completion order, so one body may
   append to several lists and they stay aligned. Any other update fails the
-  map (`MapBodyNotAppend`), never silently dropped; this includes a `Set`
-  output or capture of a `SubGraph` body, which its own `check` cannot see as a
-  map body. A map run outside a graph, whose context names no node, fails with
-  `MapWithoutOccurrence`.
+  map (`MapBodyNotAppend`), never silently dropped: the run-time safety net
+  behind the build-time `MapBodySet`. A map run outside a graph, whose context
+  names no node, fails with `MapWithoutOccurrence`.
 - A superstep is applied as a whole. When one of its nodes fails or panics,
   its updates are refused, or its edges or the end label cannot be resolved,
   nothing of it reaches the state: the failure checkpoint holds the state from

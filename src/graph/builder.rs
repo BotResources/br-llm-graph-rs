@@ -4,7 +4,7 @@ use crate::error::GraphError;
 use crate::graph::edge::Edge;
 use crate::graph::graph::{Graph, NodeEntry, Parts};
 use crate::graph::map::Map;
-use crate::graph::node::Node;
+use crate::graph::node::{CheckSite, Node};
 use crate::graph::signature::Signature;
 use crate::graph::subgraph::SubGraph;
 use crate::state::Schema;
@@ -139,7 +139,7 @@ impl GraphBuilder {
             if let Some(entry) = nodes.get(id) {
                 entry
                     .node
-                    .check(&schema)
+                    .check(&schema, CheckSite::Graph)
                     .map_err(|source| GraphError::InvalidNode {
                         node: id.clone(),
                         source: Box::new(source),

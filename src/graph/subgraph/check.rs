@@ -5,8 +5,13 @@ use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, Out
 use crate::state::{Kind, Schema};
 use crate::value::Key;
 
-/// Checks a call against the schema of the graph it runs in.
-pub(crate) fn check_call(schema: &Schema, call: &SubGraph) -> Result<(), GraphError> {
+/// Checks a call against the schema of the graph it runs in. With
+/// `appends_only` (a map body) every output and capture must be an `Append`.
+pub(crate) fn check_call(
+    schema: &Schema,
+    call: &SubGraph,
+    appends_only: bool,
+) -> Result<(), GraphError> {
     check_inputs(schema, call)?;
     check_config(schema, call)?;
     let outputs = &call.graph.signature().outputs;
@@ -16,14 +21,14 @@ pub(crate) fn check_call(schema: &Schema, call: &SubGraph) -> Result<(), GraphEr
             .ok_or_else(|| GraphError::SubGraphNotAnOutput {
                 key: child_key.clone(),
             })?;
-        check_target(schema, kind, target)?;
+        check_target(schema, kind, target, appends_only)?;
     }
     if let Some(target) = &call.end_label {
-        check_target(schema, &Kind::Str, target)?;
+        check_target(schema, &Kind::Str, target, appends_only)?;
     }
     if let OnFailure::Capture(captures) = &call.on_failure {
         for capture in captures {
-            check_capture(schema, capture, false)?;
+            check_capture(schema, capture, appends_only)?;
         }
     }
     Ok(())
@@ -90,8 +95,16 @@ fn source_fits(schema: &Schema, source: &Input, kind: &Kind) -> bool {
 }
 
 /// A target receives a value of `kind`: a `Set` key of that kind, or an
-/// `Append` list of that kind.
-fn check_target(schema: &Schema, kind: &Kind, target: &Output) -> Result<(), GraphError> {
+/// `Append` list of that kind. With `appends_only` a `Set` is refused.
+fn check_target(
+    schema: &Schema,
+    kind: &Kind,
+    target: &Output,
+    appends_only: bool,
+) -> Result<(), GraphError> {
+    if let (Output::Set(key), true) = (target, appends_only) {
+        return Err(GraphError::MapBodySet { key: key.clone() });
+    }
     if receives(schema, target) == Some(kind) {
         Ok(())
     } else {
@@ -114,7 +127,7 @@ fn receives<'a>(schema: &'a Schema, target: &Output) -> Option<&'a Kind> {
 }
 
 /// A capture update fits its target. With `appends_only` (a map's own
-/// captures) a `Set` is refused.
+/// captures, a call used as a map body) a `Set` is refused.
 pub(crate) fn check_capture(
     schema: &Schema,
     capture: &CaptureUpdate,

@@ -166,34 +166,17 @@ async fn given_a_failing_item_without_capture_when_mapped_then_the_run_fails() {
     assert!(outcome.is_err());
 }
 
-#[tokio::test]
-async fn given_a_call_body_capturing_with_a_set_when_an_item_fails_then_the_map_refuses_the_update()
-{
+#[test]
+fn given_a_call_body_capturing_with_a_set_when_built_then_map_body_set() {
     let capture = OnFailure::Capture(vec![CaptureUpdate::Set(
         key("result"),
         CaptureSource::Reason,
     )]);
-    let graph = mapped(per_item(capture)).unwrap();
-    let failure = run_parent(
-        &graph,
-        start(&graph, &["bad1"]),
-        &parent_config(1),
-        Arc::new(NoopObserver),
-    )
-    .await
-    .err()
-    .unwrap();
-    let GraphError::NodeFailed {
-        source: crate::error::NodeFault::Returned(returned),
-        ..
-    } = failure.error
-    else {
-        panic!("expected the map to fail");
-    };
     assert!(matches!(
-        returned.downcast_ref::<GraphError>(),
-        Some(GraphError::MapBodyNotAppend { .. })
+        crate::testkit::refusal(mapped(per_item(capture.clone()))),
+        GraphError::MapBodySet { .. }
     ));
+    assert!(parent_with(picky_call().on_failure(capture)).is_ok());
 }
 
 #[test]

@@ -19,6 +19,18 @@ fn given_wrong_call_sites_when_built_then_each_is_refused_with_its_own_error() {
     let probe = Arc::new(Probe::default());
     assert!(caller(per_item(&probe)).is_ok());
 
+    let set_in_map = per_item(&probe).output(key("analysis"), Output::Set(key("item")));
+    assert!(matches!(refused(set_in_map), GraphError::MapBodySet { .. }));
+
+    let set_capture = per_item(&probe).on_failure(OnFailure::Capture(vec![CaptureUpdate::Set(
+        key("item"),
+        CaptureSource::Reason,
+    )]));
+    assert!(matches!(
+        refused(set_capture),
+        GraphError::MapBodySet { .. }
+    ));
+
     let wrong_list = per_item(&probe).output(key("attempts"), Output::Append(key("analyses")));
     assert!(matches!(
         refused(wrong_list),

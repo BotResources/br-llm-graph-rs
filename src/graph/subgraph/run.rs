@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::error::GraphError;
 use crate::graph::context::Context;
-use crate::graph::node::{Node, NodeFuture};
+use crate::graph::node::{CheckSite, Node, NodeFuture};
 use crate::graph::subgraph::check_call;
 use crate::graph::subgraph::{Input, OnFailure, SubGraph, captured};
 use crate::run::{Outcome, channel, run_nested};
@@ -52,9 +52,10 @@ impl Node for SubGraph {
         })
     }
 
-    /// The call's mappings against the caller's schema.
-    fn check(&self, schema: &Schema) -> Result<(), GraphError> {
-        check_call(schema, self)
+    /// The call's mappings against the caller's schema. As a map body, every
+    /// output and capture must be an `Append`.
+    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
+        check_call(schema, self, site == CheckSite::MapBody)
     }
 }
 

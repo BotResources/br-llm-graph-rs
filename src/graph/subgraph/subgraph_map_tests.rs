@@ -40,31 +40,21 @@ fn given_a_call_body_that_only_appends_when_built_then_ok() {
     assert!(mapped(per_item().output_end_label(Output::Append(key("labels")))).is_ok());
 }
 
-/// A call body that sets passes the build (the call cannot know it is a map
-/// body) and is refused by the map at run time, never silently dropped.
-#[tokio::test]
-async fn given_a_call_body_with_a_set_output_when_mapped_then_the_map_refuses_the_update() {
-    for body in [
-        per_item().output(key("answer"), Output::Set(key("result"))),
-        per_item().output_end_label(Output::Set(key("label"))),
+#[test]
+fn given_a_call_body_with_a_set_output_when_built_then_map_body_set() {
+    for (body, target) in [
+        (
+            per_item().output(key("answer"), Output::Set(key("result"))),
+            "result",
+        ),
+        (
+            per_item().output_end_label(Output::Set(key("label"))),
+            "label",
+        ),
     ] {
-        let graph = mapped(body).unwrap();
-        let items = Value::list(vec![Value::str("x")]);
-        let state = graph.start_state([(key("items"), items)]).unwrap();
-        let failure = run_parent(&graph, state, &parent_config(1), Arc::new(NoopObserver))
-            .await
-            .err()
-            .unwrap();
-        let GraphError::NodeFailed {
-            source: crate::error::NodeFault::Returned(returned),
-            ..
-        } = failure.error
-        else {
-            panic!("expected the map to fail");
-        };
         assert!(matches!(
-            returned.downcast_ref::<GraphError>(),
-            Some(GraphError::MapBodyNotAppend { .. })
+            crate::testkit::refusal(mapped(body)),
+            GraphError::MapBodySet { key } if key == self::key(target)
         ));
     }
 }

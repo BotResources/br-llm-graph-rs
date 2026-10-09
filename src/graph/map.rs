@@ -6,7 +6,7 @@ use futures_util::stream;
 use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::limit::Limit;
-use crate::graph::node::{Node, NodeError, NodeFuture};
+use crate::graph::node::{CheckSite, Node, NodeError, NodeFuture};
 use crate::graph::subgraph::{CaptureUpdate, captured, check_capture};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
@@ -92,7 +92,7 @@ impl Node for Map {
         })
     }
 
-    fn check(&self, schema: &Schema) -> Result<(), GraphError> {
+    fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
         let fits = match (schema.state.get(&self.list), schema.state.get(&self.item)) {
             (Some(Kind::List { element }), Some(item)) => element.as_ref() == item,
             _ => false,
@@ -111,7 +111,7 @@ impl Node for Map {
                 check_capture(schema, capture, true)?;
             }
         }
-        self.body.check(schema)
+        self.body.check(schema, CheckSite::MapBody)
     }
 }
 

@@ -32,9 +32,9 @@ pub mod value;
 
 pub use error::{GraphError, NodeFault};
 pub use graph::{
-    Always, CaptureSource, CaptureUpdate, Context, Edge, FnEdge, FnNode, Graph, GraphBuilder,
-    IdSource, Input, ItemFailure, Limit, Map, Node, NodeError, NodeFuture, OnFailure, Output,
-    Signature, SubGraph, Target,
+    Always, CaptureSource, CaptureUpdate, CheckSite, Context, Edge, FnEdge, FnNode, Graph,
+    GraphBuilder, IdSource, Input, ItemFailure, Limit, Map, Node, NodeError, NodeFuture, OnFailure,
+    Output, Signature, SubGraph, Target,
 };
 pub use observe::{NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};

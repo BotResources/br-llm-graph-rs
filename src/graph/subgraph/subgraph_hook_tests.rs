@@ -1,7 +1,7 @@
 use super::test_support::*;
 use crate::error::GraphError;
 use crate::graph::subgraph::{Input, SubGraph};
-use crate::graph::{Always, Context, GraphBuilder, Map, Node, NodeFuture};
+use crate::graph::{Always, CheckSite, Context, GraphBuilder, Map, Node, NodeFuture};
 use crate::state::{Config, Schema, State};
 
 /// A call whose `text` input is left unmapped.
@@ -17,8 +17,8 @@ impl Node for Wrapped {
         self.0.run(state, config, ctx)
     }
 
-    fn check(&self, schema: &Schema) -> Result<(), GraphError> {
-        self.0.check(schema)
+    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
+        self.0.check(schema, site)
     }
 }
 
@@ -93,4 +93,73 @@ fn given_a_map_with_keys_that_do_not_fit_when_built_then_the_map_is_refused_befo
     };
     let error = crate::testkit::refusal(single(|b| b.map(nid("ask"), map)));
     assert!(matches!(error, GraphError::MapKeyMismatch { list, .. } if list == key("question")));
+}
+
+/// A call whose answer is set into `result`: valid in a graph, not as a map
+/// body.
+fn setting_call() -> SubGraph {
+    refine_call()
+}
+
+fn map_over_items(body: impl Node + 'static) -> Map {
+    Map {
+        list: key("items"),
+        item: key("item"),
+        body: Box::new(body),
+        max_concurrency: None,
+        on_item_failure: crate::graph::ItemFailure::Finish,
+    }
+}
+
+#[test]
+fn given_a_call_that_sets_when_built_as_a_map_body_then_refused_and_as_a_node_then_accepted() {
+    assert!(single(|b| b.node(nid("ask"), setting_call())).is_ok());
+    let error = crate::testkit::refusal(single(|b| {
+        b.map(nid("ask"), map_over_items(setting_call()))
+    }));
+    assert!(matches!(error, GraphError::MapBodySet { key } if key == self::key("result")));
+}
+
+#[test]
+fn given_a_wrapper_that_forwards_the_site_when_built_as_a_map_body_then_the_call_is_refused() {
+    let error = crate::testkit::refusal(single(|b| {
+        b.map(nid("ask"), map_over_items(Wrapped(setting_call())))
+    }));
+    assert!(matches!(error, GraphError::MapBodySet { .. }));
+}
+
+#[tokio::test]
+async fn given_a_node_that_ignores_check_when_its_call_sets_in_a_map_then_the_run_refuses_the_update()
+ {
+    let graph = single(|b| b.map(nid("ask"), map_over_items(Plain(setting_call())))).unwrap();
+    let state = graph
+        .start_state(Vec::new())
+        .and_then(|mut state| {
+            state.apply_batch(&[crate::update::Update::Set {
+                key: key("items"),
+                value: crate::state::Value::list(vec![crate::state::Value::str("q")]),
+            }])?;
+            Ok(state)
+        })
+        .unwrap();
+    let failure = run_parent(
+        &graph,
+        state,
+        &parent_config(1),
+        std::sync::Arc::new(crate::observe::NoopObserver),
+    )
+    .await
+    .err()
+    .unwrap();
+    let GraphError::NodeFailed {
+        source: crate::error::NodeFault::Returned(returned),
+        ..
+    } = failure.error
+    else {
+        panic!("expected the map to fail");
+    };
+    assert!(matches!(
+        returned.downcast_ref::<GraphError>(),
+        Some(GraphError::MapBodyNotAppend { .. })
+    ));
 }
