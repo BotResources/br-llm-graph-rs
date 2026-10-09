@@ -3,11 +3,11 @@ use std::sync::Arc;
 use br_llm_messages::{Author, Turn, TurnState};
 
 use crate::error::GraphError;
-use crate::graph::{Context, Node, NodeFuture};
+use crate::graph::{CheckSite, Context, Node, NodeFuture, Switch};
 use crate::react::helpers::{complete, last_turn_by_author, wire};
 use crate::react::model::{Model, OutputMode, Request, ToolCalls, ToolSpec};
 use crate::react::tool::Tool;
-use crate::state::{Config, State, Value};
+use crate::state::{Config, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
 
@@ -24,11 +24,21 @@ pub struct LlmNode {
     pub tools: Vec<Arc<dyn Tool>>,
     pub enabled: Option<Key>,
     pub output: OutputMode,
+    /// Native thinking, resolved at each call and sent as
+    /// `Request::thinking`; `None` leaves the provider's default.
+    pub thinking: Option<Switch>,
 }
 
 impl Node for LlmNode {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         self.step(state, config, ctx, ToolCalls::Allowed)
+    }
+
+    fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
+        match &self.thinking {
+            Some(switch) => switch.check(schema),
+            None => Ok(()),
+        }
     }
 }
 
@@ -44,12 +54,17 @@ impl LlmNode {
             let system = build_system(self, state, config)?;
             let messages = wire(state.conversation(&self.key)?, &self.author)?;
             let tools = declared_tools(self, state)?;
+            let thinking = match &self.thinking {
+                Some(switch) => Some(switch.resolve(config)?),
+                None => None,
+            };
             let request = Request {
                 system,
                 messages,
                 tools,
                 tool_calls,
                 output: self.output.clone(),
+                thinking,
             };
             let step = complete(self.model.as_ref(), request, ctx, &self.key).await?;
 

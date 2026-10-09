@@ -8,6 +8,7 @@ mod map;
 mod node;
 mod signature;
 mod subgraph;
+mod switch;
 
 pub use builder::GraphBuilder;
 pub use context::{Context, IdSource};
@@ -18,3 +19,4 @@ pub use map::{ItemFailure, Map};
 pub use node::{CheckSite, FnNode, Node, NodeError, NodeFuture};
 pub use signature::Signature;
 pub use subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, Output, SubGraph};
+pub use switch::Switch;

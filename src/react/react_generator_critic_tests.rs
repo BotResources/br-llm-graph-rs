@@ -61,6 +61,7 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
         tools: Vec::new(),
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
 
     let critic_model: Arc<dyn Model> = Arc::new(ScriptedModel::new(vec![
@@ -80,6 +81,7 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
                     tools: Vec::new(),
                     tool_calls: ToolCalls::Allowed,
                     output: OutputMode::Structured { schema: json!({}) },
+                    thinking: None,
                 };
                 let step = complete(model.as_ref(), request, ctx, &k("chat")).await?;
                 let verdict: Verdict = structured(&step)?;

@@ -100,6 +100,7 @@ fn graph(model: Arc<RecordingModel>, max_rounds: Limit, on_limit: OnLimit) -> Gr
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let react = ReactLoop {
         llm: nid("llm"),
@@ -323,6 +324,7 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
             tools: vec![Arc::new(EchoTool)],
             enabled: None,
             output: OutputMode::Text,
+            thinking: None,
         };
         ReactLoop {
             llm: nid("llm"),

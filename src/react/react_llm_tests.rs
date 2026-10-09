@@ -33,6 +33,7 @@ async fn given_enabled_filter_when_llm_runs_then_only_enabled_tools_declared() {
         tools: vec![Arc::new(EchoTool), Arc::new(TallyTool)],
         enabled: Some(key("enabled")),
         output: OutputMode::Text,
+        thinking: None,
     };
     let graph = GraphBuilder::new(schema())
         .entry(nid("llm"))
@@ -70,6 +71,7 @@ async fn given_failing_model_when_llm_runs_then_node_failed_and_conversation_unc
         tools: Vec::new(),
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let graph = GraphBuilder::new(schema())
         .entry(nid("llm"))
@@ -114,6 +116,7 @@ async fn given_failing_model_in_react_loop_when_run_then_node_failed_not_looping
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let react = ReactLoop {
         llm: nid("llm"),
@@ -153,6 +156,7 @@ async fn given_multiple_system_sources_when_llm_runs_then_joined_by_blank_line()
         tools: Vec::new(),
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let graph = GraphBuilder::new(schema())
         .entry(nid("llm"))

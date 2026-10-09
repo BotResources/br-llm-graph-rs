@@ -131,6 +131,37 @@ impl Model for ScriptedModel {
     }
 }
 
+/// A scripted model that keeps every request it receives.
+pub(crate) struct LoggingModel {
+    steps: Mutex<VecDeque<Step>>,
+    requests: Mutex<Vec<crate::react::model::Request>>,
+}
+
+impl LoggingModel {
+    pub(crate) fn new(steps: Vec<Step>) -> Self {
+        Self {
+            steps: Mutex::new(steps.into_iter().collect()),
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub(crate) fn requests(&self) -> Vec<crate::react::model::Request> {
+        self.requests.lock().unwrap().clone()
+    }
+}
+
+impl Model for LoggingModel {
+    fn complete<'a>(
+        &'a self,
+        request: crate::react::model::Request,
+        _sink: &'a dyn StreamSink,
+    ) -> ModelFuture<'a> {
+        self.requests.lock().unwrap().push(request);
+        let step = self.steps.lock().unwrap().pop_front();
+        Box::pin(async move { step.ok_or_else(|| "scripted model exhausted".into()) })
+    }
+}
+
 pub(crate) struct FailingModel;
 
 impl Model for FailingModel {

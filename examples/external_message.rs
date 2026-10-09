@@ -76,6 +76,7 @@ async fn main() {
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let react = ReactLoop {
         llm: NodeId::new("llm").expect("id"),

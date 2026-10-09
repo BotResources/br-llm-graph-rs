@@ -41,6 +41,7 @@ async fn main() {
         tools: vec![start_task.clone()],
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let react = ReactLoop {
         llm: NodeId::new("llm").expect("id"),

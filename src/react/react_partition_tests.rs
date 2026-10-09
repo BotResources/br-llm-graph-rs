@@ -31,6 +31,7 @@ fn llm_node(model: Arc<dyn crate::react::model::Model>, tools: Vec<Arc<dyn Tool>
         tools,
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     }
 }
 

@@ -46,6 +46,7 @@ async fn main() {
         tools: Vec::new(),
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let react = ReactLoop {
         llm: NodeId::new("llm").expect("id"),
@@ -100,6 +101,7 @@ fn goal_node(model: Arc<dyn Model>) -> impl br_llm_graph::Node {
                     tools: Vec::new(),
                     tool_calls: ToolCalls::Allowed,
                     output: OutputMode::Structured { schema: json!({}) },
+                    thinking: None,
                 };
                 let step = complete(model.as_ref(), request, ctx, &key("chat")).await?;
                 let verdict: Verdict = structured(&step)?;

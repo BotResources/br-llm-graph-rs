@@ -95,6 +95,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         tools: vec![start_task.clone()],
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let react = ReactLoop {
         llm: nid("llm"),

@@ -119,6 +119,7 @@ async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
     let graph = GraphBuilder::new(schema())
         .entry(nid("llm"))

@@ -150,6 +150,7 @@ async fn main() {
         ],
         enabled: Some(key("enabled")),
         output: OutputMode::Text,
+        thinking: None,
     };
     let react = ReactLoop {
         llm: NodeId::new("llm").expect("id"),

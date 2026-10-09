@@ -4,7 +4,7 @@ use br_llm_messages::{
 };
 
 use crate::error::GraphError;
-use crate::graph::{Always, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
+use crate::graph::{Always, CheckSite, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
 use crate::react::helpers::{last_turn_by_author, pending_calls};
 use crate::react::llm_node::LlmNode;
 use crate::react::model::ToolCalls;
@@ -114,6 +114,10 @@ impl Node for LimitedLlm {
             };
             self.llm.step(state, config, ctx, tool_calls).await
         })
+    }
+
+    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
+        self.llm.check(schema, site)
     }
 }
 

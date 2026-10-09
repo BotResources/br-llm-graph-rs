@@ -40,6 +40,7 @@ async fn main() {
         ],
         enabled: None,
         output: OutputMode::Text,
+        thinking: None,
     };
 
     let react = ReactLoop {

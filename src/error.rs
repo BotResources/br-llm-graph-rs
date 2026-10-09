@@ -121,6 +121,9 @@ pub enum GraphError {
         key: Key,
         value: i64,
     },
+    SwitchKeyMismatch {
+        key: Key,
+    },
     FlagKeyMismatch {
         key: Key,
     },
@@ -282,6 +285,9 @@ impl std::fmt::Display for GraphError {
             GraphError::LimitNotPositive { key, value } => {
                 write!(f, "limit key {key} holds {value}, not a positive integer")
             }
+            GraphError::SwitchKeyMismatch { key } => {
+                write!(f, "switch key {key} is not a bool configuration key")
+            }
             GraphError::FlagKeyMismatch { key } => {
                 write!(f, "flag key {key} is not a bool state key")
             }
@@ -404,6 +410,7 @@ impl std::error::Error for GraphError {
             | GraphError::Structured { .. }
             | GraphError::LimitKeyMismatch { .. }
             | GraphError::LimitNotPositive { .. }
+            | GraphError::SwitchKeyMismatch { .. }
             | GraphError::FlagKeyMismatch { .. }
             | GraphError::ToolLimitReached { .. }
             | GraphError::DuplicateInput { .. }

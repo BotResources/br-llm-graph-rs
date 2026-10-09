@@ -16,6 +16,19 @@ form to decide whether a version ships.
   configuration key. A key that is not declared as an int configuration key is
   refused at build (`LimitKeyMismatch`); a value below one is refused at run
   time (`LimitNotPositive`).
+- `Switch`: an on/off setting, given as a fixed value or read from a bool
+  configuration key, so the host decides at run time. A key that is not
+  declared as a bool configuration key is refused at build
+  (`SwitchKeyMismatch`).
+- `Request::thinking` (`Option<bool>`): whether the model thinks natively
+  before replying, `None` leaving the provider's default. Each model adapter
+  translates it for its provider. `LlmNode::thinking` (`Option<Switch>`) is
+  resolved at each call and sent on the request; its key is checked at build
+  through `Node::check`.
+- The `Model` contract, documented on the trait: for `OutputMode::Structured`,
+  `complete` returns a step whose structured block is valid against the
+  schema, or an error. Validation and retries belong to the model adapter; the
+  graph reads the block as given.
 - `Map::max_concurrency`: at most that many bodies run at once; the results
   keep the item order. `None` runs every item at once, as before.
 - `ToolNode::max_concurrency` and `ReactLoop::tool_concurrency`: at most that
@@ -154,8 +167,8 @@ form to decide whether a version ships.
 - `NodeFault::Returned` carries the error value the node returned
   (`NodeError`) instead of its text, so a host can downcast it to its own error
   type.
-- `Map`, `ToolNode`, `ReactLoop` and `Request` gain the fields above; struct
-  literals must set them.
+- `Map`, `ToolNode`, `ReactLoop`, `LlmNode` and `Request` gain the fields
+  above; struct literals must set them.
 - Depends on `br-llm-messages` 0.2.0: the body of a framed entry is rendered
   verbatim, no longer escaped.
 - Every `Observer` method receives an `&Origin` first. Events of the run loop
