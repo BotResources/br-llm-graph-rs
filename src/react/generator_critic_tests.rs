@@ -451,6 +451,103 @@ async fn given_a_negative_critique_budget_in_the_configuration_when_run_then_cou
     assert!(critic_model.requests().is_empty());
 }
 
+/// An answer with no text and no structured block: its reasoning only.
+fn empty_step() -> br_llm_messages::Step {
+    br_llm_messages::Step::new(
+        vec![AssistantBlock::Thinking(br_llm_messages::Thinking {
+            text: "nothing to say".to_owned(),
+            signature: None,
+        })],
+        br_llm_messages::StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap()
+}
+
+fn empty_critique() -> String {
+    format!("reviewer:{}", GeneratorCritic::EMPTY_ANSWER_CRITIQUE)
+}
+
+#[tokio::test]
+async fn given_an_empty_answer_then_a_valid_one_when_run_then_the_empty_one_is_rejected_without_the_critic()
+ {
+    let generator_model = Arc::new(LoggingModel::new(vec![empty_step(), text_step("full")]));
+    let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+    let graph = GeneratorCritic::new(
+        generator(generator_model.clone()),
+        critic(critic_model.clone()),
+        Count::Fixed(2),
+    )
+    .graph()
+    .unwrap();
+    let state = ended(call(&graph, question("explain")).await, "validated");
+    assert_eq!(state.int(&key("generations")).unwrap(), 2);
+    assert_eq!(state.str(&key("last_critique")).unwrap(), "");
+    let expected = [
+        "user".to_owned(),
+        "writer:".to_owned(),
+        empty_critique(),
+        "writer:full".to_owned(),
+    ];
+    assert_eq!(shape_of(&state, "conversation"), expected);
+    assert_eq!(shape_of(&state, "generator_history"), expected);
+    assert_eq!(shape_of(&state, "answer"), ["writer:full"]);
+    assert_eq!(critic_model.requests().len(), 1);
+    assert_eq!(generator_model.requests().len(), 2);
+}
+
+#[tokio::test]
+async fn given_an_empty_answer_on_the_last_judged_generation_when_run_then_exhausted_on_the_empty_answer_critique()
+ {
+    let generator_model = Arc::new(LoggingModel::new(vec![empty_step()]));
+    let critic_model = Arc::new(LoggingModel::new(Vec::new()));
+    let graph = GeneratorCritic {
+        final_generation: false,
+        ..GeneratorCritic::new(
+            generator(generator_model.clone()),
+            critic(critic_model.clone()),
+            Count::Fixed(1),
+        )
+    }
+    .graph()
+    .unwrap();
+    let state = ended(call(&graph, question("explain")).await, "exhausted");
+    assert!(!state.bool(&key("validated")).unwrap());
+    assert_eq!(state.int(&key("generations")).unwrap(), 1);
+    assert_eq!(
+        state.str(&key("last_critique")).unwrap(),
+        GeneratorCritic::EMPTY_ANSWER_CRITIQUE
+    );
+    assert_eq!(
+        shape_of(&state, "conversation"),
+        ["user".to_owned(), "writer:".to_owned(), empty_critique()]
+    );
+    assert!(critic_model.requests().is_empty());
+    assert_eq!(generator_model.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn given_an_empty_unassessed_final_generation_when_run_then_exhausted_without_a_critique() {
+    let generator_model = Arc::new(LoggingModel::new(vec![text_step("a"), empty_step()]));
+    let critic_model = Arc::new(LoggingModel::new(vec![verdict(false, "fix it")]));
+    let graph = GeneratorCritic::new(
+        generator(generator_model),
+        critic(critic_model.clone()),
+        Count::Fixed(1),
+    )
+    .graph()
+    .unwrap();
+    let state = ended(call(&graph, question("explain")).await, "exhausted");
+    assert_eq!(state.int(&key("generations")).unwrap(), 2);
+    assert_eq!(state.str(&key("last_critique")).unwrap(), "fix it");
+    assert_eq!(
+        shape_of(&state, "conversation"),
+        ["user", "writer:a", "reviewer:fix it", "writer:"]
+    );
+    assert_eq!(critic_model.requests().len(), 1);
+}
+
 fn property_names(schema: &Json) -> Vec<String> {
     schema["properties"]
         .as_object()

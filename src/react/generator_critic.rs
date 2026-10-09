@@ -84,6 +84,12 @@ pub struct CriticSeat {
 /// A `max_critiques` of 0 gives one generation and no critic call: the run
 /// ends `exhausted`, whatever `final_generation`.
 ///
+/// An empty answer (its final step holds no non-blank text and no structured
+/// block) is rejected without calling the critic: where the critic would
+/// judge it, a critique of the critic holding `EMPTY_ANSWER_CRITIQUE` is
+/// appended to both histories, and the run goes on as after a rejection. The
+/// empty answer counts as a generation.
+///
 /// With tools, the generation is the `ReactLoop` fragment inline in this
 /// graph; each generation opens a new generator turn, so the round limit
 /// counts per generation.
@@ -198,6 +204,11 @@ impl Router {
 }
 
 impl GeneratorCritic {
+    /// The critique that rejects an empty answer, written without calling
+    /// the critic.
+    pub const EMPTY_ANSWER_CRITIQUE: &'static str =
+        "The answer was empty. Write a complete answer.";
+
     pub fn new(generator: GeneratorSeat, critic: CriticSeat, max_critiques: Count) -> Self {
         Self {
             generator,
@@ -334,6 +345,7 @@ impl GeneratorCritic {
                 names.critique.clone(),
                 CritiqueNode {
                     conversation: names.conversation.clone(),
+                    generator: generator.author.clone(),
                     generator_history: names.generator_history.clone(),
                     critic_system: names.critic_system.clone(),
                     validated: names.validated.clone(),
@@ -493,10 +505,12 @@ impl Node for PublishNode {
     }
 }
 
-/// Asks the critic for a verdict on `conversation`. A rejection appends its
-/// message, as a turn of the critic, to both histories.
+/// Asks the critic for a verdict on `conversation`, or rejects an empty
+/// answer without asking. A rejection appends its message, as a turn of the
+/// critic, to both histories.
 struct CritiqueNode {
     conversation: Key,
+    generator: Author,
     generator_history: Key,
     critic_system: Key,
     validated: Key,
@@ -508,22 +522,15 @@ struct CritiqueNode {
 impl Node for CritiqueNode {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         Box::pin(async move {
-            let thinking = match &self.thinking {
-                Some(switch) => Some(switch.resolve(config)?),
-                None => None,
+            let conversation = state.conversation(&self.conversation)?;
+            let verdict = if empty_answer(conversation, &self.generator) {
+                Verdict {
+                    is_valid: false,
+                    message: GeneratorCritic::EMPTY_ANSWER_CRITIQUE.to_owned(),
+                }
+            } else {
+                self.judge(state, config, ctx).await?
             };
-            let request = Request {
-                system: Some(state.str(&self.critic_system)?.to_owned()),
-                messages: wire(state.conversation(&self.conversation)?, &self.author)?,
-                tools: Vec::new(),
-                tool_calls: ToolCalls::Allowed,
-                output: OutputMode::Structured {
-                    schema: verdict_schema(thinking == Some(true)),
-                },
-                thinking,
-            };
-            let step = complete(self.model.as_ref(), request, ctx, &self.conversation).await?;
-            let verdict = read_verdict(&step)?;
             if verdict.is_valid {
                 return Ok(vec![Update::Set {
                     key: self.validated.clone(),
@@ -560,6 +567,51 @@ impl Node for CritiqueNode {
         match &self.thinking {
             Some(switch) => switch.check(schema),
             None => Ok(()),
+        }
+    }
+}
+
+impl CritiqueNode {
+    async fn judge(
+        &self,
+        state: &State,
+        config: &Config,
+        ctx: &Context,
+    ) -> Result<Verdict, GraphError> {
+        let thinking = match &self.thinking {
+            Some(switch) => Some(switch.resolve(config)?),
+            None => None,
+        };
+        let request = Request {
+            system: Some(state.str(&self.critic_system)?.to_owned()),
+            messages: wire(state.conversation(&self.conversation)?, &self.author)?,
+            tools: Vec::new(),
+            tool_calls: ToolCalls::Allowed,
+            output: OutputMode::Structured {
+                schema: verdict_schema(thinking == Some(true)),
+            },
+            thinking,
+        };
+        let step = complete(self.model.as_ref(), request, ctx, &self.conversation).await?;
+        read_verdict(&step)
+    }
+}
+
+/// Whether the generator's last answer since the last user input is empty:
+/// missing, or a final step with no non-blank text and no structured block.
+fn empty_answer(conversation: &Conversation, generator: &Author) -> bool {
+    let answer = since_last_input(conversation)
+        .iter()
+        .rev()
+        .find_map(|entry| match entry {
+            Entry::Turn(turn) if turn.author() == Some(generator) => final_step(turn),
+            Entry::Turn(_) | Entry::UserInput(_) => None,
+        });
+    match answer {
+        None => true,
+        Some(step) => {
+            step.structured().next().is_none()
+                && step.text().all(|text| text.as_str().trim().is_empty())
         }
     }
 }

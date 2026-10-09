@@ -224,6 +224,15 @@ form to decide whether a version ships.
     rejected answer. A `max_critiques` of 0 gives one generation and no critic
     call: the run ends `exhausted` (`validated` false, `generations` 1),
     whatever `final_generation`.
+  - An empty answer (its final step holds no non-blank text and no structured
+    block) is rejected without calling the critic: where the critic would
+    judge it, a critique of the critic holding
+    `GeneratorCritic::EMPTY_ANSWER_CRITIQUE` is appended to both histories and
+    the run goes on as after a rejection. The empty answer counts as a
+    generation and the budget rules are unchanged: an empty answer that is not
+    judged (the unassessed final generation) ends `exhausted` with nothing
+    appended; a run that ends on the automatic critique has it as
+    `last_critique`.
   - With tools, the generation is the `ReactLoop` fragment inline in the graph;
     each generation opens a new generator turn, so the round limit counts per
     generation.
