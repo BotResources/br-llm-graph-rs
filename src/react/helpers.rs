@@ -12,7 +12,7 @@ use crate::observe::Observer;
 use crate::origin::Origin;
 use crate::react::model::{Model, Request, StreamSink};
 use crate::react::tool::Tool;
-use crate::state::State;
+use crate::state::{Kind, Schema, State, Value};
 use crate::value::Key;
 
 struct ObserverSink<'a> {
@@ -60,6 +60,32 @@ pub fn structured<T: DeserializeOwned>(step: &Step) -> Result<T, GraphError> {
     serde_json::from_value(value.clone()).map_err(|error| GraphError::Structured {
         message: error.to_string(),
     })
+}
+
+/// The tool names an `enabled` key holds for this run.
+pub(crate) fn enabled_names<'a>(state: &'a State, key: &Key) -> Result<Vec<&'a str>, GraphError> {
+    Ok(state
+        .list(key)?
+        .iter()
+        .filter_map(|value| match value {
+            Value::Str(name) => Some(name.as_str()),
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::List(_)
+            | Value::Conversation(_) => None,
+        })
+        .collect())
+}
+
+/// An `enabled` key must be a state key holding a list of strings.
+pub(crate) fn check_enabled(schema: &Schema, enabled: Option<&Key>) -> Result<(), GraphError> {
+    match enabled {
+        Some(key) if schema.state.get(key) != Some(&Kind::list(Kind::Str)) => {
+            Err(GraphError::EnabledKeyMismatch { key: key.clone() })
+        }
+        Some(_) | None => Ok(()),
+    }
 }
 
 pub(crate) fn last_turn_by_author<'a>(

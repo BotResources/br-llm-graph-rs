@@ -24,7 +24,8 @@ use crate::value::{EndLabel, Key, NodeId};
 /// - Inputs: `history` (conversation), the agent's chat history: a new call is
 ///   a history holding one user input, a resumed call the history the host
 ///   saved. The loop always enters through the model call. Each
-///   `Source::State` key of `system` is a string input too.
+///   `Source::State` key of `system` is a string input too, and so is the
+///   `enabled` key, a list of strings, when set.
 /// - Outputs: `history` (the conversation after the run), `answer`
 ///   (conversation, the agent's last turn with its final step only, empty if
 ///   none), `reply` (string, the text of that step, empty if none or for a
@@ -34,6 +35,10 @@ use crate::value::{EndLabel, Key, NodeId};
 /// - Configuration: each `Source::Config` key of `system` (string), the
 ///   `thinking` switch, the tool concurrency and the round limit when they
 ///   read a configuration key.
+///
+/// With `enabled`, only the tools the key names are offered to the model, and
+/// a call naming another tool is answered with an error result, never
+/// executed. A key the graph already has is refused (`KeyCollision`).
 ///
 /// `output` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller through
@@ -53,6 +58,8 @@ pub struct ReactAgent {
     pub tool_concurrency: Option<Limit>,
     pub round_limit: Option<RoundLimit>,
     pub thinking: Option<Switch>,
+    /// A state key holding the names of the tools offered on this run.
+    pub enabled: Option<Key>,
 }
 
 impl ReactAgent {
@@ -88,6 +95,10 @@ impl ReactAgent {
         if let Some(flag) = &flag {
             schema.state.entry(flag.clone()).or_insert(Kind::Bool);
         }
+        if let Some(key) = &self.enabled {
+            declare_input(&mut schema, key, Kind::list(Kind::Str))?;
+            inputs.push(key.clone());
+        }
 
         let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {
             vec![(NodeId::new("tools")?, self.tools.clone())]
@@ -107,7 +118,7 @@ impl ReactAgent {
             model: self.model,
             system: self.system,
             tools: self.tools,
-            enabled: None,
+            enabled: self.enabled,
             output: self.output,
             thinking: self.thinking,
         };
@@ -154,6 +165,16 @@ pub(crate) fn declare_limit(schema: SchemaBuilder, limit: Option<&Limit>) -> Sch
         Some(Limit::Config(key)) => schema.config(key.clone(), Kind::Int),
         Some(Limit::Fixed(_)) | None => schema,
     }
+}
+
+/// Declares a state key the graph takes from its caller. A key the graph
+/// already has is refused.
+pub(crate) fn declare_input(schema: &mut Schema, key: &Key, kind: Kind) -> Result<(), GraphError> {
+    if schema.state.contains_key(key) {
+        return Err(GraphError::KeyCollision { key: key.clone() });
+    }
+    schema.state.insert(key.clone(), kind);
+    Ok(())
 }
 
 /// Declares the configuration key a count reads, as an int.

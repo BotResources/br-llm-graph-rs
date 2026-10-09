@@ -1,22 +1,29 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use br_llm_messages::{Author, Text, ToolName, ToolResult, ToolResultBlock, TurnId};
+use br_llm_messages::{Author, Text, ToolCall, ToolName, ToolResult, ToolResultBlock, TurnId};
 use futures_util::StreamExt;
 use futures_util::stream;
 
-use crate::graph::{Context, Limit, Node, NodeFuture};
-use crate::react::helpers::{last_turn_by_author, pending_calls};
+use crate::error::GraphError;
+use crate::graph::{CheckSite, Context, Limit, Node, NodeFuture};
+use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, pending_calls};
 use crate::react::tool::{Tool, ToolFuture};
-use crate::state::{Config, State};
+use crate::state::{Config, Schema, State};
 use crate::update::Update;
 use crate::value::Key;
 
+/// Runs the pending calls of the agent's last turn that name one of `tools`.
+///
+/// With `enabled` (the `enabled` key of the `LlmNode`), a call naming a tool
+/// the key does not hold is not executed: it is answered with an error result
+/// saying so, and the turn goes on.
 pub struct ToolNode {
     pub key: Key,
     pub author: Author,
     pub tools: Vec<Arc<dyn Tool>>,
     pub max_concurrency: Option<Limit>,
+    pub enabled: Option<Key>,
 }
 
 impl Node for ToolNode {
@@ -38,23 +45,53 @@ impl Node for ToolNode {
                 .iter()
                 .map(|tool| (tool.spec().name, tool.clone()))
                 .collect();
-            let selected: Vec<(_, Arc<dyn Tool>)> = pending_calls(state, &self.key, &self.author)?
-                .into_iter()
-                .filter_map(|call| owned.get(&call.name).map(|tool| (call, tool.clone())))
-                .collect();
+            let enabled = match &self.enabled {
+                Some(key) => Some(enabled_names(state, key)?),
+                None => None,
+            };
+            let is_enabled = |name: &ToolName| {
+                enabled
+                    .as_ref()
+                    .is_none_or(|names| names.contains(&name.as_str()))
+            };
+            // Each owned call, with its tool when it runs, `None` when refused.
+            let selected: Vec<(&ToolCall, Option<Arc<dyn Tool>>)> =
+                pending_calls(state, &self.key, &self.author)?
+                    .into_iter()
+                    .filter_map(|call| {
+                        owned
+                            .get(&call.name)
+                            .map(|tool| (call, is_enabled(&call.name).then(|| tool.clone())))
+                    })
+                    .collect();
+            let runs = selected.iter().filter(|(_, tool)| tool.is_some()).count();
 
             let width = match &self.max_concurrency {
                 Some(limit) => limit.resolve(config)?.get(),
-                None => selected.len().max(1),
+                None => runs.max(1),
             };
             let calls: Vec<ToolFuture<'_>> = selected
                 .iter()
-                .map(|(call, tool)| tool.call(call.arguments.clone(), state, config))
+                .filter_map(|(call, tool)| {
+                    tool.as_ref()
+                        .map(|tool| tool.call(call.arguments.clone(), state, config))
+                })
                 .collect();
-            let outcomes: Vec<_> = stream::iter(calls).buffered(width).collect().await;
+            let mut outcomes = stream::iter(calls)
+                .buffered(width)
+                .collect::<Vec<_>>()
+                .await
+                .into_iter();
 
             let mut updates = Vec::new();
-            for ((call, _tool), outcome) in selected.into_iter().zip(outcomes) {
+            for (call, tool) in selected {
+                if tool.is_none() {
+                    updates.push(refusal(&self.key, &turn_id, call));
+                    continue;
+                }
+                let Some(outcome) = outcomes.next() else {
+                    break;
+                };
                 match outcome {
                     Ok(output) => {
                         let result = ToolResult::new(
@@ -80,8 +117,26 @@ impl Node for ToolNode {
             Ok(updates)
         })
     }
+
+    fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
+        check_enabled(schema, self.enabled.as_ref())
+    }
 }
 
+/// The error result of a call naming a tool that is not enabled.
+fn refusal(key: &Key, turn: &TurnId, call: &ToolCall) -> Update {
+    let content = Text::new(format!(
+        "Tool {} is not enabled for this run: this call was not executed.",
+        call.name
+    ))
+    .map(|text| vec![ToolResultBlock::text(text)])
+    .unwrap_or_default();
+    Update::PushResult {
+        key: key.clone(),
+        turn: turn.clone(),
+        result: ToolResult::new(call.id.clone(), call.name.clone(), content, true),
+    }
+}
 fn error_result(
     key: &Key,
     turn: &TurnId,

@@ -32,6 +32,7 @@ impl ReactLoop {
 
         let key = llm_node.key.clone();
         let author = llm_node.author.clone();
+        let enabled = llm_node.enabled.clone();
         let mut builder = match &self.round_limit {
             Some(round_limit) => builder.join(
                 self.llm.clone(),
@@ -50,6 +51,7 @@ impl ReactLoop {
                     author: author.clone(),
                     tools: tools.clone(),
                     max_concurrency: self.tool_concurrency.clone(),
+                    enabled: enabled.clone(),
                 },
             );
         }

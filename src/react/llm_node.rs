@@ -4,7 +4,7 @@ use br_llm_messages::{Author, Turn, TurnState};
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture, Switch};
-use crate::react::helpers::{complete, last_turn_by_author, wire};
+use crate::react::helpers::{check_enabled, complete, enabled_names, last_turn_by_author, wire};
 use crate::react::model::{Model, OutputMode, Request, ToolCalls, ToolSpec};
 use crate::react::tool::Tool;
 use crate::state::{Config, Schema, State, Value};
@@ -22,6 +22,9 @@ pub struct LlmNode {
     pub model: Arc<dyn Model>,
     pub system: Vec<Source>,
     pub tools: Vec<Arc<dyn Tool>>,
+    /// A state key holding a list of tool names: when set, only the tools it
+    /// names are offered to the model. Checked at build
+    /// (`EnabledKeyMismatch`).
     pub enabled: Option<Key>,
     pub output: OutputMode,
     /// Native thinking, resolved at each call and sent as
@@ -35,6 +38,7 @@ impl Node for LlmNode {
     }
 
     fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
+        check_enabled(schema, self.enabled.as_ref())?;
         match &self.thinking {
             Some(switch) => switch.check(schema),
             None => Ok(()),
@@ -141,23 +145,12 @@ fn append_strings(key: &Key, value: &Value, parts: &mut Vec<String>) -> Result<(
 }
 
 fn declared_tools(node: &LlmNode, state: &State) -> Result<Vec<ToolSpec>, GraphError> {
-    let enabled = match &node.enabled {
+    let names = match &node.enabled {
         None => {
             return Ok(node.tools.iter().map(|tool| tool.spec()).collect());
         }
-        Some(key) => state.list(key)?,
+        Some(key) => enabled_names(state, key)?,
     };
-    let mut names: Vec<&str> = Vec::new();
-    for value in enabled {
-        match value {
-            Value::Str(text) => names.push(text),
-            Value::Int(_)
-            | Value::Float(_)
-            | Value::Bool(_)
-            | Value::List(_)
-            | Value::Conversation(_) => continue,
-        }
-    }
     Ok(node
         .tools
         .iter()

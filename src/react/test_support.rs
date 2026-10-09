@@ -83,6 +83,51 @@ pub(crate) fn tool_call_step(id: &str, name: &str, arguments: Json) -> Step {
     .unwrap()
 }
 
+/// A step calling each named tool once, with ids `c1`, `c2`, ...
+pub(crate) fn calls_step(names: &[&str]) -> Step {
+    Step::new(
+        names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                AssistantBlock::ToolCall(ToolCall {
+                    id: ToolCallId::new(format!("c{}", index + 1)).unwrap(),
+                    name: ToolName::new(*name).unwrap(),
+                    arguments: json!({}),
+                })
+            })
+            .collect(),
+        StopReason::AwaitingToolResults,
+        None,
+        None,
+    )
+    .unwrap()
+}
+
+/// Each tool result of a turn as `(tool, is_error, text)`, in order.
+pub(crate) fn results_of(turn: &br_llm_messages::Turn) -> Vec<(String, bool, String)> {
+    turn.items()
+        .iter()
+        .filter_map(|item| match item {
+            br_llm_messages::TurnItem::ToolResults(results) => Some(results.results()),
+            br_llm_messages::TurnItem::Step(_) => None,
+        })
+        .flatten()
+        .map(|result| {
+            let text = result
+                .content
+                .iter()
+                .map(|block| match block {
+                    ToolResultBlock::Text { text } => text.as_str().to_owned(),
+                    _ => String::new(),
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            (result.tool_name.as_str().to_owned(), result.is_error, text)
+        })
+        .collect()
+}
+
 pub(crate) fn structured_step(value: Json) -> Step {
     Step::new(
         vec![AssistantBlock::Structured { value }],

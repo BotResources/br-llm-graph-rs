@@ -59,6 +59,7 @@ async fn run_tool_node(state: State, tools: Vec<Arc<dyn Tool>>) -> State {
                 author: author(),
                 tools,
                 max_concurrency: None,
+                enabled: None,
             },
         )
         .edge(
@@ -105,6 +106,111 @@ async fn given_tool_returning_updates_when_run_then_updates_applied() {
     let state = run_tool_node(state_with_call(step), vec![Arc::new(TallyTool)]).await;
     assert_eq!(state.list(&key("log")).unwrap().len(), 1);
     assert_eq!(first_result_is_error(&state), Some(false));
+}
+
+#[tokio::test]
+async fn given_a_tool_node_with_an_enabled_key_when_calls_name_a_tool_it_does_not_hold_then_that_call_is_refused_unrun()
+ {
+    let writer = Arc::new(WriteFileTool::default());
+    let mut state = state_with_call(calls_step(&["write_file", "echo"]));
+    state
+        .apply_batch(&[crate::update::Update::Set {
+            key: key("enabled"),
+            value: Value::list(vec![Value::str("echo")]),
+        }])
+        .unwrap();
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("tools"))
+        .node(
+            nid("tools"),
+            ToolNode {
+                key: key("chat"),
+                author: author(),
+                tools: vec![Arc::new(EchoTool), writer.clone()],
+                max_concurrency: None,
+                enabled: Some(key("enabled")),
+            },
+        )
+        .edge(
+            nid("tools"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let Outcome::Finished { state, .. } = run(&graph, &config(), state, None, &ctx(), &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap()
+    else {
+        panic!("expected finished");
+    };
+    let Some(Entry::Turn(turn)) = state.conversation(&key("chat")).unwrap().entries().last() else {
+        panic!("expected the agent's turn");
+    };
+    assert_eq!(
+        results_of(turn),
+        [
+            (
+                "write_file".to_owned(),
+                true,
+                "Tool write_file is not enabled for this run: this call was not executed."
+                    .to_owned()
+            ),
+            ("echo".to_owned(), false, "echoed".to_owned()),
+        ]
+    );
+    assert_eq!(writer.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn given_an_enabled_key_that_is_not_a_list_of_strings_when_built_then_refused() {
+    let model: Arc<dyn Model> = Arc::new(ScriptedModel::new(Vec::new()));
+    for name in ["chat", "missing"] {
+        let llm = LlmNode {
+            key: key("chat"),
+            author: author(),
+            model: model.clone(),
+            system: Vec::new(),
+            tools: vec![Arc::new(EchoTool)],
+            enabled: Some(key(name)),
+            output: OutputMode::Text,
+            thinking: None,
+        };
+        let built = GraphBuilder::new(schema())
+            .entry(nid("llm"))
+            .node(nid("llm"), llm)
+            .edge(
+                nid("llm"),
+                Always(Target::End(EndLabel::new("done").unwrap())),
+            )
+            .build();
+        assert!(matches!(
+            crate::testkit::refusal(built),
+            crate::error::GraphError::EnabledKeyMismatch { key: found } if found == key(name)
+        ));
+        let built = GraphBuilder::new(schema())
+            .entry(nid("tools"))
+            .node(
+                nid("tools"),
+                ToolNode {
+                    key: key("chat"),
+                    author: author(),
+                    tools: vec![Arc::new(EchoTool)],
+                    max_concurrency: None,
+                    enabled: Some(key(name)),
+                },
+            )
+            .edge(
+                nid("tools"),
+                Always(Target::End(EndLabel::new("done").unwrap())),
+            )
+            .build();
+        assert!(matches!(
+            crate::testkit::refusal(built),
+            crate::error::GraphError::EnabledKeyMismatch { .. }
+        ));
+    }
 }
 
 #[tokio::test]
@@ -217,6 +323,7 @@ async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchang
                     Arc::new(SetLog { name: "setb" }),
                 ],
                 max_concurrency: None,
+                enabled: None,
             },
         )
         .edge(

@@ -37,6 +37,7 @@ async fn main() {
         tool_concurrency: None,
         round_limit: None,
         thinking: Some(Switch::Config(key("thinking"))),
+        enabled: None,
     }
     .graph()
     .expect("agent graph");

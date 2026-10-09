@@ -95,6 +95,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         author: author(),
         tools: vec![tool.clone()],
         max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
+        enabled: None,
     };
     let graph = GraphBuilder::new(schema())
         .entry(NodeId::new("tools").unwrap())

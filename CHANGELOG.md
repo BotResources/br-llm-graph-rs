@@ -37,6 +37,12 @@ form to decide whether a version ships.
   graph reads the block as given.
 - `Map::max_concurrency`: at most that many bodies run at once; the results
   keep the item order. `None` runs every item at once, as before.
+- `ToolNode::enabled` (`Option<Key>`, set by `ReactLoop` from
+  `LlmNode::enabled`): a pending call naming a tool of the node that the key
+  does not hold is not executed; it is answered with an error result saying
+  so, and the turn goes on. An `enabled` key of `LlmNode` or `ToolNode` that
+  is not a list-of-strings state key is refused at build
+  (`EnabledKeyMismatch`).
 - `ToolNode::max_concurrency` and `ReactLoop::tool_concurrency`: at most that
   many pending calls of one tool node run at once; the results keep the call
   order. `None` runs every call at once, as before.
@@ -153,7 +159,7 @@ form to decide whether a version ships.
     like a call's captures; a `Set` is refused (`MapBodySet`).
 - `ReactAgent`: a ReAct agent as a graph with a declared signature, built
   with `ReactAgent { author, model, system, output, tools, tool_nodes,
-  tool_concurrency, round_limit, thinking }.graph()` (an `Arc<Graph>`, ready
+  tool_concurrency, round_limit, thinking, enabled }.graph()` (an `Arc<Graph>`, ready
   for `SubGraph` or a `Map` body). It is the `ReactLoop` fragment on the key
   `history`, so the loop code exists once; empty `tool_nodes` means one node,
   `tools`, runs every tool. Input `history` (conversation): a new call is a
@@ -166,7 +172,11 @@ form to decide whether a version ships.
   or `End`, its `flag`. The
   configuration keys of `system` (`Source::Config`, strings), of `thinking`
   and of the limits are declared from them; each `Source::State` key of
-  `system` is a string input. The run ends with `done`. A flag that names
+  `system` is a string input. `enabled` (`Option<Key>`), when set, is an
+  input holding a list of strings, wired to `LlmNode::enabled`: only the
+  tools it names are offered to the model, and a call naming another tool is
+  refused by its tool node. An `enabled` key the graph already has is refused
+  at build (`KeyCollision`). The run ends with `done`. A flag that names
   another key of the graph is refused (`FlagKeyMismatch`).
 - Example `react_agent`: the agent graph called through `SubGraph`, its
   thinking read from the caller's configuration.
@@ -175,14 +185,16 @@ form to decide whether a version ships.
   `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Count)`
   (`final_generation` defaults to true) then `.graph()`. `GeneratorSeat {
   author, model, output, thinking, tools, tool_nodes, tool_concurrency,
-  round_limit }`, `CriticSeat { author, model, thinking }`; two seats with one
+  round_limit, enabled }`, `CriticSeat { author, model, thinking }`; two seats with one
   author are refused (`SameAuthor`). Each seat reads from its own
   `Perspective`: its own turns as assistant messages, the other's as framed
   messages.
   - Inputs: `conversation` (the shared history the critic reads),
     `generator_history` (the generator's working history, started from
     `conversation` when empty), `generator_system` and `critic_system` (the
-    rendered system prompts).
+    rendered system prompts), and the generator's `enabled` key when set (a
+    list of strings, as for `ReactAgent`; a key the graph already has is
+    refused with `KeyCollision`).
   - Outputs: `answer` (a conversation holding the generator's last answer, one
     turn with its final step), `validated`, `generations` (the generator
     answers in `conversation` since its last user input), `last_critique` (the

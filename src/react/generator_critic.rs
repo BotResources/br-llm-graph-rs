@@ -10,7 +10,9 @@ use crate::graph::{
 use crate::react::helpers::{complete, final_step, last_turn_by_author, structured, wire};
 use crate::react::llm_node::{LlmNode, Source};
 use crate::react::model::{Model, OutputMode, Request, ToolCalls};
-use crate::react::react_agent::{declare_count, declare_limit, declare_switch, round_limit_flag};
+use crate::react::react_agent::{
+    declare_count, declare_input, declare_limit, declare_switch, round_limit_flag,
+};
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
 use crate::react::tool::Tool;
@@ -30,6 +32,10 @@ pub struct GeneratorSeat {
     pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
     pub tool_concurrency: Option<Limit>,
     pub round_limit: Option<RoundLimit>,
+    /// A state key holding the names of the tools offered on this run: an
+    /// input of the graph, a list of strings. A call naming another tool is
+    /// answered with an error result, never executed.
+    pub enabled: Option<Key>,
 }
 
 /// The critic's seat: who judges the answers, with what.
@@ -47,7 +53,8 @@ pub struct CriticSeat {
 /// - Inputs: `conversation` (the shared history the critic reads; a new call
 ///   holds one user input), `generator_history` (the generator's working
 ///   history; when empty at entry it starts as a copy of `conversation`),
-///   `generator_system` and `critic_system` (the rendered system prompts).
+///   `generator_system` and `critic_system` (the rendered system prompts),
+///   and the generator's `enabled` key when set.
 /// - Outputs: `answer` (a conversation holding the generator's last answer,
 ///   one turn with its final step), `validated`, `generations` (the generator
 ///   answers in `conversation` since its last user input), `last_critique`
@@ -225,6 +232,9 @@ impl GeneratorCritic {
         if let Some(flag) = &flag {
             schema.state.entry(flag.clone()).or_insert(Kind::Bool);
         }
+        if let Some(key) = &generator.enabled {
+            declare_input(&mut schema, key, Kind::list(Kind::Str))?;
+        }
         self.max_critiques.check(&schema)?;
 
         let router = Router {
@@ -253,6 +263,9 @@ impl GeneratorCritic {
         if let Some(flag) = flag {
             builder = builder.output(flag);
         }
+        if let Some(key) = &generator.enabled {
+            builder = builder.input(key.clone());
+        }
 
         let tool_nodes = if generator.tool_nodes.is_empty() && !generator.tools.is_empty() {
             vec![(NodeId::new("tools")?, generator.tools.clone())]
@@ -272,7 +285,7 @@ impl GeneratorCritic {
             model: generator.model,
             system: vec![Source::State(names.generator_system.clone())],
             tools: generator.tools,
-            enabled: None,
+            enabled: generator.enabled,
             output: generator.output,
             thinking: generator.thinking,
         };

@@ -52,6 +52,7 @@ fn agent(model: Arc<LoggingModel>) -> ReactAgent {
         tool_concurrency: None,
         round_limit: None,
         thinking: None,
+        enabled: None,
     }
 }
 
@@ -77,6 +78,11 @@ fn ctx() -> Context {
 
 async fn call(graph: &Graph, history: Conversation) -> Result<Outcome, RunFailure> {
     call_in(graph, history, &ctx()).await
+}
+
+async fn run_agent(graph: &Graph, state: State) -> Result<Outcome, RunFailure> {
+    let (_sender, mut inbox) = channel();
+    run(graph, &agent_config(graph), state, None, &ctx(), &mut inbox).await
 }
 
 async fn call_in(
@@ -368,6 +374,74 @@ async fn given_a_new_activation_when_the_round_limit_counts_then_it_starts_from_
     );
     let state = finished(call_in(&graph, history, &ctx).await);
     assert_eq!(state.str(&key("reply")).unwrap(), "second");
+}
+
+fn selective(model: Arc<LoggingModel>, writer: Arc<WriteFileTool>) -> ReactAgent {
+    ReactAgent {
+        tools: vec![Arc::new(EchoTool), writer],
+        enabled: Some(key("offered")),
+        ..agent(model)
+    }
+}
+
+#[tokio::test]
+async fn given_an_enabled_subset_when_the_agent_runs_then_only_it_is_offered_and_another_call_is_refused()
+ {
+    let model = Arc::new(LoggingModel::new(vec![
+        calls_step(&["echo", "write_file"]),
+        text_step("could not write"),
+    ]));
+    let writer = Arc::new(WriteFileTool::default());
+    let graph = selective(model.clone(), writer.clone()).graph().unwrap();
+    assert_eq!(
+        graph.signature().inputs.get(&key("offered")),
+        Some(&Kind::list(Kind::Str))
+    );
+    let state = graph
+        .start_state([
+            (key("history"), Value::conversation(question("hi"))),
+            (key("offered"), Value::list(vec![Value::str("echo")])),
+        ])
+        .unwrap();
+    let state = finished(run_agent(&graph, state).await);
+    assert_eq!(state.str(&key("reply")).unwrap(), "could not write");
+    assert_eq!(
+        results_of(&last_turn(&state)),
+        [
+            ("echo".to_owned(), false, "echoed".to_owned()),
+            (
+                "write_file".to_owned(),
+                true,
+                "Tool write_file is not enabled for this run: this call was not executed."
+                    .to_owned()
+            ),
+        ]
+    );
+    assert_eq!(writer.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let requests = model.requests();
+    assert_eq!(requests.len(), 2);
+    for request in requests {
+        let offered: Vec<&str> = request
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect();
+        assert_eq!(offered, ["echo"]);
+    }
+}
+
+#[test]
+fn given_an_enabled_key_that_names_a_key_of_the_graph_when_built_then_key_collision() {
+    for name in ["history", "reply", "answer"] {
+        let built = ReactAgent {
+            enabled: Some(key(name)),
+            ..agent(Arc::new(LoggingModel::new(Vec::new())))
+        }
+        .graph();
+        assert!(
+            matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name))
+        );
+    }
 }
 
 fn caller_schema() -> Schema {

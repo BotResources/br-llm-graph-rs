@@ -67,6 +67,7 @@ fn generator(model: Arc<LoggingModel>) -> GeneratorSeat {
         tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
+        enabled: None,
     }
 }
 
@@ -108,6 +109,30 @@ async fn call_with(
         ])
         .unwrap();
     let config = Config::new(graph.schema(), config).unwrap();
+    let (_sender, mut inbox) = channel();
+    run(graph, &config, state, None, &ctx(), &mut inbox).await
+}
+
+/// A new call on `question("explain")` with the given extra inputs.
+async fn start(
+    graph: &Graph,
+    extra: Vec<(crate::value::Key, Value)>,
+) -> Result<Outcome, RunFailure> {
+    let mut inputs = vec![
+        (
+            key("conversation"),
+            Value::conversation(question("explain")),
+        ),
+        (
+            key("generator_history"),
+            Value::conversation(Conversation::new()),
+        ),
+        (key("generator_system"), Value::str("Answer the question.")),
+        (key("critic_system"), Value::str("Judge the answer.")),
+    ];
+    inputs.extend(extra);
+    let state = graph.start_state(inputs).unwrap();
+    let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
     let (_sender, mut inbox) = channel();
     run(graph, &config, state, None, &ctx(), &mut inbox).await
 }
@@ -609,6 +634,75 @@ async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_o
         ]
     );
     assert_eq!(shape_of(&state, "answer"), ["writer:answer two"]);
+}
+
+#[tokio::test]
+async fn given_a_generator_with_an_enabled_subset_when_run_then_only_it_is_offered_and_another_call_is_refused()
+ {
+    let generator_model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "write_file", json!({})),
+        text_step("answer"),
+    ]));
+    let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+    let writer = Arc::new(WriteFileTool::default());
+    let graph = GeneratorCritic::new(
+        GeneratorSeat {
+            tools: vec![Arc::new(EchoTool), writer.clone()],
+            enabled: Some(key("offered")),
+            ..generator(generator_model.clone())
+        },
+        critic(critic_model),
+        Count::Fixed(1),
+    )
+    .graph()
+    .unwrap();
+    assert_eq!(
+        graph.signature().inputs.get(&key("offered")),
+        Some(&Kind::list(Kind::Str))
+    );
+    let state = ended(
+        start(
+            &graph,
+            vec![(key("offered"), Value::list(vec![Value::str("echo")]))],
+        )
+        .await,
+        "validated",
+    );
+    let history = state.conversation(&key("generator_history")).unwrap();
+    let Some(Entry::Turn(turn)) = history.entries().last() else {
+        panic!("expected the generator's turn");
+    };
+    assert_eq!(
+        results_of(turn),
+        [(
+            "write_file".to_owned(),
+            true,
+            "Tool write_file is not enabled for this run: this call was not executed.".to_owned()
+        )]
+    );
+    assert_eq!(writer.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    for request in generator_model.requests() {
+        let offered: Vec<&str> = request
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect();
+        assert_eq!(offered, ["echo"]);
+    }
+}
+
+#[test]
+fn given_a_generator_enabled_key_that_names_a_key_of_the_graph_when_built_then_key_collision() {
+    let built = GeneratorCritic::new(
+        GeneratorSeat {
+            enabled: Some(key("answer")),
+            ..generator(Arc::new(LoggingModel::new(Vec::new())))
+        },
+        critic(Arc::new(LoggingModel::new(Vec::new()))),
+        Count::Fixed(1),
+    )
+    .graph();
+    assert!(matches!(built, Err(GraphError::KeyCollision { .. })));
 }
 
 #[tokio::test]

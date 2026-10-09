@@ -37,6 +37,7 @@ async fn main() {
         tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
+        enabled: None,
     };
     let critic = CriticSeat {
         author: Author::new("reviewer").expect("author"),

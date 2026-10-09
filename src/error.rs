@@ -108,6 +108,9 @@ pub enum GraphError {
     PendingToolUnsatisfiable {
         name: ToolName,
     },
+    EnabledKeyMismatch {
+        key: Key,
+    },
     Model {
         message: String,
     },
@@ -133,6 +136,9 @@ pub enum GraphError {
     },
     SameAuthor {
         author: Author,
+    },
+    KeyCollision {
+        key: Key,
     },
     FlagKeyMismatch {
         key: Key,
@@ -285,6 +291,9 @@ impl std::fmt::Display for GraphError {
             GraphError::PendingToolUnsatisfiable { name } => {
                 write!(f, "pending tool call {name} names a tool no tool node runs")
             }
+            GraphError::EnabledKeyMismatch { key } => {
+                write!(f, "enabled key {key} is not a list of strings state key")
+            }
             GraphError::Model { message } => write!(f, "model call failed: {message}"),
             GraphError::Structured { message } => {
                 write!(f, "structured output could not be read: {message}")
@@ -311,6 +320,9 @@ impl std::fmt::Display for GraphError {
                 f,
                 "the generator and the critic are both written by {author}; each seat needs its own author"
             ),
+            GraphError::KeyCollision { key } => {
+                write!(f, "key {key} is already a key of the graph")
+            }
             GraphError::FlagKeyMismatch { key } => {
                 write!(f, "flag key {key} is not a bool state key")
             }
@@ -429,6 +441,7 @@ impl std::error::Error for GraphError {
             | GraphError::ToolCoveredTwice { .. }
             | GraphError::ToolNotDeclared { .. }
             | GraphError::PendingToolUnsatisfiable { .. }
+            | GraphError::EnabledKeyMismatch { .. }
             | GraphError::Model { .. }
             | GraphError::Structured { .. }
             | GraphError::LimitKeyMismatch { .. }
@@ -437,6 +450,7 @@ impl std::error::Error for GraphError {
             | GraphError::CountKeyMismatch { .. }
             | GraphError::CountNegative { .. }
             | GraphError::SameAuthor { .. }
+            | GraphError::KeyCollision { .. }
             | GraphError::FlagKeyMismatch { .. }
             | GraphError::ToolLimitReached { .. }
             | GraphError::DuplicateInput { .. }
