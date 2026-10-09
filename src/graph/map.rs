@@ -22,9 +22,11 @@ use crate::value::Key;
 /// `None`); a new body starts as soon as any running one finishes. Every body
 /// runs to its end; the first error in item order fails the map.
 ///
-/// A finished item records its appends under its occurrence (`Context::record`)
-/// before the map returns. An item an earlier attempt recorded is not run
-/// again: its recorded appends are used.
+/// A finished item records its appends under its occurrence, with the item as
+/// witness (`Context::record_item`), before the map returns. An item an
+/// earlier attempt recorded on the same item value is not run again: its
+/// recorded appends are used. A record made on another value (the list
+/// changed) is ignored and replaced.
 ///
 /// At build, `check` refuses a list key that is not a list whose element kind
 /// is the item key's kind, then checks the body against the same schema.
@@ -96,14 +98,14 @@ impl Map {
         config: &Config,
         ctx: &Context,
     ) -> Result<Vec<Update>, NodeError> {
-        if let Some(updates) = ctx.recorded() {
+        if let Some(updates) = ctx.recorded_item(&item) {
             check_appends(state, &updates)?;
             return Ok(updates);
         }
-        let derived = state.derive(&self.item, item)?;
+        let derived = state.derive(&self.item, item.clone())?;
         let updates = self.body.run(&derived, config, ctx).await?;
         check_appends(state, &updates)?;
-        ctx.record(&updates);
+        ctx.record_item(&item, &updates);
         Ok(updates)
     }
 }

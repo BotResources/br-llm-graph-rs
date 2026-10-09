@@ -1,7 +1,7 @@
 use br_llm_messages::StreamEvent;
 
 use crate::origin::Origin;
-use crate::run::Cursor;
+use crate::run::{Cursor, PendingEntry};
 use crate::state::State;
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -29,11 +29,11 @@ pub trait Observer: Send + Sync {
     fn run_finished(&self, origin: &Origin, end: &EndLabel) {
         let _ = (origin, end);
     }
-    /// A finished occurrence recorded its updates while its superstep is
-    /// still open. A host may persist these as they come and merge them into
-    /// the pending writes of a checkpoint it keeps.
-    fn recorded(&self, origin: &Origin, updates: &[Update]) {
-        let _ = (origin, updates);
+    /// A finished occurrence recorded its entry while its superstep is still
+    /// open. A host may persist these as they come and insert them, under
+    /// `origin.occurrence`, into the pending writes of a checkpoint it keeps.
+    fn recorded(&self, origin: &Origin, entry: &PendingEntry) {
+        let _ = (origin, entry);
     }
 }
 

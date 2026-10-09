@@ -44,7 +44,8 @@ pub use react::{
     complete, pending_calls, pending_unsafe_calls, structured, wire,
 };
 pub use run::{
-    Checkpoint, Cursor, Inbox, Outcome, PendingWrites, RunFailure, Sender, channel, run,
+    Checkpoint, Cursor, Inbox, Outcome, PendingEntry, PendingWrites, RunFailure, Sender, channel,
+    run,
 };
 pub use session::{Ended, Session, Start};
 pub use state::{Config, Finite, Kind, SCHEMA_VERSION, Schema, SchemaBuilder, State, Value};

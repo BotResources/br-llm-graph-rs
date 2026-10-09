@@ -35,6 +35,6 @@ pub use cursor::Cursor;
 pub(crate) use inbox::Message;
 pub use inbox::{Inbox, Sender, channel};
 pub use outcome::{Outcome, RunFailure};
-pub use pending::PendingWrites;
+pub use pending::{PendingEntry, PendingWrites};
 pub use runner::run;
 pub(crate) use runner::run_nested;

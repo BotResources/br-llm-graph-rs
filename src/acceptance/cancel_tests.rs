@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::support::*;
-use crate::{NoopObserver, Observer, Origin, Outcome, Sender, Update, channel, run};
+use crate::{NoopObserver, Observer, Origin, Outcome, PendingEntry, Sender, channel, run};
 
 /// Cancels the run once `after` items have recorded their result.
 struct CancelAfter {
@@ -11,7 +11,7 @@ struct CancelAfter {
 }
 
 impl Observer for CancelAfter {
-    fn recorded(&self, _origin: &Origin, _updates: &[Update]) {
+    fn recorded(&self, _origin: &Origin, _entry: &PendingEntry) {
         let mut seen = self.seen.lock().unwrap();
         *seen += 1;
         if *seen == self.after {

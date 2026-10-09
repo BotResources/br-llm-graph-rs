@@ -86,19 +86,24 @@ form to decide whether a version ships.
   key included) or `Reason` (the child's error message). Checked at build like
   outputs (`SubGraphCaptureMismatch`). Inside a map the captured appends are
   forwarded in item order and the item is recorded as finished.
-- Pending writes and resume: `PendingWrites` (occurrence key to updates,
-  with `insert`, `get`, `merge`) and `Checkpoint::pending`. A map item that
-  finishes records its appends under its occurrence (`Context::record`) while
-  the map's superstep is still open; `Context::recorded()` gives what an
-  earlier attempt recorded, and the map uses it instead of running the item
-  again. Entries of a node are dropped once its superstep completes. The
+- Pending writes and resume: `PendingWrites` (occurrence key to
+  `PendingEntry { updates, witness }`, with `insert`, `get`, `merge`) and
+  `Checkpoint::pending`. A map item that finishes records its appends under its
+  occurrence with the item as witness (`Context::record_item`) while the map's
+  superstep is still open; `Context::recorded_item(item)` gives what an earlier
+  attempt recorded only when it ran on the same item value, and the map uses
+  it instead of running the item again. A record made on another value (a
+  restarted called graph whose list changed) is ignored and replaced.
+  `Context::record` and `Context::recorded` do the same without a witness.
+  Entries of a node are dropped once its superstep completes. The
   checkpoint of a failure, a cancel or a pause carries the run's pending
   writes; `Session::resume` and `Context::with_pending(checkpoint.pending)`
   (for `run`) hand them back, so a resumed run skips the finished items. Items
   of a map inside a called graph record under the nested occurrence
   (`each[1]/inner[0]`) and travel in the caller's checkpoint.
-- `Observer::recorded(origin, updates)` (defaulted): fires on every record, so
-  a host can persist pending writes as they come and merge them later.
+- `Observer::recorded(origin, entry)` (defaulted): fires on every record, so a
+  host can persist pending entries, witness included, as they come and insert
+  them later under `origin.occurrence`.
 - `Checkpoint::with_pending`; `Context::pending()` copies what a recorder
   holds.
 - Example `subgraph_map`: a map whose body calls a graph, with a resume.

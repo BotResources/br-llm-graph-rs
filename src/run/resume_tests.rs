@@ -12,7 +12,7 @@ use crate::run::inbox::channel;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;
-use crate::run::{Checkpoint, PendingWrites};
+use crate::run::{Checkpoint, PendingEntry, PendingWrites};
 use crate::state::{State, Value};
 use crate::update::Update;
 
@@ -160,8 +160,8 @@ async fn given_a_cancel_in_the_middle_of_a_map_when_resumed_then_only_unfinished
 struct Records(Mutex<Vec<(String, usize)>>);
 
 impl Observer for Records {
-    fn recorded(&self, origin: &Origin, updates: &[Update]) {
-        let entry = (origin.occurrence.to_string(), updates.len());
+    fn recorded(&self, origin: &Origin, entry: &PendingEntry) {
+        let entry = (origin.occurrence.to_string(), entry.updates.len());
         self.0.lock().unwrap().push(entry);
     }
 }

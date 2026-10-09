@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use super::support::*;
-use crate::{NodeId, Observer, Origin, Outcome, Update, Value, channel, run};
+use crate::{NodeId, Observer, Origin, Outcome, PendingEntry, Value, channel, run};
 
 /// Node starts and records, with the occurrence they come from.
 #[derive(Default)]
@@ -28,7 +28,7 @@ impl Observer for Trace {
         self.0.lock().unwrap().push(entry);
     }
 
-    fn recorded(&self, origin: &Origin, _updates: &[Update]) {
+    fn recorded(&self, origin: &Origin, _entry: &PendingEntry) {
         let entry = ("recorded".to_owned(), origin.occurrence.to_string());
         self.0.lock().unwrap().push(entry);
     }

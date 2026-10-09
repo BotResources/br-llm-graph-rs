@@ -7,7 +7,7 @@ use crate::graph::{Always, Context, FnNode, Graph, GraphBuilder, Map, NodeFuture
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
 use crate::run::counted::{Counted, CountedBody};
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, PendingEntry, channel, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 
@@ -106,7 +106,7 @@ fn start(graph: &Graph) -> State {
 struct Records(Mutex<Vec<String>>);
 
 impl Observer for Records {
-    fn recorded(&self, origin: &Origin, _updates: &[Update]) {
+    fn recorded(&self, origin: &Origin, _entry: &PendingEntry) {
         self.0.lock().unwrap().push(origin.occurrence.to_string());
     }
 }

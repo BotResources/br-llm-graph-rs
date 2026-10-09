@@ -4,7 +4,8 @@ use br_llm_messages::TurnId;
 
 use crate::observe::Observer;
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
-use crate::run::PendingWrites;
+use crate::run::{PendingEntry, PendingWrites};
+use crate::state::Value;
 use crate::update::Update;
 use crate::value::NodeId;
 
@@ -85,16 +86,33 @@ impl Context {
     /// from a checkpoint taken before its superstep completes does not run it
     /// again. The observer sees the record (`Observer::recorded`).
     pub fn record(&self, updates: &[Update]) {
-        self.store()
-            .insert(self.origin.occurrence.clone(), updates.to_vec());
-        self.observer.recorded(&self.origin, updates);
+        self.keep(PendingEntry::new(updates.to_vec()));
     }
 
-    /// What an earlier attempt recorded for this occurrence.
+    /// Records the updates of this finished map item, which ran on `item`.
+    pub fn record_item(&self, item: &Value, updates: &[Update]) {
+        self.keep(PendingEntry::witnessed(item.clone(), updates.to_vec()));
+    }
+
+    /// What an earlier attempt recorded for this occurrence, recorded with
+    /// `record`.
     pub fn recorded(&self) -> Option<Vec<Update>> {
         self.store()
-            .get(&self.origin.occurrence)
+            .matching(&self.origin.occurrence, None)
             .map(<[Update]>::to_vec)
+    }
+
+    /// What an earlier attempt recorded for this map item, only when it ran on
+    /// the same `item`: an entry for another item at this index is ignored.
+    pub fn recorded_item(&self, item: &Value) -> Option<Vec<Update>> {
+        self.store()
+            .matching(&self.origin.occurrence, Some(item))
+            .map(<[Update]>::to_vec)
+    }
+
+    fn keep(&self, entry: PendingEntry) {
+        self.observer.recorded(&self.origin, &entry);
+        self.store().insert(self.origin.occurrence.clone(), entry);
     }
 
     /// A copy of every pending write the recorder holds.

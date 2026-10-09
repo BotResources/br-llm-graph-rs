@@ -31,6 +31,7 @@ impl Checkpoint {
 mod tests {
     use super::*;
     use crate::origin::OccurrenceKey;
+    use crate::run::PendingEntry;
     use crate::state::{State, Value};
     use crate::update::Update;
     use crate::value::{Key, NodeId};
@@ -57,10 +58,13 @@ mod tests {
         let mut pending = PendingWrites::new();
         pending.insert(
             OccurrenceKey::parse("a/m[2]").unwrap(),
-            vec![Update::Append {
-                key: Key::new("outs").unwrap(),
-                value: Value::str("x"),
-            }],
+            PendingEntry::witnessed(
+                Value::str("x"),
+                vec![Update::Append {
+                    key: Key::new("outs").unwrap(),
+                    value: Value::str("X"),
+                }],
+            ),
         );
         let checkpoint = checkpoint().with_pending(pending);
         let json = serde_json::to_string(&checkpoint).unwrap();

@@ -7,6 +7,7 @@ use crate::graph::{Always, Graph, GraphBuilder, Map};
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
 use crate::run::Outcome;
+use crate::run::PendingEntry;
 use crate::state::{State, Value};
 use crate::update::Update;
 
@@ -94,8 +95,8 @@ fn start(graph: &Graph, items: &[&str]) -> State {
 struct Records(Mutex<Vec<(String, Vec<Update>)>>);
 
 impl Observer for Records {
-    fn recorded(&self, origin: &Origin, updates: &[Update]) {
-        let entry = (origin.occurrence.to_string(), updates.to_vec());
+    fn recorded(&self, origin: &Origin, entry: &PendingEntry) {
+        let entry = (origin.occurrence.to_string(), entry.updates.clone());
         self.0.lock().unwrap().push(entry);
     }
 }

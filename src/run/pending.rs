@@ -1,33 +1,61 @@
 use std::collections::BTreeMap;
 
 use crate::origin::OccurrenceKey;
+use crate::state::Value;
 use crate::update::Update;
 use crate::value::NodeId;
 
-/// The updates of finished occurrences whose superstep is still open, keyed
+/// The updates a finished occurrence returned. A map item also keeps the item
+/// it ran on (its witness): the entry stands for that item only.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PendingEntry {
+    pub updates: Vec<Update>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub witness: Option<Value>,
+}
+
+impl PendingEntry {
+    /// The entry of a node occurrence.
+    pub fn new(updates: Vec<Update>) -> Self {
+        Self {
+            updates,
+            witness: None,
+        }
+    }
+
+    /// The entry of a map item that ran on `witness`.
+    pub fn witnessed(witness: Value, updates: Vec<Update>) -> Self {
+        Self {
+            updates,
+            witness: Some(witness),
+        }
+    }
+}
+
+/// The entries of finished occurrences whose superstep is still open, keyed
 /// by occurrence. They travel in a checkpoint so that a resumed run does not
 /// run those occurrences again. Serialized as a map from the written form of
-/// each occurrence key to its updates.
+/// each occurrence key to its entry.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
-pub struct PendingWrites(BTreeMap<OccurrenceKey, Vec<Update>>);
+pub struct PendingWrites(BTreeMap<OccurrenceKey, PendingEntry>);
 
 impl PendingWrites {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Records the updates of a finished occurrence, replacing what was there.
-    pub fn insert(&mut self, occurrence: OccurrenceKey, updates: Vec<Update>) {
-        self.0.insert(occurrence, updates);
+    /// Records the entry of a finished occurrence, replacing what was there.
+    pub fn insert(&mut self, occurrence: OccurrenceKey, entry: PendingEntry) {
+        self.0.insert(occurrence, entry);
     }
 
-    pub fn get(&self, occurrence: &OccurrenceKey) -> Option<&[Update]> {
-        self.0.get(occurrence).map(Vec::as_slice)
+    pub fn get(&self, occurrence: &OccurrenceKey) -> Option<&PendingEntry> {
+        self.0.get(occurrence)
     }
 
     /// Adds the entries of `other`; an occurrence present in both takes the
-    /// updates of `other`.
+    /// entry of `other`.
     pub fn merge(&mut self, other: PendingWrites) {
         self.0.extend(other.0);
     }
@@ -40,10 +68,20 @@ impl PendingWrites {
         self.0.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&OccurrenceKey, &[Update])> {
+    pub fn iter(&self) -> impl Iterator<Item = (&OccurrenceKey, &PendingEntry)> {
+        self.0.iter()
+    }
+
+    /// The updates recorded for `occurrence` when its witness is `witness`.
+    pub(crate) fn matching(
+        &self,
+        occurrence: &OccurrenceKey,
+        witness: Option<&Value>,
+    ) -> Option<&[Update]> {
         self.0
-            .iter()
-            .map(|(key, updates)| (key, updates.as_slice()))
+            .get(occurrence)
+            .filter(|entry| entry.witness.as_ref() == witness)
+            .map(|entry| entry.updates.as_slice())
     }
 
     /// The entries at or below `prefix`.
@@ -52,7 +90,7 @@ impl PendingWrites {
             self.0
                 .iter()
                 .filter(|(key, _)| key.starts_with(prefix))
-                .map(|(key, updates)| (key.clone(), updates.clone()))
+                .map(|(key, entry)| (key.clone(), entry.clone()))
                 .collect(),
         )
     }
