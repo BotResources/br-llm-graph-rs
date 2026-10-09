@@ -15,6 +15,7 @@ use crate::graph::{
 };
 use crate::observe::NoopObserver;
 use crate::react::llm_node::Source;
+use crate::react::model::OutputMode;
 use crate::react::react_agent::ReactAgent;
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::test_support::*;
@@ -45,6 +46,7 @@ fn agent(model: Arc<LoggingModel>) -> ReactAgent {
         author: author(),
         model,
         system: vec![Source::Config(key("base"))],
+        output: OutputMode::Text,
         tools: vec![Arc::new(EchoTool)],
         tool_nodes: Vec::new(),
         tool_concurrency: None,
@@ -124,6 +126,7 @@ fn given_an_agent_when_built_then_its_signature_names_history_reply_and_the_limi
         signature.outputs,
         BTreeMap::from([
             (key("history"), Kind::Conversation),
+            (key("answer"), Kind::Conversation),
             (key("reply"), Kind::Str),
         ])
     );
@@ -210,6 +213,65 @@ async fn given_one_tool_round_when_the_agent_runs_then_the_turn_holds_the_round_
     let turn = last_turn(&state);
     assert_eq!(turn.items().len(), 3);
     assert!(matches!(turn.items()[1], TurnItem::ToolResults(_)));
+}
+
+fn answer_steps(state: &State) -> Vec<br_llm_messages::Step> {
+    state
+        .conversation(&key("answer"))
+        .unwrap()
+        .entries()
+        .iter()
+        .map(|entry| match entry {
+            Entry::Turn(turn) => {
+                assert_eq!(turn.items().len(), 1);
+                match &turn.items()[0] {
+                    TurnItem::Step(step) => step.clone(),
+                    TurnItem::ToolResults(_) => panic!("expected the final step only"),
+                }
+            }
+            Entry::UserInput(_) => panic!("expected the agent's turn only"),
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn given_a_tool_round_then_a_text_reply_when_the_agent_runs_then_answer_holds_the_final_step_only()
+ {
+    let model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "echo", json!({})),
+        text_step("echo said echoed"),
+    ]));
+    let graph = agent(model).graph().unwrap();
+    let state = finished(call(&graph, question("hi")).await);
+    assert_eq!(answer_steps(&state), [text_step("echo said echoed")]);
+    assert_eq!(state.str(&key("reply")).unwrap(), "echo said echoed");
+}
+
+#[tokio::test]
+async fn given_a_structured_output_when_the_agent_runs_then_answer_carries_the_block_and_reply_is_empty()
+ {
+    let schema = json!({ "type": "object", "properties": { "n": { "type": "integer" } } });
+    let model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "echo", json!({})),
+        structured_step(json!({ "n": 3 })),
+    ]));
+    let graph = ReactAgent {
+        output: OutputMode::Structured {
+            schema: schema.clone(),
+        },
+        ..agent(model.clone())
+    }
+    .graph()
+    .unwrap();
+    let state = finished(call(&graph, question("count")).await);
+    assert_eq!(answer_steps(&state), [structured_step(json!({ "n": 3 }))]);
+    assert_eq!(state.str(&key("reply")).unwrap(), "");
+    let requests = model.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|request| request.output
+        == OutputMode::Structured {
+            schema: schema.clone()
+        }));
 }
 
 #[tokio::test]

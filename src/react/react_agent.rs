@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use br_llm_messages::Author;
+use br_llm_messages::{Author, Conversation, Turn};
 
 use crate::error::GraphError;
 use crate::graph::{
@@ -25,13 +25,19 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   a history holding one user input, a resumed call the history the host
 ///   saved. The loop always enters through the model call. Each
 ///   `Source::State` key of `system` is a string input too.
-/// - Outputs: `history` (the conversation after the run), `reply` (string,
-///   the text of the last step of the agent's last turn, empty if none) and,
+/// - Outputs: `history` (the conversation after the run), `answer`
+///   (conversation, the agent's last turn with its final step only, empty if
+///   none), `reply` (string, the text of that step, empty if none or for a
+///   structured reply) and,
 ///   when the round limit's `OnLimit` is `Continue` or `End`, its `flag`
 ///   (bool, true when the limit was reached).
 /// - Configuration: each `Source::Config` key of `system` (string), the
 ///   `thinking` switch, the tool concurrency and the round limit when they
 ///   read a configuration key.
+///
+/// `output` is sent on every model call; with `OutputMode::Structured`, the
+/// final step carries the structured block and reaches the caller through
+/// `answer`.
 ///
 /// The round limit counts the rounds of the agent's open turn, as in
 /// `ReactLoop`.
@@ -39,6 +45,7 @@ pub struct ReactAgent {
     pub author: Author,
     pub model: Arc<dyn Model>,
     pub system: Vec<Source>,
+    pub output: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
     /// runs them all.
@@ -52,6 +59,7 @@ impl ReactAgent {
     pub fn graph(self) -> Result<Arc<Graph>, GraphError> {
         let history = Key::new("history")?;
         let reply = Key::new("reply")?;
+        let answer = Key::new("answer")?;
         let llm = NodeId::new("llm")?;
         let reply_node = NodeId::new("reply")?;
 
@@ -68,7 +76,8 @@ impl ReactAgent {
         }
         schema = schema
             .state(history.clone(), Kind::Conversation)
-            .state(reply.clone(), Kind::Str);
+            .state(reply.clone(), Kind::Str)
+            .state(answer.clone(), Kind::Conversation);
         schema = declare_switch(schema, self.thinking.as_ref());
         schema = declare_limit(schema, self.tool_concurrency.as_ref());
         let flag = self.round_limit.as_ref().and_then(round_limit_flag);
@@ -99,7 +108,7 @@ impl ReactAgent {
             system: self.system,
             tools: self.tools,
             enabled: None,
-            output: OutputMode::Text,
+            output: self.output,
             thinking: self.thinking,
         };
 
@@ -107,7 +116,10 @@ impl ReactAgent {
         for key in inputs {
             builder = builder.input(key);
         }
-        builder = builder.output(history.clone()).output(reply.clone());
+        builder = builder
+            .output(history.clone())
+            .output(answer.clone())
+            .output(reply.clone());
         if let Some(flag) = flag {
             builder = builder.output(flag);
         }
@@ -118,6 +130,7 @@ impl ReactAgent {
                 ReplyNode {
                     history,
                     reply,
+                    answer,
                     author: self.author,
                 },
             )
@@ -159,10 +172,12 @@ pub(crate) fn round_limit_flag(round_limit: &RoundLimit) -> Option<Key> {
     }
 }
 
-/// Sets `reply` to the text of the last step of the agent's last turn.
+/// Sets `answer` to the agent's last turn with its final step only, and
+/// `reply` to the text of that step.
 struct ReplyNode {
     history: Key,
     reply: Key,
+    answer: Key,
     author: Author,
 }
 
@@ -175,19 +190,32 @@ impl Node for ReplyNode {
     ) -> NodeFuture<'a> {
         Box::pin(async move {
             let conversation = state.conversation(&self.history)?;
-            let text = last_turn_by_author(conversation, &self.author)
-                .and_then(final_step)
-                .map(|step| {
-                    step.text()
-                        .map(|text| text.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n\n")
-                })
-                .unwrap_or_default();
-            Ok(vec![Update::Set {
-                key: self.reply.clone(),
-                value: Value::str(text),
-            }])
+            let mut answer = Conversation::new();
+            let mut text = String::new();
+            if let Some(turn) = last_turn_by_author(conversation, &self.author)
+                && let Some(step) = final_step(turn)
+            {
+                text = step
+                    .text()
+                    .map(|text| text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                answer.push_turn(Turn::new(
+                    turn.id().clone(),
+                    Some(self.author.clone()),
+                    step.clone(),
+                ))?;
+            }
+            Ok(vec![
+                Update::Set {
+                    key: self.answer.clone(),
+                    value: Value::conversation(answer),
+                },
+                Update::Set {
+                    key: self.reply.clone(),
+                    value: Value::str(text),
+                },
+            ])
         })
     }
 }

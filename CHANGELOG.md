@@ -152,15 +152,18 @@ form to decide whether a version ships.
     `Reason` is the error's message. A panic is not captured. Checked at build
     like a call's captures; a `Set` is refused (`MapBodySet`).
 - `ReactAgent`: a ReAct agent as a graph with a declared signature, built
-  with `ReactAgent { author, model, system, tools, tool_nodes,
+  with `ReactAgent { author, model, system, output, tools, tool_nodes,
   tool_concurrency, round_limit, thinking }.graph()` (an `Arc<Graph>`, ready
   for `SubGraph` or a `Map` body). It is the `ReactLoop` fragment on the key
   `history`, so the loop code exists once; empty `tool_nodes` means one node,
   `tools`, runs every tool. Input `history` (conversation): a new call is a
   history holding one user input, a resumed call the history the host saved,
-  and the loop always enters through the model call. Outputs `history`,
-  `reply` (the text of the last step of the agent's last turn, empty if none)
-  and, when the round limit's `OnLimit` is `Continue` or `End`, its `flag`. The
+  and the loop always enters through the model call. `output` (`OutputMode`)
+  is sent on every model call. Outputs `history`, `answer` (a conversation
+  holding the agent's last turn with its final step only, so a structured
+  reply reaches the caller), `reply` (the text of that step, empty if none or
+  for a structured reply) and, when the round limit's `OnLimit` is `Continue`
+  or `End`, its `flag`. The
   configuration keys of `system` (`Source::Config`, strings), of `thinking`
   and of the limits are declared from them; each `Source::State` key of
   `system` is a string input. The run ends with `done`. A flag that names

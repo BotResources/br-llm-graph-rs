@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use br_llm_graph::{
-    Always, Config, EndLabel, GraphBuilder, Input, Kind, NodeId, Outcome, Output, ReactAgent,
-    Schema, Source, SubGraph, Switch, Target, Value, channel, run,
+    Always, Config, EndLabel, GraphBuilder, Input, Kind, NodeId, Outcome, Output, OutputMode,
+    ReactAgent, Schema, Source, SubGraph, Switch, Target, Value, channel, run,
 };
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
@@ -25,12 +25,13 @@ async fn main() {
         text_step("Here is what I found."),
     ]));
 
-    // Inputs `history`; outputs `history` and `reply`; configuration `base`
-    // (the system prompt) and `thinking`.
+    // Inputs `history`; outputs `history`, `answer` and `reply`;
+    // configuration `base` (the system prompt) and `thinking`.
     let agent = ReactAgent {
         author: Author::new("agent").expect("author"),
         model,
         system: vec![Source::Config(key("base"))],
+        output: OutputMode::Text,
         tools: vec![Arc::new(SearchTool)],
         tool_nodes: Vec::new(),
         tool_concurrency: None,
