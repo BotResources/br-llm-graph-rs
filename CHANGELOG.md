@@ -159,7 +159,7 @@ form to decide whether a version ships.
     like a call's captures; a `Set` is refused (`MapBodySet`).
 - `ReactAgent`: a ReAct agent as a graph with a declared signature, built
   with `ReactAgent { author, model, system, output, tools, tool_nodes,
-  tool_concurrency, round_limit, thinking, enabled }.graph()` (an `Arc<Graph>`, ready
+  tool_concurrency, round_limit, thinking, enabled, inputs }.graph()` (an `Arc<Graph>`, ready
   for `SubGraph` or a `Map` body). It is the `ReactLoop` fragment on the key
   `history`, so the loop code exists once; empty `tool_nodes` means one node,
   `tools`, runs every tool. Input `history` (conversation): a new call is a
@@ -175,15 +175,18 @@ form to decide whether a version ships.
   `system` is a string input. `enabled` (`Option<Key>`), when set, is an
   input holding a list of strings, wired to `LlmNode::enabled`: only the
   tools it names are offered to the model, and a call naming another tool is
-  refused by its tool node. An `enabled` key the graph already has is refused
-  at build (`KeyCollision`). The run ends with `done`. A flag that names
+  refused by its tool node. `inputs` (`Vec<(Key, Kind)>`): extra state keys
+  declared as inputs of the graph, so the caller maps per-run values into the
+  child state and the tools read them through the `&State` that `Tool::call`
+  receives. An `enabled` or `inputs` key the graph already has is refused at
+  build (`KeyCollision`). The run ends with `done`. A flag that names
   another key of the graph is refused (`FlagKeyMismatch`).
 - Example `react_agent`: the agent graph called through `SubGraph`, its
   thinking read from the caller's configuration.
 - `GeneratorCritic`: a generator and a critic writing in one shared history,
   as a graph with a declared signature. Built with
   `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Count)`
-  (`final_generation` defaults to true) then `.graph()`. `GeneratorSeat {
+  (`final_generation` defaults to true, `inputs` to none) then `.graph()`. `GeneratorSeat {
   author, model, output, thinking, tools, tool_nodes, tool_concurrency,
   round_limit, enabled }`, `CriticSeat { author, model, thinking }`; two seats with one
   author are refused (`SameAuthor`). Each seat reads from its own
@@ -192,9 +195,10 @@ form to decide whether a version ships.
   - Inputs: `conversation` (the shared history the critic reads),
     `generator_history` (the generator's working history, started from
     `conversation` when empty), `generator_system` and `critic_system` (the
-    rendered system prompts), and the generator's `enabled` key when set (a
-    list of strings, as for `ReactAgent`; a key the graph already has is
-    refused with `KeyCollision`).
+    rendered system prompts), the generator's `enabled` key when set (a list
+    of strings, as for `ReactAgent`) and each key of `inputs`, for the
+    generator's tools to read (as for `ReactAgent`). An `enabled` or `inputs`
+    key the graph already has is refused (`KeyCollision`).
   - Outputs: `answer` (a conversation holding the generator's last answer, one
     turn with its final step), `validated`, `generations` (the generator
     answers in `conversation` since its last user input), `last_critique` (the
