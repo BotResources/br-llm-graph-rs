@@ -3,9 +3,10 @@ use std::collections::BTreeMap;
 use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::node::{Node, NodeFuture};
+use crate::graph::subgraph::check_call;
 use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, SubGraph};
 use crate::run::{Outcome, channel, run_nested};
-use crate::state::{Config, State, Value};
+use crate::state::{Config, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key};
 
@@ -48,6 +49,11 @@ impl Node for SubGraph {
                 },
             }
         })
+    }
+
+    /// The call's mappings against the caller's schema.
+    fn check(&self, schema: &Schema) -> Result<(), GraphError> {
+        check_call(schema, self)
     }
 }
 

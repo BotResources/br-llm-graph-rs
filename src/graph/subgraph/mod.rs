@@ -10,7 +10,7 @@ use crate::state::Value;
 use crate::update::Update;
 use crate::value::Key;
 
-pub(crate) use check::{Placement, check_call};
+use check::check_call;
 
 /// Where the value of a child input (or child configuration key) comes from.
 #[derive(Debug, Clone, PartialEq)]
@@ -165,6 +165,8 @@ impl SubGraph {
 mod subgraph_capture_tests;
 #[cfg(test)]
 mod subgraph_check_tests;
+#[cfg(test)]
+mod subgraph_hook_tests;
 #[cfg(test)]
 mod subgraph_map_tests;
 #[cfg(test)]

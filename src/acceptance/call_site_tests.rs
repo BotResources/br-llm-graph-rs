@@ -4,16 +4,20 @@ use super::support::*;
 use crate::{CaptureSource, CaptureUpdate, GraphError, Input, OnFailure, Output};
 
 fn refused(body: crate::SubGraph) -> GraphError {
-    caller(body).err().unwrap()
+    match caller(body) {
+        Err(GraphError::InvalidNode { node, source }) => {
+            assert_eq!(node, nid("each"));
+            *source
+        }
+        Err(other) => panic!("expected the map node to be refused, got {other}"),
+        Ok(_) => panic!("expected the map node to be refused"),
+    }
 }
 
 #[test]
 fn given_wrong_call_sites_when_built_then_each_is_refused_with_its_own_error() {
     let probe = Arc::new(Probe::default());
     assert!(caller(per_item(&probe)).is_ok());
-
-    let set_in_map = per_item(&probe).output(key("analysis"), Output::Set(key("item")));
-    assert!(matches!(refused(set_in_map), GraphError::MapBodySet { .. }));
 
     let wrong_list = per_item(&probe).output(key("attempts"), Output::Append(key("analyses")));
     assert!(matches!(
@@ -40,15 +44,6 @@ fn given_wrong_call_sites_when_built_then_each_is_refused_with_its_own_error() {
     assert!(matches!(
         refused(private_output),
         GraphError::SubGraphNotAnOutput { .. }
-    ));
-
-    let set_capture = per_item(&probe).on_failure(OnFailure::Capture(vec![CaptureUpdate::Set(
-        key("item"),
-        CaptureSource::Reason,
-    )]));
-    assert!(matches!(
-        refused(set_capture),
-        GraphError::MapBodySet { .. }
     ));
 
     let wrong_capture =

@@ -160,15 +160,33 @@ async fn given_a_failing_item_without_capture_when_mapped_then_the_run_fails() {
     assert!(outcome.is_err());
 }
 
-#[test]
-fn given_a_capture_that_sets_inside_a_map_when_built_then_map_body_set() {
+#[tokio::test]
+async fn given_a_call_body_capturing_with_a_set_when_an_item_fails_then_the_map_refuses_the_update()
+{
     let capture = OnFailure::Capture(vec![CaptureUpdate::Set(
         key("result"),
         CaptureSource::Reason,
     )]);
+    let graph = mapped(per_item(capture)).unwrap();
+    let failure = run_parent(
+        &graph,
+        start(&graph, &["bad1"]),
+        &parent_config(1),
+        Arc::new(NoopObserver),
+    )
+    .await
+    .err()
+    .unwrap();
+    let GraphError::NodeFailed {
+        source: crate::error::NodeFault::Returned(returned),
+        ..
+    } = failure.error
+    else {
+        panic!("expected the map to fail");
+    };
     assert!(matches!(
-        mapped(per_item(capture)),
-        Err(GraphError::MapBodySet { .. })
+        returned.downcast_ref::<GraphError>(),
+        Some(GraphError::MapBodyNotAppend { .. })
     ));
 }
 
@@ -184,7 +202,7 @@ fn given_a_capture_from_a_missing_source_or_into_a_target_of_another_kind_when_b
         CaptureUpdate::Append(key("labels"), CaptureSource::From(key("count"))),
     ] {
         let call = picky_call().on_failure(OnFailure::Capture(vec![capture.clone()]));
-        let error = parent_with(call).err().unwrap();
+        let error = crate::testkit::refusal(parent_with(call));
         assert!(
             matches!(error, GraphError::SubGraphCaptureMismatch { ref key, .. } if *key == *capture.target().key()),
             "{capture:?} gave {error}"

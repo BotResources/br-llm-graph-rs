@@ -39,23 +39,41 @@ fn given_a_call_body_that_only_appends_when_built_then_ok() {
     assert!(mapped(per_item().output_end_label(Output::Append(key("labels")))).is_ok());
 }
 
-#[test]
-fn given_a_call_body_with_a_set_output_when_built_then_map_body_set() {
-    let body = per_item().output(key("answer"), Output::Set(key("result")));
-    assert!(matches!(
-        mapped(body),
-        Err(GraphError::MapBodySet { node, key }) if node == nid("each") && key == self::key("result")
-    ));
-    let body = per_item().output_end_label(Output::Set(key("label")));
-    assert!(matches!(mapped(body), Err(GraphError::MapBodySet { .. })));
+/// A call body that sets passes the build (the call cannot know it is a map
+/// body) and is refused by the map at run time, never silently dropped.
+#[tokio::test]
+async fn given_a_call_body_with_a_set_output_when_mapped_then_the_map_refuses_the_update() {
+    for body in [
+        per_item().output(key("answer"), Output::Set(key("result"))),
+        per_item().output_end_label(Output::Set(key("label"))),
+    ] {
+        let graph = mapped(body).unwrap();
+        let items = Value::list(vec![Value::str("x")]);
+        let state = graph.start_state([(key("items"), items)]).unwrap();
+        let failure = run_parent(&graph, state, &parent_config(1), Arc::new(NoopObserver))
+            .await
+            .err()
+            .unwrap();
+        let GraphError::NodeFailed {
+            source: crate::error::NodeFault::Returned(returned),
+            ..
+        } = failure.error
+        else {
+            panic!("expected the map to fail");
+        };
+        assert!(matches!(
+            returned.downcast_ref::<GraphError>(),
+            Some(GraphError::MapBodyNotAppend { .. })
+        ));
+    }
 }
 
 #[test]
 fn given_a_call_body_appending_to_a_list_of_another_kind_when_built_then_target_mismatch() {
     let body = per_item().output(key("count"), Output::Append(key("results")));
     assert!(matches!(
-        mapped(body),
-        Err(GraphError::SubGraphTargetMismatch { .. })
+        crate::testkit::refusal(mapped(body)),
+        GraphError::SubGraphTargetMismatch { .. }
     ));
 }
 
@@ -65,8 +83,8 @@ fn given_a_call_body_with_an_unmapped_input_when_built_then_input_unmapped() {
         .config(key("rounds"), Input::Config(key("rounds")))
         .output(key("answer"), Output::Append(key("results")));
     assert!(matches!(
-        mapped(body),
-        Err(GraphError::SubGraphInputUnmapped { .. })
+        crate::testkit::refusal(mapped(body)),
+        GraphError::SubGraphInputUnmapped { .. }
     ));
 }
 

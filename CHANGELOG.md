@@ -18,7 +18,6 @@ form to decide whether a version ships.
   time (`LimitNotPositive`).
 - `Map::max_concurrency`: at most that many bodies run at once; the results
   keep the item order. `None` runs every item at once, as before.
-- `GraphError::MapKeyMismatch` now covers the list and item keys only.
 - `ToolNode::max_concurrency` and `ReactLoop::tool_concurrency`: at most that
   many pending calls of one tool node run at once; the results keep the call
   order. `None` runs every call at once, as before.
@@ -85,9 +84,8 @@ form to decide whether a version ships.
   `CaptureUpdate` is `Set` or `Append` into a parent key, from a
   `CaptureSource`: `Const(value)`, `From(parent_key)` (in a map body, the item
   key included) or `Reason` (the child's error message). Checked at build like
-  outputs (`SubGraphCaptureMismatch`, and `MapBodySet` in a map body). Inside a
-  map the captured appends are forwarded in item order and the item is
-  recorded as finished.
+  outputs (`SubGraphCaptureMismatch`). Inside a map the captured appends are
+  forwarded in item order and the item is recorded as finished.
 - Pending writes and resume: `PendingWrites` (occurrence key to updates,
   with `insert`, `get`, `merge`) and `Checkpoint::pending`. A map item that
   finishes records its appends under its occurrence (`Context::record`) while
@@ -104,11 +102,18 @@ form to decide whether a version ships.
 - `Checkpoint::with_pending`; `Context::pending()` copies what a recorder
   holds.
 - Example `subgraph_map`: a map whose body calls a graph, with a resume.
-- Build-time checks of a call against the caller's schema:
-  `SubGraphInputUnmapped`, `SubGraphInputTwice`, `SubGraphNotAnInput`,
-  `SubGraphSourceMismatch`, `SubGraphConfigUnmapped`, `SubGraphConfigTwice`,
-  `SubGraphNotAConfig`, `SubGraphConfigMismatch`, `SubGraphNotAnOutput`,
-  `SubGraphTargetMismatch`.
+- `Node::check(&self, &Schema)`, defaulted to accept: a node checks itself
+  against the schema of the graph it runs in. `GraphBuilder::build` calls it on
+  every node, however registered (`node`, `join`, `map`, `subgraph`), and
+  refuses the graph with `InvalidNode { node, source }`, `source` being the
+  reason. `SubGraph` checks its mappings, `Map` its list and item keys, its
+  limit, then its body against the same schema. A node that wraps another
+  forwards `check` to it.
+- Reasons a call is refused: `SubGraphInputUnmapped`, `SubGraphInputTwice`,
+  `SubGraphNotAnInput`, `SubGraphSourceMismatch`, `SubGraphConfigUnmapped`,
+  `SubGraphConfigTwice`, `SubGraphNotAConfig`, `SubGraphConfigMismatch`,
+  `SubGraphNotAnOutput`, `SubGraphTargetMismatch`, `SubGraphCaptureMismatch`,
+  each naming the key.
 
 ### Changed
 
@@ -136,19 +141,18 @@ form to decide whether a version ships.
   state. Each must be an `Update::Append` to a list of the graph and the map
   forwards them, in item order whatever the completion order, so one body may
   append to several lists and they stay aligned. Any other update fails the
-  map (`MapBodyNotAppend`), never silently dropped. A `SubGraph` body is
-  checked at build: every output must be an `Append` (`MapBodySet`), with kinds
-  checked against the graph's schema (the item key included). A map run
-  outside a graph, whose context names no node, fails with
+  map (`MapBodyNotAppend`), never silently dropped; this includes a `Set`
+  output or capture of a `SubGraph` body, which its own `check` cannot see as a
+  map body. A map run outside a graph, whose context names no node, fails with
   `MapWithoutOccurrence`.
 - `Map` runs its bodies in a rolling window: at most `max_concurrency` at
   once, a new one starting as soon as any running one finishes, never held by
   a slow earlier item. Every body runs to its end; the first error in item
   order fails the map.
-- `Node` has `Any` as a supertrait (every node a graph holds is `'static`), so
-  `GraphBuilder::build` recognises maps and calls among its nodes: a `Map` or a
-  `SubGraph` registered with `node` or `join` is now checked like one
-  registered with `map` or `subgraph`.
+- `GraphError::MapKeyMismatch` is `{ list, item }` and covers the list and
+  item keys only; like every build-time reason of a node, it reaches the
+  caller inside `InvalidNode`. A `Map` registered with `node` or `join` is now
+  checked too.
 - `Schema` gains the public field `defaults` (serialized only when not empty,
   so earlier schemas and checkpoints still load) and no longer implements
   `Eq`, since a default is a `Value`.

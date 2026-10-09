@@ -154,8 +154,8 @@ fn given_limit_on_a_key_that_is_not_an_int_config_key_when_built_then_refused() 
     let gauge = Arc::new(Gauge::default());
     for name in ["count", "missing"] {
         assert!(matches!(
-            map_graph(&gauge, Some(Limit::Config(key(name)))),
-            Err(GraphError::LimitKeyMismatch { .. })
+            crate::testkit::refusal(map_graph(&gauge, Some(Limit::Config(key(name))))),
+            GraphError::LimitKeyMismatch { .. }
         ));
     }
 }

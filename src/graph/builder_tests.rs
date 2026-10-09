@@ -124,7 +124,10 @@ fn given_map_with_bad_keys_when_build_then_refused() {
         .map(nid("m"), map)
         .edge(nid("m"), done_edge())
         .build();
-    assert!(matches!(result, Err(GraphError::MapKeyMismatch { .. })));
+    assert!(matches!(
+        crate::testkit::refusal(result),
+        GraphError::MapKeyMismatch { .. }
+    ));
 }
 
 #[test]
@@ -156,7 +159,10 @@ fn given_map_whose_item_key_is_not_the_list_element_kind_when_build_then_refused
         .map(nid("m"), map)
         .edge(nid("m"), done_edge())
         .build();
-    assert!(matches!(result, Err(GraphError::MapKeyMismatch { .. })));
+    assert!(matches!(
+        crate::testkit::refusal(result),
+        GraphError::MapKeyMismatch { .. }
+    ));
 }
 
 #[test]
@@ -172,5 +178,8 @@ fn given_map_registered_as_a_plain_node_when_build_then_its_keys_are_checked() {
         .node(nid("m"), map)
         .edge(nid("m"), done_edge())
         .build();
-    assert!(matches!(result, Err(GraphError::MapKeyMismatch { .. })));
+    assert!(matches!(
+        crate::testkit::refusal(result),
+        GraphError::MapKeyMismatch { .. }
+    ));
 }

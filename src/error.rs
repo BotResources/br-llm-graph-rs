@@ -86,7 +86,8 @@ pub enum GraphError {
         node: NodeId,
     },
     MapKeyMismatch {
-        node: NodeId,
+        list: Key,
+        item: Key,
     },
     NodeFailed {
         node: NodeId,
@@ -146,43 +147,33 @@ pub enum GraphError {
         value: String,
     },
     SubGraphNotAnInput {
-        node: NodeId,
         key: Key,
     },
     SubGraphInputTwice {
-        node: NodeId,
         key: Key,
     },
     SubGraphInputUnmapped {
-        node: NodeId,
         key: Key,
     },
     SubGraphSourceMismatch {
-        node: NodeId,
         key: Key,
     },
     SubGraphNotAConfig {
-        node: NodeId,
         key: Key,
     },
     SubGraphConfigTwice {
-        node: NodeId,
         key: Key,
     },
     SubGraphConfigUnmapped {
-        node: NodeId,
         key: Key,
     },
     SubGraphConfigMismatch {
-        node: NodeId,
         key: Key,
     },
     SubGraphNotAnOutput {
-        node: NodeId,
         key: Key,
     },
     SubGraphTargetMismatch {
-        node: NodeId,
         key: Key,
     },
     SubGraphFailed {
@@ -193,13 +184,15 @@ pub enum GraphError {
         key: Key,
     },
     MapBodySet {
-        node: NodeId,
         key: Key,
     },
     MapWithoutOccurrence,
     SubGraphCaptureMismatch {
-        node: NodeId,
         key: Key,
+    },
+    InvalidNode {
+        node: NodeId,
+        source: Box<GraphError>,
     },
 }
 
@@ -248,9 +241,10 @@ impl std::fmt::Display for GraphError {
             GraphError::EmptyEdge { node } => {
                 write!(f, "the edge of node {node} returned no target")
             }
-            GraphError::MapKeyMismatch { node } => {
-                write!(f, "the map node {node} has inconsistent list/item keys")
-            }
+            GraphError::MapKeyMismatch { list, item } => write!(
+                f,
+                "map list {list} must be a list whose element kind is the kind of item {item}"
+            ),
             GraphError::NodeFailed { node, source } => write!(f, "node {node} failed: {source}"),
             GraphError::AmbiguousEnd { labels } => {
                 let labels: Vec<&str> = labels.iter().map(EndLabel::as_str).collect();
@@ -313,63 +307,44 @@ impl std::fmt::Display for GraphError {
             GraphError::InvalidOccurrence { value } => {
                 write!(f, "{value:?} is not a valid occurrence key")
             }
-            GraphError::SubGraphNotAnInput { node, key } => {
-                write!(
-                    f,
-                    "node {node} maps {key}, which is not a declared input of the called graph"
-                )
+            GraphError::SubGraphNotAnInput { key } => write!(
+                f,
+                "the call maps {key}, which is not a declared input of the called graph"
+            ),
+            GraphError::SubGraphInputTwice { key } => {
+                write!(f, "the call maps input {key} of the called graph twice")
             }
-            GraphError::SubGraphInputTwice { node, key } => {
-                write!(f, "node {node} maps input {key} of the called graph twice")
+            GraphError::SubGraphInputUnmapped { key } => {
+                write!(f, "the call does not map input {key} of the called graph")
             }
-            GraphError::SubGraphInputUnmapped { node, key } => {
-                write!(
-                    f,
-                    "node {node} does not map input {key} of the called graph"
-                )
-            }
-            GraphError::SubGraphSourceMismatch { node, key } => {
-                write!(
-                    f,
-                    "node {node} maps input {key} from a source that is missing or of another kind"
-                )
-            }
-            GraphError::SubGraphNotAConfig { node, key } => {
-                write!(
-                    f,
-                    "node {node} maps {key}, which is not a configuration key of the called graph"
-                )
-            }
-            GraphError::SubGraphConfigTwice { node, key } => {
-                write!(
-                    f,
-                    "node {node} maps configuration key {key} of the called graph twice"
-                )
-            }
-            GraphError::SubGraphConfigUnmapped { node, key } => {
-                write!(
-                    f,
-                    "node {node} does not map configuration key {key} of the called graph"
-                )
-            }
-            GraphError::SubGraphConfigMismatch { node, key } => {
-                write!(
-                    f,
-                    "node {node} maps configuration key {key} from a source that is missing or of another kind"
-                )
-            }
-            GraphError::SubGraphNotAnOutput { node, key } => {
-                write!(
-                    f,
-                    "node {node} maps {key}, which is not a declared output of the called graph"
-                )
-            }
-            GraphError::SubGraphTargetMismatch { node, key } => {
-                write!(
-                    f,
-                    "node {node} writes into {key}, which is missing or cannot take the value"
-                )
-            }
+            GraphError::SubGraphSourceMismatch { key } => write!(
+                f,
+                "the call maps input {key} from a source that is missing or of another kind"
+            ),
+            GraphError::SubGraphNotAConfig { key } => write!(
+                f,
+                "the call maps {key}, which is not a configuration key of the called graph"
+            ),
+            GraphError::SubGraphConfigTwice { key } => write!(
+                f,
+                "the call maps configuration key {key} of the called graph twice"
+            ),
+            GraphError::SubGraphConfigUnmapped { key } => write!(
+                f,
+                "the call does not map configuration key {key} of the called graph"
+            ),
+            GraphError::SubGraphConfigMismatch { key } => write!(
+                f,
+                "the call maps configuration key {key} from a source that is missing or of another kind"
+            ),
+            GraphError::SubGraphNotAnOutput { key } => write!(
+                f,
+                "the call maps {key}, which is not a declared output of the called graph"
+            ),
+            GraphError::SubGraphTargetMismatch { key } => write!(
+                f,
+                "the call writes into {key}, which is missing or cannot take the value"
+            ),
             GraphError::SubGraphFailed { source } => write!(f, "the called graph failed: {source}"),
             GraphError::SubGraphSuspended => {
                 f.write_str("the called graph stopped before its end (paused or cancelled)")
@@ -378,17 +353,19 @@ impl std::fmt::Display for GraphError {
                 f,
                 "a map body may only append to a list; it returned another update of {key}"
             ),
-            GraphError::MapBodySet { node, key } => write!(
-                f,
-                "the body of map node {node} sets {key}; a map body may only append"
-            ),
+            GraphError::MapBodySet { key } => {
+                write!(f, "a map body would set {key}; a map body may only append")
+            }
             GraphError::MapWithoutOccurrence => {
                 f.write_str("a map runs as a node of a graph: its context names no node occurrence")
             }
-            GraphError::SubGraphCaptureMismatch { node, key } => write!(
+            GraphError::SubGraphCaptureMismatch { key } => write!(
                 f,
-                "node {node} captures a failure into {key} from a source that is missing or of a kind {key} cannot take"
+                "a failure is captured into {key} from a source that is missing or of a kind {key} cannot take"
             ),
+            GraphError::InvalidNode { node, source } => {
+                write!(f, "node {node} is refused: {source}")
+            }
         }
     }
 }
@@ -399,6 +376,7 @@ impl std::error::Error for GraphError {
             GraphError::NodeFailed { source, .. } => Some(source),
             GraphError::Message(error) => Some(error),
             GraphError::SubGraphFailed { source } => Some(source.as_ref()),
+            GraphError::InvalidNode { source, .. } => Some(source.as_ref()),
             GraphError::Identifier { .. }
             | GraphError::FloatNotFinite
             | GraphError::MissingKey { .. }

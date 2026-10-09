@@ -22,7 +22,7 @@ fn with_config(source: Input) -> SubGraph {
 }
 
 fn refused(call: SubGraph) -> GraphError {
-    parent_with(call).err().unwrap()
+    crate::testkit::refusal(parent_with(call))
 }
 
 fn names(error: &GraphError) -> Option<Key> {
@@ -55,16 +55,15 @@ fn given_a_call_registered_as_a_plain_node_when_built_then_it_is_checked_too() {
         .build();
     assert!(matches!(
         result,
-        Err(GraphError::SubGraphInputUnmapped { .. })
+        Err(GraphError::InvalidNode { ref node, ref source })
+            if *node == nid("ask") && matches!(**source, GraphError::SubGraphInputUnmapped { .. })
     ));
 }
 
 #[test]
 fn given_a_declared_input_left_unmapped_when_built_then_input_unmapped() {
     let error = refused(bare().config(key("rounds"), Input::Config(key("rounds"))));
-    assert!(
-        matches!(error, GraphError::SubGraphInputUnmapped { ref node, .. } if *node == nid("ask"))
-    );
+    assert!(matches!(error, GraphError::SubGraphInputUnmapped { .. }));
     assert_eq!(names(&error), Some(key("text")));
 }
 
@@ -96,7 +95,7 @@ fn given_a_source_missing_or_of_another_kind_when_built_then_source_mismatch() {
         Input::Config(key("missing")),
         Input::Const(Value::int(1)),
     ] {
-        let error = parent_with(with_input(source.clone())).err().unwrap();
+        let error = refused(with_input(source.clone()));
         assert!(
             matches!(error, GraphError::SubGraphSourceMismatch { .. }),
             "{source:?} gave {error}"
@@ -141,7 +140,7 @@ fn given_a_configuration_source_missing_or_of_another_kind_when_built_then_confi
         Input::From(key("question")),
         Input::Const(Value::str("two")),
     ] {
-        let error = parent_with(with_config(source.clone())).err().unwrap();
+        let error = refused(with_config(source.clone()));
         assert!(
             matches!(error, GraphError::SubGraphConfigMismatch { .. }),
             "{source:?} gave {error}"
@@ -183,13 +182,12 @@ fn given_a_target_missing_or_unable_to_take_the_output_when_built_then_target_mi
 fn given_an_end_label_target_that_is_not_text_when_built_then_target_mismatch() {
     for target in [Output::Set(key("steps")), Output::Append(key("results"))] {
         let call = refine_call().output_end_label(target.clone());
-        let result = parent_with(call);
         match target {
             Output::Set(_) => assert!(matches!(
-                result,
-                Err(GraphError::SubGraphTargetMismatch { .. })
+                refused(call),
+                GraphError::SubGraphTargetMismatch { .. }
             )),
-            Output::Append(_) => assert!(result.is_ok()),
+            Output::Append(_) => assert!(parent_with(call).is_ok()),
         }
     }
 }

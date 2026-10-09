@@ -73,3 +73,12 @@ impl Observer for Recorder {
 pub fn context(observer: std::sync::Arc<dyn Observer>) -> Context {
     Context::new(observer, std::sync::Arc::new(SeqIds::new()))
 }
+
+/// The reason `GraphBuilder::build` refused a node.
+pub fn refusal<T>(result: Result<T, crate::error::GraphError>) -> crate::error::GraphError {
+    match result {
+        Err(crate::error::GraphError::InvalidNode { source, .. }) => *source,
+        Err(other) => panic!("expected a refused node, got: {other}"),
+        Ok(_) => panic!("expected a refused node, the graph was built"),
+    }
+}

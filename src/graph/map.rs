@@ -5,7 +5,7 @@ use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::limit::Limit;
 use crate::graph::node::{Node, NodeError, NodeFuture};
-use crate::state::{Config, State, Value};
+use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
 
@@ -25,6 +25,9 @@ use crate::value::Key;
 /// A finished item records its appends under its occurrence (`Context::record`)
 /// before the map returns. An item an earlier attempt recorded is not run
 /// again: its recorded appends are used.
+///
+/// At build, `check` refuses a list key that is not a list whose element kind
+/// is the item key's kind, then checks the body against the same schema.
 pub struct Map {
     pub list: Key,
     pub item: Key,
@@ -54,6 +57,23 @@ impl Node for Map {
             }
             Ok(forwarded)
         })
+    }
+
+    fn check(&self, schema: &Schema) -> Result<(), GraphError> {
+        let fits = match (schema.state.get(&self.list), schema.state.get(&self.item)) {
+            (Some(Kind::List { element }), Some(item)) => element.as_ref() == item,
+            _ => false,
+        };
+        if !fits {
+            return Err(GraphError::MapKeyMismatch {
+                list: self.list.clone(),
+                item: self.item.clone(),
+            });
+        }
+        if let Some(limit) = &self.max_concurrency {
+            limit.check(schema)?;
+        }
+        self.body.check(schema)
     }
 }
 

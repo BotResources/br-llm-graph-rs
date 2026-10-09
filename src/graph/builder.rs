@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::collections::BTreeMap;
 
 use crate::error::GraphError;
@@ -7,8 +6,8 @@ use crate::graph::graph::{Graph, NodeEntry, Parts};
 use crate::graph::map::Map;
 use crate::graph::node::Node;
 use crate::graph::signature::Signature;
-use crate::graph::subgraph::{Placement, SubGraph, check_call};
-use crate::state::{Kind, Schema};
+use crate::graph::subgraph::SubGraph;
+use crate::state::Schema;
 use crate::value::{Key, NodeId};
 
 pub struct GraphBuilder {
@@ -72,13 +71,12 @@ impl GraphBuilder {
         self
     }
 
-    /// Registers a map node; `build` checks its keys against the schema.
+    /// Registers a map node, as `node` does.
     pub fn map(self, id: NodeId, map: Map) -> Self {
         self.node(id, map)
     }
 
-    /// Registers a node that calls another graph; `build` checks the call
-    /// against the schema.
+    /// Registers a node that calls another graph, as `node` does.
     pub fn subgraph(self, id: NodeId, call: SubGraph) -> Self {
         self.node(id, call)
     }
@@ -139,7 +137,13 @@ impl GraphBuilder {
 
         for id in &order {
             if let Some(entry) = nodes.get(id) {
-                check_node(&schema, id, entry.node.as_ref())?;
+                entry
+                    .node
+                    .check(&schema)
+                    .map_err(|source| GraphError::InvalidNode {
+                        node: id.clone(),
+                        source: Box::new(source),
+                    })?;
             }
         }
 
@@ -151,37 +155,6 @@ impl GraphBuilder {
             nodes,
             edges,
         }))
-    }
-}
-
-/// The build-time checks of the nodes the builder knows: maps and calls.
-fn check_node(schema: &Schema, id: &NodeId, node: &dyn Node) -> Result<(), GraphError> {
-    let node: &dyn Any = node;
-    if let Some(map) = node.downcast_ref::<Map>() {
-        return check_map(schema, id, map);
-    }
-    if let Some(call) = node.downcast_ref::<SubGraph>() {
-        return check_call(schema, id, call, Placement::Node);
-    }
-    Ok(())
-}
-
-fn check_map(schema: &Schema, id: &NodeId, map: &Map) -> Result<(), GraphError> {
-    let element = match schema.state.get(&map.list) {
-        Some(Kind::List { element }) => element.as_ref().clone(),
-        Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
-    };
-    match schema.state.get(&map.item) {
-        Some(item_kind) if *item_kind == element => {}
-        Some(_) | None => return Err(GraphError::MapKeyMismatch { node: id.clone() }),
-    }
-    if let Some(limit) = &map.max_concurrency {
-        limit.check(schema)?;
-    }
-    let body: &dyn Any = map.body.as_ref();
-    match body.downcast_ref::<SubGraph>() {
-        Some(call) => check_call(schema, id, call, Placement::MapBody),
-        None => Ok(()),
     }
 }
 
