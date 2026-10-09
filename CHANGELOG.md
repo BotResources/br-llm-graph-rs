@@ -157,40 +157,41 @@ form to decide whether a version ships.
     fail because of an item error. `From(key)` reads the item's own state,
     `Reason` is the error's message. A panic is not captured. Checked at build
     like a call's captures; a `Set` is refused (`MapBodySet`).
-- `ReactAgent`: a ReAct agent as a graph with a declared signature, built
-  with `ReactAgent { author, model, system, output, tools, tool_nodes,
+- `ReactAgent`: a ReAct agent as a graph with a declared signature, built with
+  `ReactAgent { author, model, system, output, tools, tool_nodes,
   tool_concurrency, round_limit, thinking, enabled, inputs }.graph()` (an
-  `Arc<Graph>`, ready for `SubGraph` or a `Map` body). It is the `ReactLoop` fragment on the key
-  `history`, so the loop code exists once; empty `tool_nodes` means one node,
-  `tools`, runs every tool. Input `history` (conversation): a new call is a
-  history holding one user input, a resumed call the history the host saved,
-  and the loop always enters through the model call. `output` (`OutputMode`)
-  is sent on every model call. Outputs `history`, `answer` (a conversation
-  holding the agent's last turn with its final step only, so a structured
-  reply reaches the caller), `reply` (the text of that step, empty if none or
-  for a structured reply) and, when the round limit's `OnLimit` is `Continue`
-  or `End`, its `flag`. The configuration keys of `system` (`Source::Config`, strings), of `thinking`
-  and of the limits are declared from them; each `Source::State` key of
-  `system` is a string input. `enabled` (`Option<Key>`), when set, is an
-  input holding a list of strings, wired to `LlmNode::enabled`: only the
-  tools it names are offered to the model, and a call naming another tool is
-  refused by its tool node. `inputs` (`Vec<(Key, Kind)>`): extra state keys
-  declared as inputs of the graph, so the caller maps per-run values into the
-  child state and the tools read them through the `&State` that `Tool::call`
-  receives. An `enabled` or `inputs` key the graph already has is refused at
-  build (`KeyCollision`). The run ends with `done`. A flag that names
-  another key of the graph is refused (`FlagKeyMismatch`).
+  `Arc<Graph>`, ready for `SubGraph` or a `Map` body). It is the `ReactLoop`
+  fragment on the key `history`, so the loop code exists once; empty
+  `tool_nodes` means one node, `tools`, runs every tool. Input `history`
+  (conversation): a new call is a history holding one user input, a resumed call
+  the history the host saved, and the loop always enters through the model call.
+  `output` (`OutputMode`) is sent on every model call. Outputs `history`,
+  `answer` (a conversation holding the agent's last turn with its final step
+  only, so a structured reply reaches the caller), `reply` (the text of that
+  step, empty if none or for a structured reply) and, when the round limit's
+  `OnLimit` is `Continue` or `End`, its `flag`. The configuration keys of
+  `system` (`Source::Config`, strings), of `thinking` and of the limits are
+  declared from them; each `Source::State` key of `system` is a string input.
+  `enabled` (`Option<Key>`), when set, is an input holding a list of strings,
+  wired to `LlmNode::enabled`: only the tools it names are offered to the model,
+  and a call naming another tool is refused by its tool node. `inputs`
+  (`Vec<(Key, Kind)>`): extra state keys declared as inputs of the graph, so the
+  caller maps per-run values into the child state and the tools read them
+  through the `&State` that `Tool::call` receives. An `enabled` or `inputs` key
+  the graph already has is refused at build (`KeyCollision`). The run ends with
+  `done`. A flag that names another key of the graph is refused
+  (`FlagKeyMismatch`).
 - Example `react_agent`: the agent graph called through `SubGraph`, its
   thinking read from the caller's configuration.
-- `GeneratorCritic`: a generator and a critic writing in one shared history,
-  as a graph with a declared signature. Built with
+- `GeneratorCritic`: a generator and a critic writing in one shared history, as
+  a graph with a declared signature. Built with
   `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Count)`
   (`final_generation` defaults to true, `inputs` to none) then `.graph()`.
   `GeneratorSeat { author, model, output, thinking, tools, tool_nodes,
   tool_concurrency, round_limit, enabled }`, `CriticSeat { author, model,
-  thinking }`; two seats with one author are refused (`SameAuthor`). Each seat reads from its own
-  `Perspective`: its own turns as assistant messages, the other's as framed
-  messages.
+  thinking }`; two seats with one author are refused (`SameAuthor`). Each seat
+  reads from its own `Perspective`: its own turns as assistant messages, the
+  other's as framed messages.
   - Inputs: `conversation` (the shared history the critic reads),
     `generator_history` (the generator's working history, started from
     `conversation` when empty), `generator_system` and `critic_system` (the
