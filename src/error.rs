@@ -1,5 +1,5 @@
 use br_llm_messages::MessageError;
-use br_llm_messages::ToolName;
+use br_llm_messages::{Author, ToolName};
 
 use crate::graph::NodeError;
 use crate::state::Kind;
@@ -123,6 +123,9 @@ pub enum GraphError {
     },
     SwitchKeyMismatch {
         key: Key,
+    },
+    SameAuthor {
+        author: Author,
     },
     FlagKeyMismatch {
         key: Key,
@@ -288,6 +291,10 @@ impl std::fmt::Display for GraphError {
             GraphError::SwitchKeyMismatch { key } => {
                 write!(f, "switch key {key} is not a bool configuration key")
             }
+            GraphError::SameAuthor { author } => write!(
+                f,
+                "the generator and the critic are both written by {author}; each seat needs its own author"
+            ),
             GraphError::FlagKeyMismatch { key } => {
                 write!(f, "flag key {key} is not a bool state key")
             }
@@ -411,6 +418,7 @@ impl std::error::Error for GraphError {
             | GraphError::LimitKeyMismatch { .. }
             | GraphError::LimitNotPositive { .. }
             | GraphError::SwitchKeyMismatch { .. }
+            | GraphError::SameAuthor { .. }
             | GraphError::FlagKeyMismatch { .. }
             | GraphError::ToolLimitReached { .. }
             | GraphError::DuplicateInput { .. }

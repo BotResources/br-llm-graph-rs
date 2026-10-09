@@ -1,3 +1,4 @@
+mod generator_critic;
 mod helpers;
 mod llm_node;
 mod model;
@@ -7,6 +8,8 @@ mod round_limit;
 mod tool;
 mod tool_node;
 
+#[cfg(test)]
+mod generator_critic_tests;
 #[cfg(test)]
 mod react_agent_tests;
 #[cfg(test)]
@@ -30,6 +33,7 @@ mod react_tool_concurrency_tests;
 #[cfg(test)]
 mod test_support;
 
+pub use generator_critic::{CriticSeat, GeneratorCritic, GeneratorSeat};
 pub use helpers::{complete, pending_calls, pending_unsafe_calls, structured, wire};
 pub use llm_node::{LlmNode, Source};
 pub use model::{

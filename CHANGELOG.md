@@ -161,6 +161,47 @@ form to decide whether a version ships.
   another key of the graph is refused (`FlagKeyMismatch`).
 - Example `react_agent`: the agent graph called through `SubGraph`, its
   thinking read from the caller's configuration.
+- `GeneratorCritic`: a generator and a critic writing in one shared history,
+  as a graph with a declared signature. Built with
+  `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Limit)`
+  (`final_generation` defaults to true) then `.graph()`. `GeneratorSeat {
+  author, model, output, thinking, tools, tool_nodes, tool_concurrency,
+  round_limit }`, `CriticSeat { author, model, thinking }`; two seats with one
+  author are refused (`SameAuthor`). Each seat reads from its own
+  `Perspective`: its own turns as assistant messages, the other's as framed
+  messages.
+  - Inputs: `conversation` (the shared history the critic reads),
+    `generator_history` (the generator's working history, started from
+    `conversation` when empty), `generator_system` and `critic_system` (the
+    rendered system prompts).
+  - Outputs: `answer` (a conversation holding the generator's last answer, one
+    turn with its final step), `validated`, `generations` (the generator
+    answers in `conversation` since its last user input), `last_critique` (the
+    last rejection's message, empty when validated), `conversation`,
+    `generator_history`, and the generator's round-limit flag when it has one.
+    The run ends with `validated` or `exhausted`.
+  - `generator_history` holds the generator's whole traffic and the critiques;
+    `conversation` holds the user input, the answers (final step only) and the
+    critiques. A critique is a turn of the critic holding one text step, the
+    verdict's `message`, appended to both; nothing is appended on validation
+    and nothing of the critic's reasoning enters a history.
+  - The critic answers a structured verdict, `{ is_valid, message }` when its
+    resolved `thinking` is true, else `{ thinking, is_valid, message }`,
+    `thinking` first; every field is required. A missing structured block, a
+    non-boolean `is_valid` or an empty `message` on a rejection fails the run
+    with `Structured`.
+  - The entry is routed on how `conversation` ends: a generator answer goes to
+    the critic (a resumed call), anything else to the generator. After an
+    answer, more than `max_critiques` answers end `exhausted` without the
+    critic. After a rejection, the generator answers again while fewer than
+    `max_critiques` answers were given; at `max_critiques` it answers once more,
+    unassessed, when `final_generation`, else the run ends `exhausted` on the
+    rejected answer.
+  - With tools, the generation is the `ReactLoop` fragment inline in the graph;
+    each generation opens a new generator turn, so the round limit counts per
+    generation.
+- Example `generator_critic`: the two seats called through `SubGraph`, the
+  critic's thinking read from the caller's configuration.
 - Example `subgraph_map`: a map whose body calls a graph, with a resume.
 - `Node::check(&self, &Schema, CheckSite)`, defaulted to accept: a node checks
   itself against the schema of the graph it runs in, at a site
@@ -185,6 +226,10 @@ form to decide whether a version ships.
   type.
 - `Map`, `ToolNode`, `ReactLoop`, `LlmNode` and `Request` gain the fields
   above; struct literals must set them.
+- `serde_json` is built with `preserve_order`: JSON objects keep the order
+  of their keys, so a schema lists its properties in the order written.
+- Examples `react_agent` and `generator_critic` show the graph forms above
+  instead of hand-built loops.
 - Depends on `br-llm-messages` 0.2.0: the body of a framed entry is rendered
   verbatim, no longer escaped.
 - Every `Observer` method receives an `&Origin` first. Events of the run loop
