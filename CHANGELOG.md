@@ -159,8 +159,8 @@ form to decide whether a version ships.
     like a call's captures; a `Set` is refused (`MapBodySet`).
 - `ReactAgent`: a ReAct agent as a graph with a declared signature, built
   with `ReactAgent { author, model, system, output, tools, tool_nodes,
-  tool_concurrency, round_limit, thinking, enabled, inputs }.graph()` (an `Arc<Graph>`, ready
-  for `SubGraph` or a `Map` body). It is the `ReactLoop` fragment on the key
+  tool_concurrency, round_limit, thinking, enabled, inputs }.graph()` (an
+  `Arc<Graph>`, ready for `SubGraph` or a `Map` body). It is the `ReactLoop` fragment on the key
   `history`, so the loop code exists once; empty `tool_nodes` means one node,
   `tools`, runs every tool. Input `history` (conversation): a new call is a
   history holding one user input, a resumed call the history the host saved,
@@ -169,8 +169,7 @@ form to decide whether a version ships.
   holding the agent's last turn with its final step only, so a structured
   reply reaches the caller), `reply` (the text of that step, empty if none or
   for a structured reply) and, when the round limit's `OnLimit` is `Continue`
-  or `End`, its `flag`. The
-  configuration keys of `system` (`Source::Config`, strings), of `thinking`
+  or `End`, its `flag`. The configuration keys of `system` (`Source::Config`, strings), of `thinking`
   and of the limits are declared from them; each `Source::State` key of
   `system` is a string input. `enabled` (`Option<Key>`), when set, is an
   input holding a list of strings, wired to `LlmNode::enabled`: only the
@@ -186,10 +185,10 @@ form to decide whether a version ships.
 - `GeneratorCritic`: a generator and a critic writing in one shared history,
   as a graph with a declared signature. Built with
   `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Count)`
-  (`final_generation` defaults to true, `inputs` to none) then `.graph()`. `GeneratorSeat {
-  author, model, output, thinking, tools, tool_nodes, tool_concurrency,
-  round_limit, enabled }`, `CriticSeat { author, model, thinking }`; two seats with one
-  author are refused (`SameAuthor`). Each seat reads from its own
+  (`final_generation` defaults to true, `inputs` to none) then `.graph()`.
+  `GeneratorSeat { author, model, output, thinking, tools, tool_nodes,
+  tool_concurrency, round_limit, enabled }`, `CriticSeat { author, model,
+  thinking }`; two seats with one author are refused (`SameAuthor`). Each seat reads from its own
   `Perspective`: its own turns as assistant messages, the other's as framed
   messages.
   - Inputs: `conversation` (the shared history the critic reads),
@@ -216,7 +215,8 @@ form to decide whether a version ships.
     non-boolean `is_valid` or an empty `message` on a rejection fails the run
     with `Structured`.
   - The entry is routed on how `conversation` ends: a generator answer goes to
-    the critic (a resumed call), anything else to the generator. After an
+    the critic and a critique is routed as after a rejection (both are resumed
+    calls), anything else goes to the generator. After an
     answer, more than `max_critiques` answers end `exhausted` without the
     critic. After a rejection, the generator answers again while fewer than
     `max_critiques` answers were given; at `max_critiques` it answers once more,
