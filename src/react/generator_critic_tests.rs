@@ -706,6 +706,71 @@ fn given_a_generator_enabled_key_that_names_a_key_of_the_graph_when_built_then_k
 }
 
 #[tokio::test]
+async fn given_a_pass_through_input_when_the_generator_calls_a_tool_then_the_tool_reads_the_value()
+{
+    let generator_model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "scope", json!({})),
+        text_step("answer"),
+    ]));
+    let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+    let graph = GeneratorCritic {
+        inputs: vec![(key("scope"), Kind::Str)],
+        ..GeneratorCritic::new(
+            GeneratorSeat {
+                tools: vec![Arc::new(ScopeTool)],
+                ..generator(generator_model)
+            },
+            critic(critic_model),
+            Count::Fixed(1),
+        )
+    }
+    .graph()
+    .unwrap();
+    assert_eq!(
+        graph.signature().inputs.get(&key("scope")),
+        Some(&Kind::Str)
+    );
+    let state = ended(
+        start(&graph, vec![(key("scope"), Value::str("notes/2026"))]).await,
+        "validated",
+    );
+    let history = state.conversation(&key("generator_history")).unwrap();
+    let Some(Entry::Turn(turn)) = history.entries().last() else {
+        panic!("expected the generator's turn");
+    };
+    assert_eq!(
+        results_of(turn),
+        [("scope".to_owned(), false, "scope is notes/2026".to_owned())]
+    );
+}
+
+#[test]
+fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_collision() {
+    for name in [
+        "conversation",
+        "generator_history",
+        "critic_system",
+        "answer",
+        "validated",
+        "generations",
+        "last_critique",
+    ] {
+        let built = GeneratorCritic {
+            inputs: vec![(key(name), Kind::Str)],
+            ..duo(
+                Arc::new(LoggingModel::new(Vec::new())),
+                Arc::new(LoggingModel::new(Vec::new())),
+            )
+        }
+        .graph();
+        assert!(
+            matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn given_histories_ending_on_the_last_allowed_rejection_without_a_final_generation_when_called_again_then_exhausted_without_generating()
  {
     let mut conversation = question("explain");

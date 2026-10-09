@@ -25,7 +25,9 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   a history holding one user input, a resumed call the history the host
 ///   saved. The loop always enters through the model call. Each
 ///   `Source::State` key of `system` is a string input too, and so is the
-///   `enabled` key, a list of strings, when set.
+///   `enabled` key, a list of strings, when set. Each key of `inputs` is an
+///   input of its kind, for the tools to read through the state they
+///   receive.
 /// - Outputs: `history` (the conversation after the run), `answer`
 ///   (conversation, the agent's last turn with its final step only, empty if
 ///   none), `reply` (string, the text of that step, empty if none or for a
@@ -38,7 +40,8 @@ use crate::value::{EndLabel, Key, NodeId};
 ///
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
-/// executed. A key the graph already has is refused (`KeyCollision`).
+/// executed. An `enabled` or `inputs` key the graph already has is refused
+/// (`KeyCollision`).
 ///
 /// `output` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller through
@@ -60,6 +63,8 @@ pub struct ReactAgent {
     pub thinking: Option<Switch>,
     /// A state key holding the names of the tools offered on this run.
     pub enabled: Option<Key>,
+    /// Extra state keys the caller maps per run, read by the tools.
+    pub inputs: Vec<(Key, Kind)>,
 }
 
 impl ReactAgent {
@@ -98,6 +103,10 @@ impl ReactAgent {
         if let Some(key) = &self.enabled {
             declare_input(&mut schema, key, Kind::list(Kind::Str))?;
             inputs.push(key.clone());
+        }
+        for (key, kind) in self.inputs {
+            declare_input(&mut schema, &key, kind)?;
+            inputs.push(key);
         }
 
         let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {

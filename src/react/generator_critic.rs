@@ -54,7 +54,10 @@ pub struct CriticSeat {
 ///   holds one user input), `generator_history` (the generator's working
 ///   history; when empty at entry it starts as a copy of `conversation`),
 ///   `generator_system` and `critic_system` (the rendered system prompts),
-///   and the generator's `enabled` key when set.
+///   the generator's `enabled` key when set, and each key of `inputs`, for
+///   the generator's tools to read through the state they receive. An
+///   `enabled` or `inputs` key the graph already has is refused
+///   (`KeyCollision`).
 /// - Outputs: `answer` (a conversation holding the generator's last answer,
 ///   one turn with its final step), `validated`, `generations` (the generator
 ///   answers in `conversation` since its last user input), `last_critique`
@@ -89,6 +92,9 @@ pub struct GeneratorCritic {
     pub critic: CriticSeat,
     pub max_critiques: Count,
     pub final_generation: bool,
+    /// Extra state keys the caller maps per run, read by the generator's
+    /// tools.
+    pub inputs: Vec<(Key, Kind)>,
 }
 
 /// The names of the graph's keys and nodes.
@@ -198,6 +204,7 @@ impl GeneratorCritic {
             critic,
             max_critiques,
             final_generation: true,
+            inputs: Vec::new(),
         }
     }
 
@@ -235,6 +242,9 @@ impl GeneratorCritic {
         if let Some(key) = &generator.enabled {
             declare_input(&mut schema, key, Kind::list(Kind::Str))?;
         }
+        for (key, kind) in &self.inputs {
+            declare_input(&mut schema, key, kind.clone())?;
+        }
         self.max_critiques.check(&schema)?;
 
         let router = Router {
@@ -265,6 +275,9 @@ impl GeneratorCritic {
         }
         if let Some(key) = &generator.enabled {
             builder = builder.input(key.clone());
+        }
+        for (key, _) in self.inputs {
+            builder = builder.input(key);
         }
 
         let tool_nodes = if generator.tool_nodes.is_empty() && !generator.tools.is_empty() {

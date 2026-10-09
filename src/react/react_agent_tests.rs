@@ -53,6 +53,7 @@ fn agent(model: Arc<LoggingModel>) -> ReactAgent {
         round_limit: None,
         thinking: None,
         enabled: None,
+        inputs: Vec::new(),
     }
 }
 
@@ -520,6 +521,102 @@ async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_hist
             .all(|request| request.thinking == Some(true))
     );
     assert_eq!(requests[0].system.as_deref(), Some("Be brief."));
+}
+
+#[tokio::test]
+async fn given_a_pass_through_input_mapped_by_the_caller_when_a_tool_runs_then_it_reads_the_value()
+{
+    let model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "scope", json!({})),
+        text_step("done"),
+    ]));
+    let agent = ReactAgent {
+        tools: vec![Arc::new(ScopeTool)],
+        inputs: vec![(key("scope"), Kind::Str)],
+        ..agent(model)
+    }
+    .graph()
+    .unwrap();
+    assert_eq!(
+        agent.signature().inputs,
+        BTreeMap::from([
+            (key("history"), Kind::Conversation),
+            (key("scope"), Kind::Str),
+        ])
+    );
+    let call = SubGraph::call(agent)
+        .input(key("history"), Input::From(key("chat")))
+        .input(key("scope"), Input::From(key("folder")))
+        .config(key("base"), Input::Config(key("prompt")))
+        .output(key("history"), Output::Set(key("chat")));
+    let schema = Schema::builder()
+        .state(key("chat"), Kind::Conversation)
+        .state(key("folder"), Kind::Str)
+        .config(key("prompt"), Kind::Str)
+        .config(key("deep"), Kind::Bool)
+        .build();
+    let graph = GraphBuilder::new(schema)
+        .entry(nid("agent"))
+        .subgraph(nid("agent"), call)
+        .edge(
+            nid("agent"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .input(key("chat"))
+        .input(key("folder"))
+        .build()
+        .unwrap();
+    let state = graph
+        .start_state([
+            (key("chat"), Value::conversation(question("hi"))),
+            (key("folder"), Value::str("notes/2026")),
+        ])
+        .unwrap();
+    let state = run_caller(&graph, state).await;
+    let Some(Entry::Turn(turn)) = state.conversation(&key("chat")).unwrap().entries().last() else {
+        panic!("expected the agent's turn");
+    };
+    assert_eq!(
+        results_of(turn),
+        [("scope".to_owned(), false, "scope is notes/2026".to_owned())]
+    );
+}
+
+#[test]
+fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_collision() {
+    let flagged = |inputs: Vec<(crate::value::Key, Kind)>| {
+        ReactAgent {
+            system: vec![Source::State(key("persona"))],
+            enabled: Some(key("offered")),
+            inputs,
+            ..limited(
+                Arc::new(LoggingModel::new(Vec::new())),
+                1,
+                OnLimit::End {
+                    node: nid("limit"),
+                    flag: key("limit_reached"),
+                },
+            )
+        }
+        .graph()
+    };
+    for name in [
+        "history",
+        "reply",
+        "answer",
+        "persona",
+        "offered",
+        "limit_reached",
+    ] {
+        let built = flagged(vec![(key(name), Kind::Str)]);
+        assert!(
+            matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
+            "{name}"
+        );
+    }
+    let built = flagged(vec![(key("scope"), Kind::Str), (key("scope"), Kind::Int)]);
+    assert!(matches!(built, Err(GraphError::KeyCollision { .. })));
+    assert!(flagged(vec![(key("scope"), Kind::Str)]).is_ok());
 }
 
 #[tokio::test]

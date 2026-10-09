@@ -38,6 +38,7 @@ async fn main() {
         round_limit: None,
         thinking: Some(Switch::Config(key("thinking"))),
         enabled: None,
+        inputs: Vec::new(),
     }
     .graph()
     .expect("agent graph");

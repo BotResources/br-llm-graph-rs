@@ -311,6 +311,31 @@ impl Tool for TallyTool {
     }
 }
 
+/// Answers with the value of the string state key `scope`.
+pub(crate) struct ScopeTool;
+
+impl Tool for ScopeTool {
+    fn spec(&self) -> ToolSpec {
+        spec("scope")
+    }
+    fn safe(&self) -> bool {
+        true
+    }
+    fn call<'a>(
+        &'a self,
+        _arguments: Json,
+        state: &'a State,
+        _config: &'a Config,
+    ) -> ToolFuture<'a> {
+        Box::pin(async move {
+            let scope = state.str(&key("scope"))?;
+            Ok(ToolOutput::text(vec![ToolResultBlock::text(Text::new(
+                format!("scope is {scope}"),
+            )?)]))
+        })
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct WriteFileTool {
     pub(crate) calls: AtomicUsize,
