@@ -145,6 +145,22 @@ form to decide whether a version ships.
     fail because of an item error. `From(key)` reads the item's own state,
     `Reason` is the error's message. A panic is not captured. Checked at build
     like a call's captures; a `Set` is refused (`MapBodySet`).
+- `ReactAgent`: a ReAct agent as a graph with a declared signature, built
+  with `ReactAgent { author, model, system, tools, tool_nodes,
+  tool_concurrency, round_limit, thinking }.graph()` (an `Arc<Graph>`, ready
+  for `SubGraph` or a `Map` body). It is the `ReactLoop` fragment on the key
+  `history`, so the loop code exists once; empty `tool_nodes` means one node,
+  `tools`, runs every tool. Input `history` (conversation): a new call is a
+  history holding one user input, a resumed call the history the host saved,
+  and the loop always enters through the model call. Outputs `history`,
+  `reply` (the text of the last step of the agent's last turn, empty if none)
+  and, when the round limit's `OnLimit` is `Continue` or `End`, its `flag`. The
+  configuration keys of `system` (`Source::Config`, strings), of `thinking`
+  and of the limits are declared from them; each `Source::State` key of
+  `system` is a string input. The run ends with `done`. A flag that names
+  another key of the graph is refused (`FlagKeyMismatch`).
+- Example `react_agent`: the agent graph called through `SubGraph`, its
+  thinking read from the caller's configuration.
 - Example `subgraph_map`: a map whose body calls a graph, with a resume.
 - `Node::check(&self, &Schema, CheckSite)`, defaulted to accept: a node checks
   itself against the schema of the graph it runs in, at a site

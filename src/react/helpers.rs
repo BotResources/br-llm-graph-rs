@@ -76,6 +76,14 @@ pub(crate) fn last_turn_by_author<'a>(
         })
 }
 
+/// The last step of a turn.
+pub(crate) fn final_step(turn: &Turn) -> Option<&Step> {
+    turn.items().iter().rev().find_map(|item| match item {
+        TurnItem::Step(step) => Some(step),
+        TurnItem::ToolResults(_) => None,
+    })
+}
+
 pub(crate) fn last_turn_state(conversation: &Conversation, author: &Author) -> Option<TurnState> {
     last_turn_by_author(conversation, author).map(Turn::state)
 }

@@ -39,9 +39,9 @@ pub use graph::{
 pub use observe::{NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
-    LlmNode, Model, ModelError, ModelFuture, OnLimit, OutputMode, ReactLoop, Request, RoundLimit,
-    Source, StreamSink, Tool, ToolCalls, ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec,
-    complete, pending_calls, pending_unsafe_calls, structured, wire,
+    LlmNode, Model, ModelError, ModelFuture, OnLimit, OutputMode, ReactAgent, ReactLoop, Request,
+    RoundLimit, Source, StreamSink, Tool, ToolCalls, ToolError, ToolFuture, ToolNode, ToolOutput,
+    ToolSpec, complete, pending_calls, pending_unsafe_calls, structured, wire,
 };
 pub use run::{
     Checkpoint, Cursor, Inbox, Outcome, PendingEntry, PendingWrites, RunFailure, Sender, channel,

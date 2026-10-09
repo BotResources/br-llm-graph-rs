@@ -1,11 +1,14 @@
 mod helpers;
 mod llm_node;
 mod model;
+mod react_agent;
 mod react_loop;
 mod round_limit;
 mod tool;
 mod tool_node;
 
+#[cfg(test)]
+mod react_agent_tests;
 #[cfg(test)]
 mod react_background_task_tests;
 #[cfg(test)]
@@ -32,6 +35,7 @@ pub use llm_node::{LlmNode, Source};
 pub use model::{
     Model, ModelError, ModelFuture, OutputMode, Request, StreamSink, ToolCalls, ToolSpec,
 };
+pub use react_agent::ReactAgent;
 pub use react_loop::ReactLoop;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
