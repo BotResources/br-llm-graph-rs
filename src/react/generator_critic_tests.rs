@@ -486,6 +486,42 @@ async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_o
 }
 
 #[tokio::test]
+async fn given_histories_ending_on_the_last_allowed_rejection_without_a_final_generation_when_called_again_then_exhausted_without_generating()
+ {
+    let mut conversation = question("explain");
+    for (id, author, text) in [("g1", writer(), "a"), ("c1", reviewer(), "fix it")] {
+        conversation
+            .push_turn(Turn::new(
+                TurnId::new(id).unwrap(),
+                Some(author),
+                text_step(text),
+            ))
+            .unwrap();
+    }
+    let generator_model = Arc::new(LoggingModel::new(Vec::new()));
+    let critic_model = Arc::new(LoggingModel::new(Vec::new()));
+    let graph = GeneratorCritic {
+        final_generation: false,
+        ..GeneratorCritic::new(
+            generator(generator_model.clone()),
+            critic(critic_model.clone()),
+            limit(1),
+        )
+    }
+    .graph()
+    .unwrap();
+    let state = ended(
+        call_with(&graph, conversation.clone(), conversation, BTreeMap::new()).await,
+        "exhausted",
+    );
+    assert_eq!(state.int(&key("generations")).unwrap(), 1);
+    assert_eq!(state.str(&key("last_critique")).unwrap(), "fix it");
+    assert_eq!(shape_of(&state, "answer"), ["writer:a"]);
+    assert!(generator_model.requests().is_empty());
+    assert!(critic_model.requests().is_empty());
+}
+
+#[tokio::test]
 async fn given_both_histories_ending_on_an_answer_when_called_again_then_the_critic_judges_it_first()
  {
     let mut conversation = question("explain");

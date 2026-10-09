@@ -64,7 +64,8 @@ pub struct CriticSeat {
 /// reasoning enters a history.
 ///
 /// The entry is routed on how `conversation` ends: a generator answer goes
-/// to the critic (a resumed call), anything else to the generator. After an
+/// to the critic and a critique is routed as a rejection (both are resumed
+/// calls), anything else goes to the generator. After an
 /// answer, more than `max_critiques` answers end `exhausted` without the
 /// critic; otherwise the critic judges it. A valid verdict ends `validated`;
 /// a rejection sends the generator back, until `max_critiques` answers were
@@ -132,16 +133,15 @@ struct Router {
 }
 
 impl Router {
-    /// On entry: a generator answer last goes to the critic, anything else
-    /// to the generator.
+    /// On entry: a generator answer last goes to the critic, a critique last
+    /// is routed as after a rejection, anything else goes to the generator.
     fn entry(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
         match state.conversation(&self.conversation)?.entries().last() {
             Some(Entry::Turn(turn)) if turn.author() == Some(&self.generator) => {
                 self.after_answer(state, config)
             }
-            Some(Entry::Turn(_) | Entry::UserInput(_)) | None => {
-                Ok(vec![Target::Node(self.generate.clone())])
-            }
+            Some(Entry::Turn(_)) => self.after_rejection(state, config),
+            Some(Entry::UserInput(_)) | None => Ok(vec![Target::Node(self.generate.clone())]),
         }
     }
 
@@ -160,6 +160,10 @@ impl Router {
         if state.bool(&self.validated)? {
             return Ok(vec![Target::Node(self.finish.clone())]);
         }
+        self.after_rejection(state, config)
+    }
+
+    fn after_rejection(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
         let generations = self.generations(state)?;
         let max = self.max_critiques.resolve(config)?.get();
         let next = if generations < max || self.final_generation {
