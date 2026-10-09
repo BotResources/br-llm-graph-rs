@@ -230,8 +230,9 @@ form to decide whether a version ships.
   of their keys, so a schema lists its properties in the order written.
 - Examples `react_agent` and `generator_critic` show the graph forms above
   instead of hand-built loops.
-- Depends on `br-llm-messages` 0.2.0: the body of a framed entry is rendered
-  verbatim, no longer escaped.
+- Depends on `br-llm-messages` 0.2.0: nothing in a `<message>` frame is
+  escaped any more; the body and the `author` and `kind` attributes are
+  rendered verbatim.
 - Every `Observer` method receives an `&Origin` first. Events of the run loop
   carry the run's occurrence (empty at top level), events a node emits carry
   the node's occurrence, so events of a nested run are told from the
