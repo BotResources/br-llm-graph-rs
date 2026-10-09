@@ -129,7 +129,7 @@ async fn given_items_that_call_a_graph_with_an_inner_map_when_run_then_only_the_
     assert_eq!(state.list(&key("results")).unwrap(), summaries().as_slice());
     let mut seen = records.0.lock().unwrap().clone();
     seen.sort();
-    assert_eq!(seen, vec!["each", "each[0]", "each[1]"]);
+    assert_eq!(seen, vec!["each[0]", "each[1]"]);
 }
 
 #[tokio::test]

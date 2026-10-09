@@ -30,8 +30,10 @@ pub trait Observer: Send + Sync {
         let _ = (origin, end);
     }
     /// A finished occurrence recorded its entry while its superstep is still
-    /// open. A host may persist these as they come and insert them, under
-    /// `origin.occurrence`, into the pending writes of a checkpoint it keeps.
+    /// open: a map item, or a node that has siblings in its superstep (a node
+    /// alone in its superstep is recorded too, without this event). A host may
+    /// persist these as they come and insert them, under `origin.occurrence`,
+    /// into the pending writes of a checkpoint it keeps.
     fn recorded(&self, origin: &Origin, entry: &PendingEntry) {
         let _ = (origin, entry);
     }

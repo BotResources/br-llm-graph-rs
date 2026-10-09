@@ -126,6 +126,18 @@ impl Context {
             .map(<[Update]>::to_vec)
     }
 
+    /// Records like `record` without telling the observer: the run loop's
+    /// record of a node alone in its superstep, which a host would only see
+    /// applied right after.
+    pub(crate) fn record_unseen(&self, updates: &[Update]) {
+        if self.recording {
+            self.store().insert(
+                self.origin.occurrence.clone(),
+                PendingEntry::new(updates.to_vec()),
+            );
+        }
+    }
+
     fn keep(&self, entry: PendingEntry) {
         if !self.recording {
             return;

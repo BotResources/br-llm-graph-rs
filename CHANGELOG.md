@@ -111,9 +111,12 @@ form to decide whether a version ships.
   reproduce. The call's own result is recorded by the run or the map that
   holds it, so a map whose items call a graph still skips its finished items
   on resume.
-- `Observer::recorded(origin, entry)` (defaulted): fires on every record, so a
-  host can persist pending entries, witness included, as they come and insert
-  them later under `origin.occurrence`.
+- `Observer::recorded(origin, entry)` (defaulted): fires when a map item is
+  recorded, and when a node is recorded that shares its superstep with other
+  nodes, so a host can persist pending entries, witness included, as they come
+  and insert them later under `origin.occurrence`. A node alone in its
+  superstep is recorded in memory without the event (a cancel right after it
+  finished still keeps its result).
 - `Checkpoint::with_pending`; `Context::pending()` copies what a recorder
   holds.
 - `Map::on_item_failure` (`ItemFailure`), what a map does when the body of an

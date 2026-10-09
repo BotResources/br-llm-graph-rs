@@ -29,6 +29,8 @@ mod nested_map_tests;
 #[cfg(test)]
 mod origin_tests;
 #[cfg(test)]
+mod record_event_tests;
+#[cfg(test)]
 mod resume_tests;
 #[cfg(test)]
 mod run_tests;

@@ -41,10 +41,11 @@ pub(crate) async fn drive_superstep(
         .cloned()
         .collect();
     let contexts: Vec<Context> = present.iter().map(|id| ctx.for_node(id)).collect();
+    let seen = present.len() > 1;
     let futures = present.iter().zip(&contexts).filter_map(|(id, node_ctx)| {
         graph
             .node(id)
-            .map(|node| run_recorded(node, state, config, node_ctx))
+            .map(|node| run_recorded(node, state, config, node_ctx, seen))
     });
     let superstep = join_all(futures);
     futures_util::pin_mut!(superstep);
@@ -81,11 +82,13 @@ pub(crate) async fn drive_superstep(
 /// attempt recorded is not run: its recorded updates are used. A node that
 /// returns updates records them as soon as it finishes, so a failure or a
 /// cancel of the superstep keeps them; an error or a panic records nothing.
+/// The observer sees the record only when the node has siblings (`seen`).
 async fn run_recorded(
     node: &dyn Node,
     state: &State,
     config: &Config,
     ctx: &Context,
+    seen: bool,
 ) -> RawOutcome {
     if let Some(updates) = ctx.recorded() {
         return Ok(Ok(updates));
@@ -94,7 +97,11 @@ async fn run_recorded(
         .catch_unwind()
         .await;
     if let Ok(Ok(updates)) = &outcome {
-        ctx.record(updates);
+        if seen {
+            ctx.record(updates);
+        } else {
+            ctx.record_unseen(updates);
+        }
     }
     outcome
 }
