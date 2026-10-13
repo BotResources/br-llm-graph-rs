@@ -185,8 +185,10 @@ form to decide whether a version ships.
   and a call naming another tool is refused by its tool node. `inputs`
   (`Vec<(Key, Kind)>`): extra state keys declared as inputs of the graph, so the
   caller maps per-run values into the child state and the tools read them
-  through the `&State` that `Tool::call` receives. An `enabled` or `inputs` key
-  the graph already has is refused at build (`KeyCollision`). The run ends with
+  through the `&State` that `Tool::call` receives. As in `GeneratorCritic`, a
+  key read by several sources of `system` is declared once, and a source,
+  `enabled` or `inputs` key the graph already has is refused at build
+  (`KeyCollision`). The run ends with
   `done`. A flag that names another key of the graph is refused
   (`FlagKeyMismatch`).
 - Example `react_agent`: the agent graph called through `SubGraph`, its

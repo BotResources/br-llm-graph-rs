@@ -619,6 +619,62 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
     assert!(flagged(vec![(key("scope"), Kind::Str)]).is_ok());
 }
 
+#[test]
+fn given_a_key_read_by_several_sources_when_built_then_it_is_declared_once() {
+    let graph = ReactAgent {
+        system: vec![
+            Source::State(key("persona")),
+            Source::Config(key("base")),
+            Source::State(key("persona")),
+            Source::Config(key("base")),
+        ],
+        ..agent(Arc::new(LoggingModel::new(Vec::new())))
+    }
+    .graph()
+    .unwrap();
+    assert_eq!(
+        graph.signature().inputs,
+        BTreeMap::from([
+            (key("history"), Kind::Conversation),
+            (key("persona"), Kind::Str),
+        ])
+    );
+    assert_eq!(
+        graph.schema().config,
+        BTreeMap::from([(key("base"), Kind::Str)])
+    );
+}
+
+#[test]
+fn given_a_source_that_names_a_key_of_the_graph_when_built_then_key_collision() {
+    let flagged = |source: Source| {
+        ReactAgent {
+            system: vec![source],
+            thinking: Some(Switch::Config(key("deep"))),
+            ..limited(
+                Arc::new(LoggingModel::new(Vec::new())),
+                1,
+                OnLimit::End {
+                    node: nid("limit"),
+                    flag: key("limit_reached"),
+                },
+            )
+        }
+        .graph()
+    };
+    for name in ["history", "reply", "answer", "limit_reached"] {
+        let built = flagged(Source::State(key(name)));
+        assert!(
+            matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
+            "{name}"
+        );
+    }
+    let built = flagged(Source::Config(key("deep")));
+    assert!(
+        matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key("deep"))
+    );
+}
+
 #[tokio::test]
 async fn given_the_agent_as_a_map_body_when_run_then_each_question_gets_its_reply_in_order() {
     let model = Arc::new(LoggingModel::new(vec![

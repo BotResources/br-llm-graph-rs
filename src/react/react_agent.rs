@@ -40,7 +40,8 @@ use crate::value::{EndLabel, Key, NodeId};
 ///
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
-/// executed. An `enabled` or `inputs` key the graph already has is refused
+/// executed. A key read by several sources of `system` is declared once; a
+/// source, `enabled` or `inputs` key the graph already has is refused
 /// (`KeyCollision`).
 ///
 /// `output` is sent on every model call; with `OutputMode::Structured`, the
@@ -75,19 +76,7 @@ impl ReactAgent {
         let llm = NodeId::new("llm")?;
         let reply_node = NodeId::new("reply")?;
 
-        let mut inputs = vec![history.clone()];
-        let mut schema = Schema::builder();
-        for source in &self.system {
-            schema = match source {
-                Source::Config(key) => schema.config(key.clone(), Kind::Str),
-                Source::State(key) => {
-                    inputs.push(key.clone());
-                    schema.state(key.clone(), Kind::Str)
-                }
-                Source::Const(_) | Source::Fn(_) => schema,
-            };
-        }
-        schema = schema
+        let mut schema = Schema::builder()
             .state(history.clone(), Kind::Conversation)
             .state(reply.clone(), Kind::Str)
             .state(answer.clone(), Kind::Conversation);
@@ -101,6 +90,8 @@ impl ReactAgent {
         if let Some(flag) = &flag {
             schema.state.entry(flag.clone()).or_insert(Kind::Bool);
         }
+        let mut inputs = vec![history.clone()];
+        inputs.extend(declare_sources(&mut schema, &self.system)?);
         if let Some(key) = &self.enabled {
             declare_input(&mut schema, key, Kind::list(Kind::Str))?;
             inputs.push(key.clone());
