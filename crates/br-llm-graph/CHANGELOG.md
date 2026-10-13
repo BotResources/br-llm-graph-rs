@@ -304,8 +304,9 @@ form to decide whether a version ships.
     each generation opens a new generator turn, so the round limit counts per
     generation. A generation cut by `OnLimit::End` (its final step is the
     limit's closing step) is an empty answer: rejected without the critic
-    where the critic would judge it, and, as the last generation, an empty
-    `answer`.
+    where the critic would judge it, left out of what the critic reads in
+    later rounds (the user messages around it merged, as for an answer left
+    with nothing), and, as the last generation, an empty `answer`.
 - Example `generator_critic`: the two seats called through `SubGraph`; a
   `prepare` node opens the conversation from a question id, the generator's
   system text is computed from the state, the critic's review request and

@@ -238,6 +238,45 @@ async fn given_an_empty_answer_then_a_full_one_when_the_critic_judges_then_the_e
 }
 
 #[tokio::test]
+async fn given_a_generation_cut_by_the_round_limit_then_a_full_one_when_the_critic_judges_then_the_cut_one_is_left_out_of_its_view()
+ {
+    let generator_model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "echo", serde_json::json!({})),
+        tool_call_step("c2", "echo", serde_json::json!({})),
+        text_step("full"),
+    ]));
+    let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+    let graph = GeneratorCritic::new(
+        cut_generator(generator_model),
+        critic(critic_model.clone()),
+        Count::Fixed(2),
+    )
+    .graph()
+    .unwrap();
+    ended(call(&graph, question("explain")).await, "validated");
+    let merged = WireMessage::User {
+        content: vec![
+            WireUserBlock::Text {
+                text: Text::new("<message role=\"user\">explain</message>").unwrap(),
+            },
+            WireUserBlock::Text {
+                text: Text::new(
+                    "<message author=\"reviewer\" role=\"agent\">The answer was empty. Write a complete answer.</message>",
+                )
+                .unwrap(),
+            },
+        ],
+    };
+    assert_eq!(
+        critic_model.requests()[0].messages,
+        [
+            merged,
+            wrapped("full", "Please evaluate the generator's response above.")
+        ]
+    );
+}
+
+#[tokio::test]
 async fn given_an_empty_answer_critique_that_resolves_blank_when_an_empty_answer_is_rejected_then_the_default_text()
  {
     for nudge in ["", "  \n"] {

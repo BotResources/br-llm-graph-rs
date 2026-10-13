@@ -169,8 +169,9 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 /// this graph; each generation opens a new generator turn, so the round limit
 /// counts per generation. A generation cut by `OnLimit::End` (its final step
 /// is the limit's closing step) is an empty answer: rejected without the
-/// critic where the critic would judge it, and, as the last generation, an
-/// empty `answer`. The limit's flag output is true when the round limit was
+/// critic where the critic would judge it, left out of what the critic reads
+/// in later rounds (the user messages around it merged), and, as the last
+/// generation, an empty `answer`. The limit's flag output is true when the round limit was
 /// reached in at least one generation of this call.
 pub struct GeneratorCritic {
     pub generator: GeneratorSeat,
@@ -683,7 +684,9 @@ impl CritiqueNode {
     /// What the critic reads: `conversation` before the answer at `index`,
     /// rendered as the generator sees it with the generator's thinking
     /// removed, then one user message holding the answer, wrapped, and the
-    /// review request.
+    /// review request. A generation the round limit cut is an empty answer:
+    /// it is left out, like an answer left with nothing once its thinking is
+    /// removed, and the user messages around it are merged.
     fn messages(
         &self,
         state: &State,
@@ -696,6 +699,7 @@ impl CritiqueNode {
         for entry in conversation.entries().get(..index).unwrap_or_default() {
             match entry {
                 Entry::UserInput(input) => earlier.push_input(input.clone()),
+                Entry::Turn(turn) if cut_generation(turn, &self.generator) => {}
                 Entry::Turn(turn) => earlier.push_turn(turn.clone())?,
             }
         }
@@ -766,6 +770,12 @@ fn last_answer<'a>(
             }
             Entry::Turn(_) | Entry::UserInput(_) => None,
         })
+}
+
+/// Whether `turn` is a generation of `generator` that the round limit cut
+/// (`OnLimit::End`'s closing step as its final step).
+fn cut_generation(turn: &Turn, generator: &Author) -> bool {
+    turn.author() == Some(generator) && final_step(turn).is_some_and(closes_on_limit)
 }
 
 /// Whether an answer is empty: no non-blank text and no structured block,

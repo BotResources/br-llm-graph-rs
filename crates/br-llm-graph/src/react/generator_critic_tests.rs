@@ -756,7 +756,7 @@ async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_o
 }
 
 /// A generator with `echo` and one tool round, cut by `OnLimit::End`.
-fn cut_generator(model: Arc<LoggingModel>) -> GeneratorSeat {
+pub(crate) fn cut_generator(model: Arc<LoggingModel>) -> GeneratorSeat {
     GeneratorSeat {
         tools: vec![Arc::new(EchoTool)],
         round_limit: Some(RoundLimit {
