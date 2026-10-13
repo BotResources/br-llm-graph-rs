@@ -152,7 +152,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     values.insert(k("pending_tasks"), Value::list(Vec::new()));
     let state = State::new(schema, values).unwrap();
 
-    let mut session = Session::new(graph, config, state, ctx());
+    let mut session = Session::new(graph, config, state, ctx()).unwrap();
     let sender = session.sender();
 
     let first = session.run_once().await.unwrap();

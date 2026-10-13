@@ -40,7 +40,7 @@ fn input(body: &str) -> UserInput {
 
 #[tokio::test]
 async fn given_new_session_when_run_once_twice_then_relaunches_from_entry() {
-    let mut session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let mut session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     let first = session.run_once().await.unwrap();
     assert!(matches!(first, Outcome::Finished { .. }));
     assert_eq!(session.state().int(&key("count")).unwrap(), 5);
@@ -50,7 +50,7 @@ async fn given_new_session_when_run_once_twice_then_relaunches_from_entry() {
 
 #[tokio::test]
 async fn given_pause_checkpoint_when_resumed_then_finishes() {
-    let mut session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let mut session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     session.sender().pause();
     let paused = session.run_once().await.unwrap();
     let Outcome::Paused { checkpoint } = paused else {
@@ -84,7 +84,7 @@ async fn given_unknown_node_checkpoint_when_resumed_then_refused() {
 
 #[tokio::test]
 async fn given_serve_on_input_when_input_arrives_then_runs_then_cancel_ends() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     let sender = session.sender();
     let handle = tokio::spawn(session.serve(Start::OnInput));
     sender.send(key("chat"), input("go"));
@@ -107,7 +107,7 @@ async fn given_serve_on_input_when_input_arrives_then_runs_then_cancel_ends() {
 
 #[tokio::test]
 async fn given_serve_now_when_started_then_runs_then_relaunches_after_end() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     let sender = session.sender();
     let handle = tokio::spawn(session.serve(Start::Now));
     tokio::task::yield_now().await;
@@ -132,7 +132,7 @@ async fn given_serve_now_when_started_then_runs_then_relaunches_after_end() {
 
 #[tokio::test]
 async fn given_serve_on_input_when_second_input_after_end_then_relaunches() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     let sender = session.sender();
     let handle = tokio::spawn(session.serve(Start::OnInput));
     sender.send(key("chat"), input("first"));
@@ -158,7 +158,7 @@ async fn given_serve_on_input_when_second_input_after_end_then_relaunches() {
 
 #[tokio::test]
 async fn given_cancel_checkpoint_when_resumed_then_finishes() {
-    let mut session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let mut session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     session.sender().cancel();
     let cancelled = session.run_once().await.unwrap();
     let Outcome::Cancelled { checkpoint } = cancelled else {
@@ -197,7 +197,7 @@ async fn given_run_failure_checkpoint_when_resumed_then_finishes_on_retry() {
             .build()
             .unwrap(),
     );
-    let mut session = Session::new(graph.clone(), config(), base_state(), ctx());
+    let mut session = Session::new(graph.clone(), config(), base_state(), ctx()).unwrap();
     let error = session.run_once().await.err().unwrap();
     assert!(matches!(error, crate::error::GraphError::NodeFailed { .. }));
     let checkpoint = session.checkpoint();
@@ -209,7 +209,7 @@ async fn given_run_failure_checkpoint_when_resumed_then_finishes_on_retry() {
 
 #[tokio::test]
 async fn given_inbox_input_on_non_conversation_key_when_served_then_failed() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     let sender = session.sender();
     sender.send(key("count"), input("oops"));
     let ended = session.serve(Start::OnInput).await;
@@ -224,7 +224,7 @@ async fn given_inbox_input_on_non_conversation_key_when_served_then_failed() {
 
 #[tokio::test]
 async fn given_paused_session_when_input_then_stays_paused_until_resume() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx());
+    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     let sender = session.sender();
     let handle = tokio::spawn(session.serve(Start::OnInput));
     sender.pause();
@@ -281,7 +281,7 @@ async fn given_a_failed_map_when_the_session_is_resumed_from_its_checkpoint_then
             value: Value::list(["a", "b", "c"].map(Value::str).to_vec()),
         }])
         .unwrap();
-    let mut session = Session::new(failing_map(&calls), config(), state, ctx());
+    let mut session = Session::new(failing_map(&calls), config(), state, ctx()).unwrap();
     assert!(session.run_once().await.is_err());
     let checkpoint = session.checkpoint();
     assert_eq!(checkpoint.pending.len(), 2);
@@ -299,4 +299,21 @@ async fn given_a_failed_map_when_the_session_is_resumed_from_its_checkpoint_then
     assert_eq!(calls.calls().get("a"), Some(&1));
     assert_eq!(calls.calls().get("b"), Some(&2));
     assert!(resumed.checkpoint().pending.is_empty());
+}
+
+#[test]
+fn given_a_state_or_a_configuration_of_another_schema_when_a_session_starts_then_refused() {
+    let (foreign_state, foreign_config) = foreign_state_and_config();
+    let refused = |state: State, config: Config| {
+        let new = Session::new(linear_graph(), config.clone(), state.clone(), ctx()).err();
+        let checkpoint = crate::run::Checkpoint::new(state, crate::run::Cursor::default());
+        let resumed = Session::resume(linear_graph(), config, checkpoint, ctx()).err();
+        [new, resumed]
+    };
+    for error in refused(foreign_state, config()) {
+        assert!(matches!(error, Some(GraphError::StateSchemaMismatch)));
+    }
+    for error in refused(base_state(), foreign_config) {
+        assert!(matches!(error, Some(GraphError::ConfigSchemaMismatch)));
+    }
 }

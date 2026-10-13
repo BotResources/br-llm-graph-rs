@@ -67,7 +67,8 @@ async fn pause_then_resume() {
         Config::new(&schema(), BTreeMap::new()).expect("config"),
         state(),
         quiet_context(),
-    );
+    )
+    .expect("session");
     session.sender().pause();
     let outcome = session.run_once().await.expect("run");
     let Outcome::Paused { checkpoint } = outcome else {

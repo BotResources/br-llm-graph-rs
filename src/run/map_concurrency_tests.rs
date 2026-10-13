@@ -79,7 +79,13 @@ fn map_graph(gauge: &Arc<Gauge>, max_concurrency: Option<Limit>) -> Result<Graph
 }
 
 fn seeded(items: &[&str]) -> State {
-    let mut state = base_state();
+    let schema = width_schema();
+    let values = schema
+        .state
+        .keys()
+        .map(|name| (name.clone(), schema.default_value(name).unwrap()))
+        .collect();
+    let mut state = State::new(schema, values).unwrap();
     state
         .apply_batch(&[Update::Set {
             key: key("items"),

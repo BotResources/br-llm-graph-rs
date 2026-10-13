@@ -40,9 +40,18 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(graph: Arc<Graph>, config: Config, state: State, context: Context) -> Self {
+    /// A session on `state`, whose next run starts from the entry. A state or
+    /// a configuration not made from the graph's schema is refused
+    /// (`StateSchemaMismatch`, `ConfigSchemaMismatch`).
+    pub fn new(
+        graph: Arc<Graph>,
+        config: Config,
+        state: State,
+        context: Context,
+    ) -> Result<Self, GraphError> {
+        graph.check_schemas(&state, &config)?;
         let (sender, inbox) = channel();
-        Self {
+        Ok(Self {
             graph,
             config,
             state,
@@ -52,20 +61,24 @@ impl Session {
             inbox,
             sender,
             paused: false,
-        }
+        })
     }
 
     /// A session continuing from `checkpoint`, its pending writes included:
     /// the nodes and map items the checkpoint records as finished are not run
     /// again, and the interrupted superstep is applied once all its nodes are
     /// done. Between two `run_once` calls the session keeps the pending
-    /// writes of the last outcome.
+    /// writes of the last outcome. A checkpoint state or a configuration not
+    /// made from the graph's schema is refused (`StateSchemaMismatch`,
+    /// `ConfigSchemaMismatch`), a cursor naming an unknown node too
+    /// (`UnknownNode`).
     pub fn resume(
         graph: Arc<Graph>,
         config: Config,
         checkpoint: Checkpoint,
         context: Context,
     ) -> Result<Self, GraphError> {
+        graph.check_schemas(&checkpoint.state, &config)?;
         graph.validate_cursor(&checkpoint.cursor)?;
         let cursor = if checkpoint.cursor.is_empty() {
             None

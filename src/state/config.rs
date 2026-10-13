@@ -80,6 +80,12 @@ impl Config {
         })
     }
 
+    /// The configuration keys this configuration was made for, with their
+    /// kinds.
+    pub(crate) fn schema(&self) -> &BTreeMap<Key, Kind> {
+        &self.schema
+    }
+
     /// The value of `key`: `UnknownKey` when the schema does not declare it,
     /// `MissingKey` when it is declared but holds no value.
     pub(crate) fn get(&self, key: &Key) -> Result<&Value, GraphError> {

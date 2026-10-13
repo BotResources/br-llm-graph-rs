@@ -97,6 +97,8 @@ pub enum GraphError {
         labels: Vec<EndLabel>,
     },
     EmptyCursor,
+    StateSchemaMismatch,
+    ConfigSchemaMismatch,
     ToolNotCovered {
         name: ToolName,
     },
@@ -286,6 +288,12 @@ impl std::fmt::Display for GraphError {
             GraphError::EmptyCursor => {
                 f.write_str("the run was given an empty cursor: no node to run")
             }
+            GraphError::StateSchemaMismatch => {
+                f.write_str("the state was not made from the schema of the graph")
+            }
+            GraphError::ConfigSchemaMismatch => {
+                f.write_str("the configuration was not made from the schema of the graph")
+            }
             GraphError::ToolNotCovered { name } => {
                 write!(
                     f,
@@ -462,6 +470,8 @@ impl std::error::Error for GraphError {
             | GraphError::MapKeyMismatch { .. }
             | GraphError::AmbiguousEnd { .. }
             | GraphError::EmptyCursor
+            | GraphError::StateSchemaMismatch
+            | GraphError::ConfigSchemaMismatch
             | GraphError::ToolNotCovered { .. }
             | GraphError::ToolCoveredTwice { .. }
             | GraphError::ToolNotDeclared { .. }

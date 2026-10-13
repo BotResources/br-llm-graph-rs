@@ -53,6 +53,21 @@ pub(crate) fn config() -> Config {
     Config::new(&schema(), BTreeMap::new()).unwrap()
 }
 
+/// A state and a configuration made from schemas that are not `schema()`.
+pub(crate) fn foreign_state_and_config() -> (State, Config) {
+    let foreign = Schema::builder()
+        .state(key("count"), Kind::Int)
+        .config(key("width"), Kind::Int)
+        .build();
+    let state = State::new(
+        foreign.clone(),
+        BTreeMap::from([(key("count"), Value::int(0))]),
+    )
+    .unwrap();
+    let config = Config::new(&foreign, BTreeMap::from([(key("width"), Value::int(2))])).unwrap();
+    (state, config)
+}
+
 pub(crate) fn noop_node() -> impl Node {
     FnNode::new(|_s: &State, _c: &Config, _x: &_| -> NodeFuture<'_> {
         Box::pin(async { Ok(Vec::new()) })

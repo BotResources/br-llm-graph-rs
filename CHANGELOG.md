@@ -377,6 +377,13 @@ form to decide whether a version ships.
   item keys only; like every build-time reason of a node, it reaches the
   caller inside `InvalidNode`. A `Map` registered with `node` or `join` is now
   checked too.
+- `run`, `Session::new` and `Session::resume` refuse a state whose schema is
+  not the graph's (`StateSchemaMismatch`) and a configuration whose keys are
+  not the graph's configuration keys (`ConfigSchemaMismatch`), before
+  anything runs; `run` returns the failure with the given state.
+  `Session::new` returns `Result<Session, GraphError>`. Nested runs (a call,
+  a map) build their state and configuration from the graph they run, so
+  they are unaffected.
 - A key the schema does not declare gives `UnknownKey` wherever it is read
   or updated, in a state and in a configuration alike: typed reads, the
   values a node or a source reads, `Append` and the conversation updates.

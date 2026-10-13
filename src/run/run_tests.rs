@@ -136,6 +136,41 @@ async fn given_an_empty_cursor_when_run_then_empty_cursor_error_and_nothing_runs
 }
 
 #[tokio::test]
+async fn given_a_state_or_a_configuration_of_another_schema_when_run_then_refused_before_anything_runs()
+ {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(nid("a"), set_count_node(3))
+        .edge(nid("a"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (foreign_state, foreign_config) = foreign_state_and_config();
+    let cases = [
+        (foreign_state, config(), "state"),
+        (base_state(), foreign_config, "config"),
+    ];
+    for (state, config, side) in cases {
+        let given = state.clone();
+        let (_sender, mut inbox) = channel();
+        let failure = run(&graph, &config, state, None, &ctx(), &mut inbox)
+            .await
+            .err()
+            .unwrap();
+        match side {
+            "state" => assert!(matches!(
+                failure.error,
+                crate::error::GraphError::StateSchemaMismatch
+            )),
+            _ => assert!(matches!(
+                failure.error,
+                crate::error::GraphError::ConfigSchemaMismatch
+            )),
+        }
+        assert_eq!(failure.checkpoint.state, given);
+    }
+}
+
+#[tokio::test]
 async fn given_two_nodes_set_same_key_when_run_then_declaration_order_wins() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("start"))

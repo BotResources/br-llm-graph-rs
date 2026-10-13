@@ -5,7 +5,7 @@ use crate::graph::edge::Edge;
 use crate::graph::node::Node;
 use crate::graph::signature::Signature;
 use crate::run::Cursor;
-use crate::state::{Schema, State, Value};
+use crate::state::{Config, Schema, State, Value};
 use crate::value::{Key, NodeId};
 
 pub(crate) struct NodeEntry {
@@ -121,6 +121,19 @@ impl Graph {
 
     pub fn contains(&self, id: &NodeId) -> bool {
         self.nodes.contains_key(id)
+    }
+
+    /// A run of this graph takes a state made from its schema
+    /// (`StateSchemaMismatch`) and a configuration made from its
+    /// configuration keys (`ConfigSchemaMismatch`).
+    pub(crate) fn check_schemas(&self, state: &State, config: &Config) -> Result<(), GraphError> {
+        if state.schema() != &self.schema {
+            return Err(GraphError::StateSchemaMismatch);
+        }
+        if config.schema() != &self.schema.config {
+            return Err(GraphError::ConfigSchemaMismatch);
+        }
+        Ok(())
     }
 
     pub fn validate_cursor(&self, cursor: &Cursor) -> Result<(), GraphError> {

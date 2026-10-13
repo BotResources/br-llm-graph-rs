@@ -16,8 +16,11 @@ use crate::update::Update;
 use crate::value::NodeId;
 
 /// Runs `graph` from `state` (and `cursor`, when resuming) until it ends,
-/// pauses, is cancelled or fails. A cursor naming a node the graph does not
-/// hold fails the run (`UnknownNode`), an empty cursor too (`EmptyCursor`).
+/// pauses, is cancelled or fails. A state or a configuration not made from
+/// the graph's schema fails the run before anything runs
+/// (`StateSchemaMismatch`, `ConfigSchemaMismatch`). A cursor naming a node
+/// the graph does not hold fails the run (`UnknownNode`), an empty cursor too
+/// (`EmptyCursor`).
 ///
 /// A superstep runs its nodes together and is applied as a whole: when one of
 /// them fails, its updates are refused, or the edges or the end cannot be
@@ -42,7 +45,12 @@ pub async fn run(
     ctx: &Context,
     inbox: &mut Inbox,
 ) -> Result<Outcome, RunFailure> {
-    run_nested(graph, config, state, cursor, &ctx.isolated(), inbox).await
+    let ctx = ctx.isolated();
+    if let Err(error) = graph.check_schemas(&state, config) {
+        let cursor = cursor.unwrap_or_default();
+        return Err(fail(state, &ctx, &cursor.active, &cursor.deferred, error));
+    }
+    run_nested(graph, config, state, cursor, &ctx, inbox).await
 }
 
 /// Runs `graph` on the recorder of `ctx`, shared with the caller: a nested

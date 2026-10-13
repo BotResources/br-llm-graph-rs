@@ -77,7 +77,7 @@ async fn main() {
     values.insert(key("pending_tasks"), Value::list(Vec::new()));
     let state = State::new(schema.clone(), values).expect("state");
 
-    let mut session = Session::new(graph, config, state, context());
+    let mut session = Session::new(graph, config, state, context()).expect("session");
     let sender = session.sender();
 
     let first = session.run_once().await.expect("run");
