@@ -11,8 +11,13 @@ use serde_json::{Value as Json, json};
 
 use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
+use crate::react::llm_node::Source;
+use crate::react::model::OutputMode;
 use crate::react::model::ToolSpec;
-use crate::react::test_support::{author, config, key, schema};
+use crate::react::react_agent::ReactAgent;
+use crate::react::test_support::{
+    LoggingModel, author, calls_step, config, key, schema, text_step,
+};
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::react::tool_node::ToolNode;
 use crate::run::{Outcome, channel, run};
@@ -20,16 +25,32 @@ use crate::state::{Config, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
 
+/// How many calls of the gauge tools run at once, and the most at once.
 #[derive(Default)]
-struct GaugeTool {
+struct Gauge {
     live: AtomicUsize,
     peak: AtomicUsize,
+}
+
+/// A tool that measures its overlap with the other calls of its gauge.
+struct GaugeTool {
+    name: &'static str,
+    gauge: Arc<Gauge>,
+}
+
+impl GaugeTool {
+    fn new(name: &'static str, gauge: &Arc<Gauge>) -> Arc<Self> {
+        Arc::new(Self {
+            name,
+            gauge: gauge.clone(),
+        })
+    }
 }
 
 impl Tool for GaugeTool {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
-            name: ToolName::new("gauge").unwrap(),
+            name: ToolName::new(self.name).unwrap(),
             description: "measures overlap".to_owned(),
             parameters: json!({ "type": "object" }),
         }
@@ -44,12 +65,12 @@ impl Tool for GaugeTool {
         _config: &'a Config,
     ) -> ToolFuture<'a> {
         Box::pin(async move {
-            let now = self.live.fetch_add(1, Ordering::SeqCst) + 1;
-            self.peak.fetch_max(now, Ordering::SeqCst);
+            let now = self.gauge.live.fetch_add(1, Ordering::SeqCst) + 1;
+            self.gauge.peak.fetch_max(now, Ordering::SeqCst);
             for _ in 0..3 {
                 tokio::task::yield_now().await;
             }
-            self.live.fetch_sub(1, Ordering::SeqCst);
+            self.gauge.live.fetch_sub(1, Ordering::SeqCst);
             Ok(ToolOutput::text(vec![ToolResultBlock::text(
                 Text::new("measured").unwrap(),
             )]))
@@ -89,11 +110,11 @@ fn four_calls_pending() -> State {
 #[tokio::test]
 async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_that_many_run_at_once()
 {
-    let tool = Arc::new(GaugeTool::default());
+    let gauge = Arc::new(Gauge::default());
     let node = ToolNode {
         key: key("chat"),
         author: author(),
-        tools: vec![tool.clone()],
+        tools: vec![GaugeTool::new("gauge", &gauge)],
         max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
         enabled: None,
     };
@@ -123,7 +144,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
     let Outcome::Finished { state, .. } = outcome else {
         panic!("expected finished");
     };
-    assert_eq!(tool.peak.load(Ordering::SeqCst), 2);
+    assert_eq!(gauge.peak.load(Ordering::SeqCst), 2);
     let Some(Entry::Turn(turn)) = state.conversation(&key("chat")).unwrap().entries().last() else {
         panic!("expected the agent's turn");
     };
@@ -136,4 +157,80 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         .map(|result| result.tool_call_id.as_str())
         .collect();
     assert_eq!(ids, vec!["c1", "c2", "c3", "c4"]);
+}
+
+/// An agent whose tools `left` and `right` are run by two tool nodes, with a
+/// tool concurrency of 2. On each of `runs` runs started together, its model
+/// calls each tool three times, then answers.
+fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
+    let left = GaugeTool::new("left", gauge);
+    let right = GaugeTool::new("right", gauge);
+    let calls = calls_step(&["left", "left", "left", "right", "right", "right"]);
+    let mut steps = vec![calls; runs];
+    steps.extend(vec![text_step("measured"); runs]);
+    let model = Arc::new(LoggingModel::new(steps));
+    ReactAgent {
+        author: author(),
+        model,
+        system: vec![Source::Const("Measure.".to_owned())],
+        output: OutputMode::Text,
+        tools: vec![left.clone(), right.clone()],
+        tool_nodes: vec![
+            (
+                NodeId::new("left_tools").unwrap(),
+                vec![left as Arc<dyn Tool>],
+            ),
+            (
+                NodeId::new("right_tools").unwrap(),
+                vec![right as Arc<dyn Tool>],
+            ),
+        ],
+        tool_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
+        round_limit: None,
+        thinking: None,
+        enabled: None,
+        inputs: Vec::new(),
+    }
+    .graph()
+    .unwrap()
+}
+
+async fn run_split_agent(graph: &crate::graph::Graph) {
+    let mut history = Conversation::new();
+    history.push_input(
+        UserInput::new(
+            UserSource::Human,
+            None,
+            vec![UserBlock::text(Text::new("measure").unwrap())],
+        )
+        .unwrap(),
+    );
+    let state = graph
+        .start_state([(key("history"), Value::conversation(history))])
+        .unwrap();
+    let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
+    let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
+    let (_sender, mut inbox) = channel();
+    let outcome = run(graph, &config, state, None, &ctx, &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap();
+    assert!(matches!(outcome, Outcome::Finished { .. }));
+}
+
+#[tokio::test]
+async fn given_an_agent_whose_tools_are_split_between_nodes_when_calls_are_pending_then_the_limit_bounds_them_all_together()
+ {
+    let gauge = Arc::new(Gauge::default());
+    run_split_agent(&split_agent(&gauge, 1)).await;
+    assert_eq!(gauge.peak.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn given_two_runs_of_one_agent_graph_at_once_when_calls_are_pending_then_each_run_has_its_own_limit()
+ {
+    let gauge = Arc::new(Gauge::default());
+    let graph = split_agent(&gauge, 2);
+    futures_util::join!(run_split_agent(&graph), run_split_agent(&graph));
+    assert_eq!(gauge.peak.load(Ordering::SeqCst), 4);
 }

@@ -6,6 +6,7 @@ mod react_agent;
 mod react_loop;
 mod round_limit;
 mod tool;
+mod tool_gate;
 mod tool_node;
 mod verdict;
 

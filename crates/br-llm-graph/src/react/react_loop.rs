@@ -4,18 +4,24 @@ use std::sync::Arc;
 use br_llm_messages::{ToolName, TurnState};
 
 use crate::error::GraphError;
-use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Limit, Target};
+use crate::graph::{
+    Always, CheckSite, Context, Edge, FnEdge, GraphBuilder, Limit, Node, NodeFuture, Target,
+};
 use crate::react::helpers::{last_turn_state, pending_calls};
 use crate::react::llm_node::LlmNode;
 use crate::react::round_limit::{LimitedLlm, RoundLimit, completed_rounds};
 use crate::react::tool::Tool;
+use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
+use crate::state::{Config, Schema, State};
 use crate::value::NodeId;
 
 /// The ReAct loop, added to a graph under construction: the model call
 /// `llm`, the tool nodes, the routing edge after the model call and, with a
 /// round limit that does not fail the run, its limit node. The building block
-/// of `ReactAgent` and of the generator's generations; not public.
+/// of `ReactAgent` and of the generator's generations; not public. The tool
+/// nodes share one tool concurrency limit: at most `tool_concurrency` calls
+/// run at once across all of them.
 pub(crate) struct ReactLoop {
     pub(crate) llm: NodeId,
     pub(crate) tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
@@ -51,15 +57,21 @@ impl ReactLoop {
             ),
             None => builder.join(self.llm.clone(), llm_node),
         };
+        // One gate per superstep for all the tool nodes: the limit bounds
+        // their calls together.
+        let gates = Arc::new(SharedGates::default());
         for (id, tools) in &self.tool_nodes {
             builder = builder.node(
                 id.clone(),
-                ToolNode {
-                    key: key.clone(),
-                    author: author.clone(),
-                    tools: tools.clone(),
-                    max_concurrency: self.tool_concurrency.clone(),
-                    enabled: enabled.clone(),
+                LoopToolNode {
+                    node: ToolNode {
+                        key: key.clone(),
+                        author: author.clone(),
+                        tools: tools.clone(),
+                        max_concurrency: self.tool_concurrency.clone(),
+                        enabled: enabled.clone(),
+                    },
+                    gates: gates.clone(),
                 },
             );
         }
@@ -139,5 +151,28 @@ impl ReactLoop {
                 _ => Ok(vec![after.clone()]),
             }
         })
+    }
+}
+
+/// A tool node of the loop: it runs its calls through the gate it shares
+/// with the other tool nodes of the loop, so at most `tool_concurrency` calls
+/// run at once across all of them.
+struct LoopToolNode {
+    node: ToolNode,
+    gates: Arc<SharedGates>,
+}
+
+impl Node for LoopToolNode {
+    fn run<'a>(
+        &'a self,
+        state: &'a State,
+        config: &'a Config,
+        _ctx: &'a Context,
+    ) -> NodeFuture<'a> {
+        Box::pin(self.node.run_calls(state, config, Some(&self.gates)))
+    }
+
+    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
+        self.node.check(schema, site)
     }
 }

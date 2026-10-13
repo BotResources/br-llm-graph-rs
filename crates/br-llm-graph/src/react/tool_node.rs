@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use br_llm_messages::{Author, Text, ToolCall, ToolName, ToolResult, ToolResultBlock, TurnId};
-use futures_util::StreamExt;
-use futures_util::stream;
+use futures_util::future::join_all;
 
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Limit, Node, NodeFuture};
+use crate::graph::{CheckSite, Context, Limit, Node, NodeError, NodeFuture};
 use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, pending_calls};
-use crate::react::tool::{Tool, ToolFuture};
+use crate::react::tool::Tool;
+use crate::react::tool_gate::{Lease, SharedGates};
 use crate::state::{Config, Schema, State};
 use crate::update::Update;
 use crate::value::Key;
@@ -18,6 +18,11 @@ use crate::value::Key;
 /// With `enabled` (the `enabled` key of the `LlmNode`), a call naming a tool
 /// the key does not hold is not executed: it is answered with an error result
 /// saying so, and the turn goes on.
+///
+/// At most `max_concurrency` of its calls run at once (every call at once
+/// when `None`); the results keep the call order. The tool nodes of a
+/// `ReactAgent` or a generator seat share their limit instead: at most that
+/// many calls at once across all of them.
 ///
 /// At build, `enabled` must be a list-of-strings state key
 /// (`EnabledKeyMismatch`) and the key of `max_concurrency` an int
@@ -37,89 +42,7 @@ impl Node for ToolNode {
         config: &'a Config,
         _ctx: &'a Context,
     ) -> NodeFuture<'a> {
-        Box::pin(async move {
-            let conversation = state.conversation(&self.key)?;
-            let Some(turn_id) =
-                last_turn_by_author(conversation, &self.author).map(|turn| turn.id().clone())
-            else {
-                return Ok(Vec::new());
-            };
-            let owned: HashMap<ToolName, Arc<dyn Tool>> = self
-                .tools
-                .iter()
-                .map(|tool| (tool.spec().name, tool.clone()))
-                .collect();
-            let enabled = match &self.enabled {
-                Some(key) => Some(enabled_names(state, key)?),
-                None => None,
-            };
-            let is_enabled = |name: &ToolName| {
-                enabled
-                    .as_ref()
-                    .is_none_or(|names| names.contains(&name.as_str()))
-            };
-            // Each owned call, with its tool when it runs, `None` when refused.
-            let selected: Vec<(&ToolCall, Option<Arc<dyn Tool>>)> =
-                pending_calls(state, &self.key, &self.author)?
-                    .into_iter()
-                    .filter_map(|call| {
-                        owned
-                            .get(&call.name)
-                            .map(|tool| (call, is_enabled(&call.name).then(|| tool.clone())))
-                    })
-                    .collect();
-            let runs = selected.iter().filter(|(_, tool)| tool.is_some()).count();
-
-            let width = match &self.max_concurrency {
-                Some(limit) => limit.resolve(config)?.get(),
-                None => runs.max(1),
-            };
-            let calls: Vec<ToolFuture<'_>> = selected
-                .iter()
-                .filter_map(|(call, tool)| {
-                    tool.as_ref()
-                        .map(|tool| tool.call(call.arguments.clone(), state, config))
-                })
-                .collect();
-            let mut outcomes = stream::iter(calls)
-                .buffered(width)
-                .collect::<Vec<_>>()
-                .await
-                .into_iter();
-
-            let mut updates = Vec::new();
-            for (call, tool) in selected {
-                if tool.is_none() {
-                    updates.push(refusal(&self.key, &turn_id, call));
-                    continue;
-                }
-                let Some(outcome) = outcomes.next() else {
-                    break;
-                };
-                match outcome {
-                    Ok(output) => {
-                        let result = ToolResult::new(
-                            call.id.clone(),
-                            call.name.clone(),
-                            output.content,
-                            output.is_error,
-                        );
-                        updates.push(Update::PushResult {
-                            key: self.key.clone(),
-                            turn: turn_id.clone(),
-                            result,
-                        });
-                        updates.extend(output.updates);
-                    }
-                    Err(error) => {
-                        updates.push(error_result(
-                            &self.key, &turn_id, &call.id, &call.name, error,
-                        ));
-                    }
-                }
-            }
-            Ok(updates)
-        })
+        Box::pin(self.run_calls(state, config, None))
     }
 
     fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
@@ -128,6 +51,106 @@ impl Node for ToolNode {
             Some(limit) => limit.check(schema),
             None => Ok(()),
         }
+    }
+}
+
+impl ToolNode {
+    /// Runs the owned pending calls. With `shared` (the tool nodes of one
+    /// ReAct loop), the concurrency limit is the one gate of the superstep
+    /// they all run in; otherwise the node applies `max_concurrency` to its
+    /// own calls.
+    pub(crate) async fn run_calls(
+        &self,
+        state: &State,
+        config: &Config,
+        shared: Option<&Arc<SharedGates>>,
+    ) -> Result<Vec<Update>, NodeError> {
+        let conversation = state.conversation(&self.key)?;
+        let Some(turn_id) =
+            last_turn_by_author(conversation, &self.author).map(|turn| turn.id().clone())
+        else {
+            return Ok(Vec::new());
+        };
+        let owned: HashMap<ToolName, Arc<dyn Tool>> = self
+            .tools
+            .iter()
+            .map(|tool| (tool.spec().name, tool.clone()))
+            .collect();
+        let enabled = match &self.enabled {
+            Some(key) => Some(enabled_names(state, key)?),
+            None => None,
+        };
+        let is_enabled = |name: &ToolName| {
+            enabled
+                .as_ref()
+                .is_none_or(|names| names.contains(&name.as_str()))
+        };
+        // Each owned call, with its tool when it runs, `None` when refused.
+        let selected: Vec<(&ToolCall, Option<Arc<dyn Tool>>)> =
+            pending_calls(state, &self.key, &self.author)?
+                .into_iter()
+                .filter_map(|call| {
+                    owned
+                        .get(&call.name)
+                        .map(|tool| (call, is_enabled(&call.name).then(|| tool.clone())))
+                })
+                .collect();
+
+        let lease = match &self.max_concurrency {
+            Some(limit) => {
+                let width = limit.resolve(config)?.get();
+                Some(match shared {
+                    Some(gates) => gates.lease(state, width),
+                    None => Lease::own(width),
+                })
+            }
+            None => None,
+        };
+        let gate = lease.as_ref().map(Lease::gate);
+        let calls = selected.iter().filter_map(|(call, tool)| {
+            tool.as_ref().map(|tool| async move {
+                let _pass = match gate {
+                    Some(gate) => Some(gate.enter().await),
+                    None => None,
+                };
+                tool.call(call.arguments.clone(), state, config).await
+            })
+        });
+        let mut outcomes = join_all(calls).await.into_iter();
+        drop(lease);
+
+        let mut updates = Vec::new();
+        for (call, tool) in selected {
+            if tool.is_none() {
+                updates.push(refusal(&self.key, &turn_id, call));
+                continue;
+            }
+            let Some(outcome) = outcomes.next() else {
+                break;
+            };
+            match outcome {
+                Ok(output) => {
+                    let result = ToolResult::new(
+                        call.id.clone(),
+                        call.name.clone(),
+                        output.content,
+                        output.is_error,
+                    );
+                    updates.push(Update::PushResult {
+                        key: self.key.clone(),
+                        turn: turn_id.clone(),
+                        result,
+                    });
+                    updates.extend(output.updates);
+                }
+                Err(error) => {
+                    updates.push(error_result(
+                        &self.key, &turn_id, &call.id, &call.name, error,
+                    ));
+                }
+            }
+        }
+        Ok(updates)
     }
 }
 

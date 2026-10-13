@@ -36,6 +36,8 @@ pub struct GeneratorSeat {
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
     /// runs them all.
     pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
+    /// At most that many tool calls run at once, across all the tool nodes
+    /// together. `None`: every call at once.
     pub tool_concurrency: Option<Limit>,
     pub round_limit: Option<RoundLimit>,
     /// A state key holding the names of the tools offered on this run: an

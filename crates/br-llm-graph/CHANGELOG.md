@@ -58,10 +58,11 @@ form to decide whether a version ships.
   error result saying so, and the turn goes on. An `enabled` key of `LlmNode` or `ToolNode` that
   is not a list-of-strings state key is refused at build
   (`EnabledKeyMismatch`).
-- `ToolNode::max_concurrency` and `tool_concurrency` (on `ReactAgent` and
-  `GeneratorSeat`): at most that many pending calls of one tool node run at
-  once; the results keep the call order. `None` runs every call at once, as
-  before. A key that is not an int configuration key is refused at build
+- `ToolNode::max_concurrency`: at most that many pending calls of the node
+  run at once; the results keep the call order. `tool_concurrency` (on
+  `ReactAgent` and `GeneratorSeat`): one limit shared by all the tool nodes
+  of the agent, at most that many calls at once across all of them (not that
+  many per node). `None` runs every call at once, as before. A key that is not an int configuration key is refused at build
   (`LimitKeyMismatch`), by the agent and by `ToolNode::check` alike.
 - `round_limit` on `ReactAgent` and `GeneratorSeat` (`RoundLimit`,
   `OnLimit`): bounds the tool rounds of one agent turn. A round is one reply
