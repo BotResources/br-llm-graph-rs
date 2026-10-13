@@ -43,7 +43,7 @@ mod test_support;
 
 pub use generator_critic::{CriticSeat, GeneratorCritic, GeneratorSeat};
 pub use helpers::{complete, pending_calls, pending_unsafe_calls, structured, wire};
-pub use llm_node::{LlmNode, Source, SourceFn};
+pub use llm_node::{Source, SourceFn};
 pub use model::{
     Model, ModelError, ModelFuture, OutputMode, Request, StreamSink, ToolCalls, ToolSpec,
 };

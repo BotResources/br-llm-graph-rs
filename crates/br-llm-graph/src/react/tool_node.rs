@@ -15,7 +15,7 @@ use crate::value::Key;
 
 /// Runs the pending calls of the agent's last turn that name one of `tools`.
 ///
-/// With `enabled` (the `enabled` key of the `LlmNode`), a call naming a tool
+/// With `enabled` (the `enabled` key of the model-call step), a call naming a tool
 /// the key does not hold is not executed: it is answered with an error result
 /// saying so, and the turn goes on.
 ///

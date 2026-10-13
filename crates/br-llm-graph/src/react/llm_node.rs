@@ -72,20 +72,20 @@ impl Source {
 /// At build, the node checks its `enabled` key (`EnabledKeyMismatch`), the
 /// keys its `system` sources read (`SourceKeyMismatch`) and its `thinking`
 /// switch (`SwitchKeyMismatch`).
-pub struct LlmNode {
-    pub key: Key,
-    pub author: Author,
-    pub model: Arc<dyn Model>,
-    pub system: Vec<Source>,
-    pub tools: Vec<Arc<dyn Tool>>,
+pub(crate) struct LlmNode {
+    pub(crate) key: Key,
+    pub(crate) author: Author,
+    pub(crate) model: Arc<dyn Model>,
+    pub(crate) system: Vec<Source>,
+    pub(crate) tools: Vec<Arc<dyn Tool>>,
     /// A state key holding a list of tool names: when set, only the tools it
     /// names are offered to the model. Checked at build
     /// (`EnabledKeyMismatch`).
-    pub enabled: Option<Key>,
-    pub output: OutputMode,
+    pub(crate) enabled: Option<Key>,
+    pub(crate) output: OutputMode,
     /// Native thinking, resolved at each call and sent as
     /// `Request::thinking`; `None` leaves the provider's default.
-    pub thinking: Option<Switch>,
+    pub(crate) thinking: Option<Switch>,
 }
 
 impl Node for LlmNode {

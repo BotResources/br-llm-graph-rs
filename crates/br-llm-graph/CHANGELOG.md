@@ -9,6 +9,12 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+### Removed
+
+- `LlmNode` is no longer public: it is the model-call step of the ReAct loop
+  inside `ReactAgent` and `GeneratorCritic`. `Source` and `SourceFn` stay
+  public.
+
 ## 0.3.0 - 2026-10-13
 
 ### Added

@@ -40,7 +40,7 @@ pub use graph::{
 pub use observe::{NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
-    CriticSeat, GeneratorCritic, GeneratorSeat, LlmNode, Model, ModelError, ModelFuture, OnLimit,
+    CriticSeat, GeneratorCritic, GeneratorSeat, Model, ModelError, ModelFuture, OnLimit,
     OutputMode, ReactAgent, Request, RoundLimit, Source, SourceFn, StreamSink, Tool, ToolCalls,
     ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec, Verdict, VerdictOverride, VerdictReader,
     complete, pending_calls, pending_unsafe_calls, structured, wire,
