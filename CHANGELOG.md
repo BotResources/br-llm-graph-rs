@@ -272,9 +272,11 @@ form to decide whether a version ships.
     or a turn without author included, goes to the generator. After an
     answer, more than `max_critiques` answers end `exhausted` without the
     critic. After a rejection, the generator answers again while fewer than
-    `max_critiques` answers were given; at `max_critiques` it answers once more,
-    unassessed, when `final_generation`, else the run ends `exhausted` on the
-    rejected answer. A `max_critiques` of 0 gives one generation and no critic
+    `max_critiques` answers were given; at exactly `max_critiques` it answers
+    once more, unassessed, when `final_generation`, else the run ends
+    `exhausted` on the rejected answer. More answers than that (a resumed call
+    whose budget, read from the configuration, is now smaller) end
+    `exhausted`; the same rule applies to a critique found on entry. A `max_critiques` of 0 gives one generation and no critic
     call: the run ends `exhausted` (`is_validated` false, `nb_generations` 1),
     whatever `final_generation`.
   - An empty answer (its final step holds no non-blank text and no structured

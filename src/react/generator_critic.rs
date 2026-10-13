@@ -151,6 +151,8 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 /// a rejection sends the generator back, until `max_critiques` answers were
 /// rejected: then the generator answers once more, unassessed, when
 /// `final_generation`, else the run ends `exhausted` on the rejected answer.
+/// More answers than that (a resumed call whose budget is now smaller) end
+/// `exhausted` too; the same rule routes a critique found on entry.
 /// A `max_critiques` of 0 gives one generation and no critic call: the run
 /// ends `exhausted`, whatever `final_generation`.
 ///
@@ -266,10 +268,14 @@ impl Router {
         self.after_rejection(state, config)
     }
 
+    /// The generator answers again while fewer than `max_critiques` answers
+    /// were given, once more (unassessed) at exactly `max_critiques` when
+    /// `final_generation`; beyond that the run finishes, as when a resumed
+    /// call reads a smaller budget.
     fn after_rejection(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
         let generations = self.generations(state)?;
         let max = self.max_critiques.resolve(config)?;
-        let next = if generations < max || (self.final_generation && max > 0) {
+        let next = if generations < max || (self.final_generation && generations == max) {
             &self.generate
         } else {
             &self.finish

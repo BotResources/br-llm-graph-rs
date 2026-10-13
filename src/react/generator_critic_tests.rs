@@ -961,6 +961,43 @@ async fn given_histories_ending_on_a_turn_that_is_not_the_critics_when_called_ag
 }
 
 #[tokio::test]
+async fn given_histories_over_a_budget_read_smaller_when_called_again_then_exhausted_without_generating()
+ {
+    let mut conversation = question("explain");
+    for (id, author, text) in [
+        ("g1", writer(), "a"),
+        ("c1", reviewer(), "fix it"),
+        ("g2", writer(), "b"),
+        ("c2", reviewer(), "fix it again"),
+    ] {
+        conversation
+            .push_turn(Turn::new(
+                TurnId::new(id).unwrap(),
+                Some(author),
+                text_step(text),
+            ))
+            .unwrap();
+    }
+    let generator_model = Arc::new(LoggingModel::new(vec![text_step("c")]));
+    let critic_model = Arc::new(LoggingModel::new(Vec::new()));
+    let graph = zero_budget(
+        generator_model.clone(),
+        critic_model.clone(),
+        Count::Config(key("critiques")),
+        true,
+    );
+    let config = BTreeMap::from([(key("critiques"), Value::int(1))]);
+    let state = ended(
+        call_with(&graph, conversation.clone(), conversation, config).await,
+        "exhausted",
+    );
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
+    assert_eq!(state.str(&key("answer")).unwrap(), "b");
+    assert!(generator_model.requests().is_empty());
+    assert!(critic_model.requests().is_empty());
+}
+
+#[tokio::test]
 async fn given_both_histories_ending_on_an_answer_when_called_again_then_the_critic_judges_it_first()
  {
     let mut conversation = question("explain");
