@@ -1,7 +1,8 @@
 # Changelog
 
-All notable changes to `br-llm-graph` are documented here. A single git tag
-`v{version}` releases the crate. Format follows
+All notable changes to `br-llm-graph` are documented here. The git tag
+`br-llm-graph/v{version}` releases the crate; versions up to 0.2.0 were
+released under the tag `v{version}`. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 Release headings are plain `## X.Y.Z` — the release pipeline greps that exact
 form to decide whether a version ships.
@@ -329,6 +330,16 @@ form to decide whether a version ships.
 
 ### Changed
 
+- Release tag: `br-llm-graph/v{version}` from this version on (pin
+  `tag = "br-llm-graph/v0.3.0"`); 0.1.0 and 0.2.0 keep their `v{version}` tags.
+- Repository is a Cargo workspace: the crate lives in `crates/br-llm-graph/`.
+  The package name and dependencies are unchanged.
+- CI/CD: the libraries registry gate on pull requests, the release-line law
+  (`main` and `release/<crate>-<major>.<minor>` are the only publishing
+  branches), and a release chain that checks the registry target, computes the
+  API listing, the API diff against the registry baseline and the
+  dependencies, tags `br-llm-graph/v{version}`, creates the release and
+  records it in the registry. Offline tests cover the wiring.
 - `NodeFault::Returned` carries the error value the node returned
   (`NodeError`) instead of its text, so a host can downcast it to its own error
   type.
