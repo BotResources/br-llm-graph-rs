@@ -275,6 +275,41 @@ async fn given_end_limit_when_reached_then_calls_refused_and_turn_closed_without
 }
 
 #[tokio::test]
+async fn given_a_reply_after_the_last_round_that_calls_an_unknown_tool_when_run_then_the_limit_applies_first()
+ {
+    let steps = || {
+        vec![
+            tool_call_step("c1", "echo", json!({})),
+            tool_call_step("c2", "missing", json!({})),
+        ]
+    };
+    let one = || Limit::Fixed(NonZeroUsize::new(1).unwrap());
+    let failure = run_graph(
+        &graph(RecordingModel::new(steps()), one(), OnLimit::Error),
+        config(1),
+        fresh_state(),
+    )
+    .await
+    .err()
+    .unwrap();
+    assert!(matches!(failure.error, GraphError::ToolLimitReached { .. }));
+    let on_limit = OnLimit::End {
+        node: nid("limit"),
+        flag: key("limited"),
+    };
+    let state = finished(
+        run_graph(
+            &graph(RecordingModel::new(steps()), one(), on_limit),
+            config(1),
+            fresh_state(),
+        )
+        .await,
+    );
+    assert!(state.bool(&key("limited")).unwrap());
+    assert!(result_texts(&own_turn(&state))[1].1);
+}
+
+#[tokio::test]
 async fn given_an_earlier_finished_turn_when_the_agent_runs_again_then_rounds_restart_from_zero() {
     let mut earlier = Turn::new(
         TurnId::new("t0").unwrap(),

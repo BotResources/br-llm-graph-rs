@@ -23,11 +23,23 @@ fn ctx() -> Context {
 }
 
 fn mapped(body: PickyBody, policy: ItemFailure) -> Result<Graph, GraphError> {
+    mapped_within(
+        body,
+        policy,
+        Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
+    )
+}
+
+fn mapped_within(
+    body: PickyBody,
+    policy: ItemFailure,
+    max_concurrency: Option<Limit>,
+) -> Result<Graph, GraphError> {
     let map = Map {
         list: key("items"),
         item: key("item"),
         body: Box::new(body),
-        max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
+        max_concurrency,
         on_item_failure: policy,
     };
     GraphBuilder::new(schema())
@@ -146,6 +158,23 @@ async fn given_fail_fast_when_two_running_items_fail_then_the_first_in_item_orde
     assert_eq!(gates.started(), strings(&["a", "b"]));
     assert_eq!(returned_message(&failure), "item a failed");
     assert!(failure.checkpoint.pending.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn given_fail_fast_without_a_limit_when_an_item_fails_then_every_item_has_started_as_with_finish()
+ {
+    let gates = Gates::new(&ITEMS);
+    let graph = mapped_within(PickyBody::new(&gates, &["b"]), ItemFailure::FailFast, None).unwrap();
+    let failure = run_releasing(&graph, &gates, &["b", "a", "c", "d", "e", "f"])
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(gates.started(), strings(&ITEMS));
+    assert_eq!(returned_message(&failure), "item b failed");
+    assert_eq!(
+        pending(&failure.checkpoint),
+        vec!["m[0]", "m[2]", "m[3]", "m[4]", "m[5]"]
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

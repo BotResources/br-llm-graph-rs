@@ -248,3 +248,26 @@ fn given_a_prepare_node_that_refuses_the_schema_when_built_then_invalid_node() {
         Err(GraphError::InvalidNode { ref node, .. }) if node.as_str() == "prepare"
     ));
 }
+
+#[test]
+fn given_a_tool_node_named_like_a_node_of_the_generator_critic_when_built_then_duplicate_node() {
+    let model = || Arc::new(LoggingModel::new(Vec::new()));
+    for reserved in [
+        "prepare", "route", "generate", "publish", "critique", "finish",
+    ] {
+        let echo: Arc<dyn crate::react::tool::Tool> = Arc::new(EchoTool);
+        let built = GeneratorCritic {
+            generator: crate::react::generator_critic::GeneratorSeat {
+                tools: vec![echo.clone()],
+                tool_nodes: vec![(NodeId::new(reserved).unwrap(), vec![echo])],
+                ..generator(model())
+            },
+            ..prepared(Documents::new(), model(), model())
+        }
+        .graph();
+        assert!(
+            matches!(built, Err(GraphError::DuplicateNode { ref id }) if id.as_str() == reserved),
+            "{reserved}"
+        );
+    }
+}

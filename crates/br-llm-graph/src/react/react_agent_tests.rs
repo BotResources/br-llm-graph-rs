@@ -211,6 +211,44 @@ fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_co
     }
 }
 
+#[test]
+fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_then_duplicate_node()
+{
+    let model = Arc::new(LoggingModel::new(Vec::new()));
+    for reserved in ["llm", "answer"] {
+        let split = ReactAgent {
+            tool_nodes: vec![(nid(reserved), vec![Arc::new(EchoTool) as _])],
+            ..agent(model.clone())
+        };
+        let limit = limited(
+            model.clone(),
+            1,
+            OnLimit::End {
+                node: nid(reserved),
+                flag: key("limited"),
+            },
+        );
+        for agent in [split, limit] {
+            assert!(matches!(
+                agent.graph(),
+                Err(GraphError::DuplicateNode { ref id }) if *id == nid(reserved)
+            ));
+        }
+    }
+    let limit_on_tools = limited(
+        model,
+        1,
+        OnLimit::End {
+            node: nid("tools"),
+            flag: key("limited"),
+        },
+    );
+    assert!(matches!(
+        limit_on_tools.graph(),
+        Err(GraphError::DuplicateNode { ref id }) if *id == nid("tools")
+    ));
+}
+
 #[tokio::test]
 async fn given_a_plain_answer_when_the_agent_runs_then_history_and_answer_come_back() {
     let model = Arc::new(LoggingModel::new(vec![text_step("hello there")]));

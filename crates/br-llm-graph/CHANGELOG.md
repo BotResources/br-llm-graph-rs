@@ -173,7 +173,8 @@ form to decide whether a version ships.
   - `FailFast`: no item starts after the first error; items already running
     finish and are recorded, then the map fails with the first error in item
     order among the items that ended; items that never started are not
-    recorded;
+    recorded. Without `max_concurrency` every item starts at once, so it
+    behaves like `Finish`;
   - `Capture(Vec<CaptureUpdate>)`: the item yields these appends instead,
     forwarded in item order and recorded like a result, so the map does not
     fail because of an item error. `From(key)` reads the item's own state,

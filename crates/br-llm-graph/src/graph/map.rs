@@ -53,6 +53,8 @@ pub enum ItemFailure {
     /// No item starts after the first error. Items already running finish and
     /// are recorded, then the map fails with the first error in item order
     /// among the items that ended. Items that never started are not recorded.
+    /// Without `max_concurrency` every item starts at once, so it behaves like
+    /// `Finish`.
     FailFast,
     /// The item yields these updates instead: all appends, forwarded in item
     /// order and recorded like a result, so the map does not fail because of
