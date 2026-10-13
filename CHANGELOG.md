@@ -194,35 +194,78 @@ form to decide whether a version ships.
 - `GeneratorCritic`: a generator and a critic writing in one shared history, as
   a graph with a declared signature. Built with
   `GeneratorCritic::new(GeneratorSeat, CriticSeat, max_critiques: Count)`
-  (`final_generation` defaults to true, `inputs` to none) then `.graph()`.
-  `GeneratorSeat { author, model, output, thinking, tools, tool_nodes,
-  tool_concurrency, round_limit, enabled }`, `CriticSeat { author, model,
-  thinking }`; two seats with one author are refused (`SameAuthor`). Each seat
-  reads from its own `Perspective`: its own turns as assistant messages, the
-  other's as framed messages.
+  (`final_generation` defaults to true, `inputs` to none,
+  `empty_answer_critique` and `prepare` to `None`) then `.graph()`.
+  `GeneratorSeat { author, model, system, output, thinking, tools, tool_nodes,
+  tool_concurrency, round_limit, enabled }`; `CriticSeat { author, model,
+  system, thinking, review_request, reasoning_field, thinking_description,
+  is_valid_description, message_description, verdict }`, built with
+  `CriticSeat::new(author, model, system)` (`reasoning_field` true, the rest
+  `None`). Two seats with one author are refused (`SameAuthor`).
+  - Texts: every text is a `Source`: the seats' `system`, the critic's
+    `review_request` (default `Please evaluate the generator's response
+    above.`), `empty_answer_critique` (default `The answer was empty. Write a
+    complete answer.`) and the verdict descriptions. Each `State` key a source
+    reads is a string input of the graph, each `Config` key a string
+    configuration key; a key read by several sources is declared once, a key
+    the graph already has is refused (`KeyCollision`).
+  - What each seat reads. The generator: its system text, then
+    `generator_history` from its own `Perspective`: the opening message, its
+    earlier generations with their tool traffic and thinking, the critiques as
+    framed user messages. The critic: its system text, then `conversation`
+    before the answer it judges, rendered as the generator sees it (earlier
+    answers as assistant messages, critiques as framed user messages) with
+    every thinking block removed (an answer left with nothing is dropped and
+    the user messages around it merged, as `render` merges them), then one
+    user message `<generator_response>\n{answer}\n</generator_response>\n\n{review_request}`
+    (the request and its blank line left out when it resolves to a blank
+    text). `{answer}` is the JSON text of the answer's structured block when it
+    has one, else its text blocks joined verbatim. That message stays a
+    separate wire message even after a user message (the opening message in
+    the first round).
   - Inputs: `conversation` (the shared history the critic reads),
     `generator_history` (the generator's working history, started from
-    `conversation` when empty), `generator_system` and `critic_system` (the
-    rendered system prompts), the generator's `enabled` key when set (a list
-    of strings, as for `ReactAgent`) and each key of `inputs`, for the
-    generator's tools to read (as for `ReactAgent`). An `enabled` or `inputs`
-    key the graph already has is refused (`KeyCollision`).
-  - Outputs: `answer` (a conversation holding the generator's last answer, one
-    turn with its final step), `validated`, `generations` (the generator
-    answers in `conversation` since its last user input), `last_critique` (the
-    last rejection's message, empty when validated), `conversation`,
-    `generator_history`, and the generator's round-limit flag when it has one.
+    `conversation` when empty), the state keys of the text sources, the
+    generator's `enabled` key when set (a list of strings, as for
+    `ReactAgent`) and each key of `inputs`, for the generator's tools to read
+    (as for `ReactAgent`). An `enabled` or `inputs` key the graph already has
+    is refused (`KeyCollision`).
+  - Outputs, plain data: `answer` (string, the generator's last answer since
+    the last user input, as in the critic's wrapped message; empty if none),
+    `is_validated` (bool), `nb_generations` (int, the generator answers in
+    `conversation` since its last user input), and the generator's
+    round-limit flag when it has one. The histories are not outputs: a host
+    that resumes a call gives back the histories it saved from the observer.
     The run ends with `validated` or `exhausted`.
   - `generator_history` holds the generator's whole traffic and the critiques;
     `conversation` holds the user input, the answers (final step only) and the
     critiques. A critique is a turn of the critic holding one text step, the
     verdict's `message`, appended to both; nothing is appended on validation
     and nothing of the critic's reasoning enters a history.
-  - The critic answers a structured verdict, `{ is_valid, message }` when its
-    resolved `thinking` is true, else `{ thinking, is_valid, message }`,
-    `thinking` first; every field is required. A missing structured block, a
-    non-boolean `is_valid` or an empty `message` on a rejection fails the run
-    with `Structured`.
+  - The verdict. The default schema is always `thinking`, `is_valid`,
+    `message`, in that order and all required, whatever the critic's
+    `thinking` switch; `reasoning_field: false` removes `thinking`. Each field
+    carries a description: `Explanation of the thought process and validation
+    steps`, `Boolean indicating if the generated message is valid`, `Feedback
+    message for the generator, empty if validation passed`, each replaced by
+    its `*_description` source when set. `verdict: Some(VerdictOverride {
+    schema, reader })` sends the caller's schema instead, and
+    `reasoning_field` and the descriptions are ignored. `reader`
+    (`VerdictReader`, a pure `Fn(&serde_json::Value) -> Result<Verdict,
+    GraphError>`) turns the structured block into a `Verdict { is_valid,
+    message }` (public); without one, the block is read as the default
+    verdict and the build checks the schema: an object (`"type": "object"`)
+    whose properties include `is_valid` (boolean) and `message` (string), both
+    required, else `VerdictSchemaMismatch`. A missing structured block, a
+    verdict that cannot be read or a rejection with an empty `message` fails
+    the run with `Structured`.
+  - `prepare` (`Option<Box<dyn Node>>`): when set, the graph's entry, run once
+    before the routing. It may do I/O (it holds its capabilities as fields)
+    and writes through ordinary updates, typically the opening message into
+    `conversation`. It is checked through `Node::check` like any node; its
+    failure fails the generator-critic (a caller captures it with
+    `OnFailure::Capture`). Its writes are ordinary state of the call, so a
+    resumed parent restarts the call, `prepare` included.
   - The entry is routed on how `conversation` ends: a generator answer goes to
     the critic and a critique is routed as after a rejection (both are resumed
     calls), anything else goes to the generator. After an
@@ -231,22 +274,23 @@ form to decide whether a version ships.
     `max_critiques` answers were given; at `max_critiques` it answers once more,
     unassessed, when `final_generation`, else the run ends `exhausted` on the
     rejected answer. A `max_critiques` of 0 gives one generation and no critic
-    call: the run ends `exhausted` (`validated` false, `generations` 1),
+    call: the run ends `exhausted` (`is_validated` false, `nb_generations` 1),
     whatever `final_generation`.
   - An empty answer (its final step holds no non-blank text and no structured
     block) is rejected without calling the critic: where the critic would
-    judge it, a critique of the critic holding
-    `GeneratorCritic::EMPTY_ANSWER_CRITIQUE` is appended to both histories and
-    the run goes on as after a rejection. The empty answer counts as a
-    generation and the budget rules are unchanged: an empty answer that is not
-    judged (the unassessed final generation) ends `exhausted` with nothing
-    appended; a run that ends on the automatic critique has it as
-    `last_critique`.
+    judge it, a critique of the critic holding the `empty_answer_critique`
+    text is appended to both histories and the run goes on as after a
+    rejection. The empty answer counts as a generation and the budget rules
+    are unchanged: an empty answer that is not judged (the unassessed final
+    generation) ends `exhausted` with nothing appended.
   - With tools, the generation is the `ReactLoop` fragment inline in the graph;
     each generation opens a new generator turn, so the round limit counts per
     generation.
-- Example `generator_critic`: the two seats called through `SubGraph`, the
-  critic's thinking read from the caller's configuration.
+- Example `generator_critic`: the two seats called through `SubGraph`; a
+  `prepare` node opens the conversation from a question id, the generator's
+  system text is computed from the state, the critic's review request and
+  thinking are read from the caller's configuration, and the caller reads the
+  answer's text, `is_validated` and `nb_generations`.
 - Example `subgraph_map`: a map whose body calls a graph, with a resume.
 - `Node::check(&self, &Schema, CheckSite)`, defaulted to accept: a node checks
   itself against the schema of the graph it runs in, at a site

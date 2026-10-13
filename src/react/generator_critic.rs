@@ -136,6 +136,11 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 /// both; nothing is appended on validation, and nothing of the critic's
 /// reasoning enters a history.
 ///
+/// The critic answers a structured verdict, by default `thinking`,
+/// `is_valid` and `message` in that order, whatever its thinking switch (see
+/// `CriticSeat`). A missing structured block, a verdict that cannot be read
+/// or a rejection with an empty `message` fails the run with `Structured`.
+///
 /// With `prepare`, the graph enters through it, once, then the routing.
 /// The entry is routed on how `conversation` ends: a generator answer goes
 /// to the critic and a critique is routed as a rejection (both are resumed
