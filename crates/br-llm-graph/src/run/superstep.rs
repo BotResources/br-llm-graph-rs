@@ -82,6 +82,8 @@ pub(crate) async fn drive_superstep(
 /// attempt recorded is not run: its recorded updates are used. A node that
 /// returns updates records them as soon as it finishes, so a failure or a
 /// cancel of the superstep keeps them; an error or a panic records nothing.
+/// A panic is caught whether it happens while `run` starts (before it returns
+/// its future) or inside the future.
 /// The observer sees the record only when the node has siblings (`seen`).
 async fn run_recorded(
     node: &dyn Node,
@@ -93,9 +95,11 @@ async fn run_recorded(
     if let Some(updates) = ctx.recorded() {
         return Ok(Ok(updates));
     }
-    let outcome = AssertUnwindSafe(node.run(state, config, ctx))
-        .catch_unwind()
-        .await;
+    let started = std::panic::catch_unwind(AssertUnwindSafe(|| node.run(state, config, ctx)));
+    let outcome = match started {
+        Ok(future) => AssertUnwindSafe(future).catch_unwind().await,
+        Err(payload) => Err(payload),
+    };
     if let Ok(Ok(updates)) = &outcome {
         if seen {
             ctx.record(updates);

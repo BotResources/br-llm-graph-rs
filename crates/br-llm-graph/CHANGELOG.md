@@ -419,6 +419,12 @@ form to decide whether a version ships.
   its own or called with `SubGraph`; its rules (tool partition, routing after
   the model call, tool concurrency, enabled key, round limit) are unchanged.
 
+### Fixed
+
+- A node that panics while its `run` call starts, before it returns its
+  future, is caught like a panic inside the future: the node fails with
+  `NodeFault::Panic` instead of unwinding through the run.
+
 ## 0.2.0 - 2026-09-22
 
 ### Removed

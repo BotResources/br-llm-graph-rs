@@ -113,6 +113,39 @@ async fn given_panicking_node_when_run_then_node_failed_with_state_intact() {
     assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 0);
 }
 
+struct PanicsOnCall;
+
+impl crate::graph::Node for PanicsOnCall {
+    fn run<'a>(&'a self, _s: &'a State, _c: &'a Config, _x: &'a Context) -> NodeFuture<'a> {
+        panic!("panics before its future")
+    }
+}
+
+#[tokio::test]
+async fn given_node_panics_while_its_run_starts_when_run_then_the_panic_is_a_node_failure() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("p"))
+        .node(nid("p"), PanicsOnCall)
+        .edge(nid("p"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+        .await
+        .err()
+        .unwrap();
+    let GraphError::NodeFailed {
+        node,
+        source: NodeFault::Panic(message),
+    } = failure.error
+    else {
+        panic!("expected a panic fault");
+    };
+    assert_eq!(node.as_str(), "p");
+    assert_eq!(message, "panics before its future");
+    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 0);
+}
+
 #[tokio::test]
 async fn given_panicking_node_beside_success_when_run_then_nothing_applied_and_panic_reported() {
     let graph = GraphBuilder::new(schema())
