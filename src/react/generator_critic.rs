@@ -143,8 +143,9 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 ///
 /// With `prepare`, the graph enters through it, once, then the routing.
 /// The entry is routed on how `conversation` ends: a generator answer goes
-/// to the critic and a critique is routed as a rejection (both are resumed
-/// calls), anything else goes to the generator. After an
+/// to the critic and a critique (a turn of the critic) is routed as a
+/// rejection (both are resumed calls); anything else, another author's turn
+/// or a turn without author included, goes to the generator. After an
 /// answer, more than `max_critiques` answers end `exhausted` without the
 /// critic; otherwise the critic judges it. A valid verdict ends `validated`;
 /// a rejection sends the generator back, until `max_critiques` answers were
@@ -220,6 +221,7 @@ struct Router {
     conversation: Key,
     validated: Key,
     generator: Author,
+    critic: Author,
     max_critiques: Count,
     final_generation: bool,
     generate: NodeId,
@@ -228,15 +230,21 @@ struct Router {
 }
 
 impl Router {
-    /// On entry: a generator answer last goes to the critic, a critique last
-    /// is routed as after a rejection, anything else goes to the generator.
+    /// On entry: a generator answer last goes to the critic, a critique (a
+    /// turn of the critic) last is routed as after a rejection, anything else
+    /// (the opening input, another author's turn, a turn without author, an
+    /// empty history) goes to the generator.
     fn entry(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
         match state.conversation(&self.conversation)?.entries().last() {
             Some(Entry::Turn(turn)) if turn.author() == Some(&self.generator) => {
                 self.after_answer(state, config)
             }
-            Some(Entry::Turn(_)) => self.after_rejection(state, config),
-            Some(Entry::UserInput(_)) | None => Ok(vec![Target::Node(self.generate.clone())]),
+            Some(Entry::Turn(turn)) if turn.author() == Some(&self.critic) => {
+                self.after_rejection(state, config)
+            }
+            Some(Entry::Turn(_) | Entry::UserInput(_)) | None => {
+                Ok(vec![Target::Node(self.generate.clone())])
+            }
         }
     }
 
@@ -354,6 +362,7 @@ impl GeneratorCritic {
             conversation: names.conversation.clone(),
             validated: names.validated.clone(),
             generator: generator.author.clone(),
+            critic: critic.author.clone(),
             max_critiques: self.max_critiques,
             final_generation: self.final_generation,
             generate: names.generate.clone(),

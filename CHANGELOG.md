@@ -267,8 +267,9 @@ form to decide whether a version ships.
     `OnFailure::Capture`). Its writes are ordinary state of the call, so a
     resumed parent restarts the call, `prepare` included.
   - The entry is routed on how `conversation` ends: a generator answer goes to
-    the critic and a critique is routed as after a rejection (both are resumed
-    calls), anything else goes to the generator. After an
+    the critic and a critique (a turn of the critic) is routed as after a
+    rejection (both are resumed calls); anything else, another author's turn
+    or a turn without author included, goes to the generator. After an
     answer, more than `max_critiques` answers end `exhausted` without the
     critic. After a rejection, the generator answers again while fewer than
     `max_critiques` answers were given; at `max_critiques` it answers once more,
