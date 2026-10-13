@@ -249,7 +249,8 @@ form to decide whether a version ships.
     generator's `enabled` key when set (a list of strings, as for
     `ReactAgent`) and each key of `inputs`, for the generator's tools to read
     (as for `ReactAgent`). An `enabled` or `inputs` key the graph already has
-    is refused (`KeyCollision`).
+    is refused (`KeyCollision`), and so is a generator round-limit flag that
+    names `is_validated`.
   - Outputs, plain data: `answer` (string, the generator's last answer since
     the last user input, as in the critic's wrapped message; empty if none),
     `is_validated` (bool), `nb_generations` (int, the generator answers in

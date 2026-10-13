@@ -341,6 +341,9 @@ impl GeneratorCritic {
         let mut schema = schema.build();
         let flag = generator.round_limit.as_ref().and_then(round_limit_flag);
         if let Some(flag) = &flag {
+            if schema.state.get(flag) == Some(&Kind::Bool) {
+                return Err(GraphError::KeyCollision { key: flag.clone() });
+            }
             schema.state.entry(flag.clone()).or_insert(Kind::Bool);
         }
         let review_request = critic

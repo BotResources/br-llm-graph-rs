@@ -772,6 +772,30 @@ pub(crate) fn cut_generator(model: Arc<LoggingModel>) -> GeneratorSeat {
 
 const CUT: &str = "Tool round limit reached (1): no final reply.";
 
+#[test]
+fn given_a_generator_limit_flag_that_names_is_validated_when_built_then_key_collision() {
+    let model = Arc::new(LoggingModel::new(Vec::new()));
+    let built = GeneratorCritic::new(
+        GeneratorSeat {
+            round_limit: Some(RoundLimit {
+                max_rounds: limit(1),
+                on_limit: OnLimit::End {
+                    node: nid("limit"),
+                    flag: key("is_validated"),
+                },
+            }),
+            ..cut_generator(model.clone())
+        },
+        critic(model),
+        Count::Fixed(1),
+    )
+    .graph();
+    assert!(matches!(
+        built,
+        Err(GraphError::KeyCollision { ref key }) if *key == self::key("is_validated")
+    ));
+}
+
 #[tokio::test]
 async fn given_a_generation_cut_by_the_round_limit_when_run_then_rejected_as_empty_without_the_critic()
  {
