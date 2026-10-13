@@ -426,6 +426,9 @@ form to decide whether a version ships.
 - A node that panics while its `run` call starts, before it returns its
   future, is caught like a panic inside the future: the node fails with
   `NodeFault::Panic` instead of unwinding through the run.
+- `State::list` and `Config::list` on a key that holds another kind give
+  `KindMismatch` with a list as the expected kind (`list<int>` for an int
+  key: a list read names no element kind), not the key's own kind.
 
 ## 0.2.0 - 2026-09-22
 

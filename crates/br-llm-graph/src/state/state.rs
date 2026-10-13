@@ -135,11 +135,14 @@ impl State {
         }
     }
 
+    /// The items of a list key. A list read names no element kind: a key that
+    /// holds another kind gives `KindMismatch` whose expected kind is a list
+    /// (of the key's own kind) and whose found tag is the value's.
     pub fn list(&self, key: &Key) -> Result<&[Value], GraphError> {
         match self.get(key)? {
             Value::List(items) => Ok(items),
             other => match self.kind_of(key) {
-                Some(expected) => Err(self.mismatch(key, expected.clone(), other)),
+                Some(declared) => Err(self.mismatch(key, Kind::list(declared.clone()), other)),
                 None => Err(GraphError::UnknownKey { key: key.clone() }),
             },
         }

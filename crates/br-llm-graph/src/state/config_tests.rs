@@ -91,3 +91,17 @@ fn given_an_undeclared_key_when_read_then_unknown_key_for_every_typed_read() {
         );
     }
 }
+
+#[test]
+fn given_a_key_that_is_not_a_list_when_read_as_a_list_then_a_list_is_the_expected_kind() {
+    let config = Config::new(&schema(), values()).unwrap();
+    let error = config.list(&key("limit")).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            GraphError::KindMismatch { ref key, expected: Kind::List { .. }, found: "int" }
+                if *key == self::key("limit")
+        ),
+        "{error:?}"
+    );
+}
