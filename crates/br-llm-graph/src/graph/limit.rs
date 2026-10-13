@@ -14,7 +14,23 @@ pub enum Limit {
 }
 
 impl Limit {
-    pub(crate) fn check(&self, schema: &Schema) -> Result<(), GraphError> {
+    /// Checks the limit against the schema of a graph: a `Config` key must be
+    /// an int configuration key (`LimitKeyMismatch`); a fixed number always
+    /// passes. A node of the caller that holds a `Limit` calls it from its own
+    /// `Node::check`, so the graph refuses a wrong key at build as it does for
+    /// its own limits.
+    ///
+    /// ```
+    /// use br_llm_graph::{GraphError, Key, Kind, Limit, Schema};
+    ///
+    /// let width = Key::new("width").unwrap();
+    /// let schema = Schema::builder().config(width.clone(), Kind::Str).build();
+    /// assert!(matches!(
+    ///     Limit::Config(width).check(&schema),
+    ///     Err(GraphError::LimitKeyMismatch { .. })
+    /// ));
+    /// ```
+    pub fn check(&self, schema: &Schema) -> Result<(), GraphError> {
         match self {
             Limit::Fixed(_) => Ok(()),
             Limit::Config(key) => match schema.config.get(key) {

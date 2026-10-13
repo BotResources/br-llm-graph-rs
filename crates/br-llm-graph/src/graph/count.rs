@@ -12,7 +12,19 @@ pub enum Count {
 }
 
 impl Count {
-    pub(crate) fn check(&self, schema: &Schema) -> Result<(), GraphError> {
+    /// Checks the count against the schema of a graph: a `Config` key must be
+    /// an int configuration key (`CountKeyMismatch`); a fixed number always
+    /// passes. A node of the caller that holds a `Count` calls it from its own
+    /// `Node::check`.
+    ///
+    /// ```
+    /// use br_llm_graph::{Count, Key, Kind, Schema};
+    ///
+    /// let budget = Key::new("budget").unwrap();
+    /// let schema = Schema::builder().config(budget.clone(), Kind::Int).build();
+    /// assert!(Count::Config(budget).check(&schema).is_ok());
+    /// ```
+    pub fn check(&self, schema: &Schema) -> Result<(), GraphError> {
         match self {
             Count::Fixed(_) => Ok(()),
             Count::Config(key) => match schema.config.get(key) {

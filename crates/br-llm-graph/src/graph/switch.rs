@@ -11,7 +11,22 @@ pub enum Switch {
 }
 
 impl Switch {
-    pub(crate) fn check(&self, schema: &Schema) -> Result<(), GraphError> {
+    /// Checks the switch against the schema of a graph: a `Config` key must
+    /// be a bool configuration key (`SwitchKeyMismatch`); a fixed value
+    /// always passes. A node of the caller that holds a `Switch` calls it
+    /// from its own `Node::check`.
+    ///
+    /// ```
+    /// use br_llm_graph::{GraphError, Key, Schema, Switch};
+    ///
+    /// let deep = Key::new("deep").unwrap();
+    /// let schema = Schema::builder().build();
+    /// assert!(matches!(
+    ///     Switch::Config(deep).check(&schema),
+    ///     Err(GraphError::SwitchKeyMismatch { .. })
+    /// ));
+    /// ```
+    pub fn check(&self, schema: &Schema) -> Result<(), GraphError> {
         match self {
             Switch::Fixed(_) => Ok(()),
             Switch::Config(key) => match schema.config.get(key) {

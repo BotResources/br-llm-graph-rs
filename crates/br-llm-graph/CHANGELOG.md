@@ -26,7 +26,10 @@ form to decide whether a version ships.
   key is refused at build (`CountKeyMismatch`); a negative value is refused at
   run time (`CountNegative`).
 - `Switch::resolve`, `Limit::resolve` and `Count::resolve` are public, so a
-  node of the caller reads the same configuration as the graph.
+  node of the caller reads the same configuration as the graph, and so are
+  `Switch::check`, `Limit::check` and `Count::check`, so that node checks the
+  same keys from its `Node::check` and the graph refuses a wrong key at build
+  (`SwitchKeyMismatch`, `LimitKeyMismatch`, `CountKeyMismatch`).
 - `Request::thinking` (`Option<bool>`): whether the model thinks natively
   before replying, `None` leaving the provider's default. Each model adapter
   translates it for its provider. `LlmNode::thinking` (`Option<Switch>`) is
