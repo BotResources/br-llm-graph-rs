@@ -70,3 +70,24 @@ fn given_getters_when_read_then_typed() {
     assert_eq!(config.str(&key("model")).unwrap(), "scripted");
     assert_eq!(config.int(&key("limit")).unwrap(), 3);
 }
+
+#[test]
+fn given_an_undeclared_key_when_read_then_unknown_key_for_every_typed_read() {
+    let config = Config::new(&schema(), values()).unwrap();
+    let stray = key("stray");
+    let reads = [
+        config.int(&stray).err(),
+        config.float(&stray).err(),
+        config.str(&stray).err(),
+        config.bool(&stray).err(),
+        config.list(&stray).err(),
+        config.conversation(&stray).err(),
+        config.get(&stray).err(),
+    ];
+    for error in reads {
+        assert!(
+            matches!(error, Some(GraphError::UnknownKey { ref key }) if *key == stray),
+            "{error:?}"
+        );
+    }
+}

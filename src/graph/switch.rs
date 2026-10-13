@@ -22,8 +22,8 @@ impl Switch {
     }
 
     /// The setting for this run: the fixed value, or the value of the
-    /// configuration key (`MissingKey` when `config` lacks it, `KindMismatch`
-    /// when it holds another kind).
+    /// configuration key (`UnknownKey` when `config` does not declare it,
+    /// `KindMismatch` when it holds another kind).
     ///
     /// ```
     /// use std::collections::BTreeMap;

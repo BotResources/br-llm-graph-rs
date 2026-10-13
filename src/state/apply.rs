@@ -65,11 +65,13 @@ impl State {
         Ok(())
     }
 
-    /// Whether `value` may be appended to `key`: a list of the value's kind.
+    /// Whether `value` may be appended to `key`: a declared list of the
+    /// value's kind.
     pub(crate) fn check_append(&self, key: &Key, value: &Value) -> Result<(), GraphError> {
         let element = match self.kind_of(key) {
             Some(Kind::List { element }) => element.as_ref(),
-            Some(_) | None => return Err(GraphError::AppendNotList { key: key.clone() }),
+            Some(_) => return Err(GraphError::AppendNotList { key: key.clone() }),
+            None => return Err(GraphError::UnknownKey { key: key.clone() }),
         };
         if value.matches(element) {
             Ok(())
@@ -101,6 +103,9 @@ impl State {
     }
 
     fn conversation_mut(&mut self, key: &Key) -> Result<&mut Conversation, GraphError> {
+        if self.kind_of(key).is_none() {
+            return Err(GraphError::UnknownKey { key: key.clone() });
+        }
         match self.values_mut().get_mut(key) {
             Some(Value::Conversation(conversation)) => Ok(conversation),
             Some(

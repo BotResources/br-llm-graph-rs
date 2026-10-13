@@ -26,8 +26,8 @@ impl Limit {
 
     /// The bound for this run: the fixed number, or the value of the
     /// configuration key. A configuration value below one is refused
-    /// (`LimitNotPositive`), a key missing from `config` too (`MissingKey`,
-    /// or `KindMismatch` when it holds another kind).
+    /// (`LimitNotPositive`), a key `config` does not declare too
+    /// (`UnknownKey`, or `KindMismatch` when it holds another kind).
     ///
     /// ```
     /// use std::collections::BTreeMap;

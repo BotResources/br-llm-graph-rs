@@ -107,3 +107,24 @@ fn given_getters_when_wrong_kind_then_mismatch() {
         Err(GraphError::KindMismatch { .. })
     ));
 }
+
+#[test]
+fn given_an_undeclared_key_when_read_then_unknown_key_for_every_typed_read() {
+    let state = State::new(schema(), values()).unwrap();
+    let stray = key("stray");
+    let reads = [
+        state.int(&stray).err(),
+        state.float(&stray).err(),
+        state.str(&stray).err(),
+        state.bool(&stray).err(),
+        state.list(&stray).err(),
+        state.conversation(&stray).err(),
+        state.get(&stray).err(),
+    ];
+    for error in reads {
+        assert!(
+            matches!(error, Some(GraphError::UnknownKey { ref key }) if *key == stray),
+            "{error:?}"
+        );
+    }
+}

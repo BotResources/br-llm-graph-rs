@@ -233,6 +233,6 @@ fn given_each_kind_of_source_when_resolved_then_one_text() {
     }));
     assert!(matches!(
         failing.resolve(&state, &config),
-        Err(GraphError::MissingKey { .. })
+        Err(GraphError::UnknownKey { .. })
     ));
 }

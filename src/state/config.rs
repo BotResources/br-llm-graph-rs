@@ -80,7 +80,12 @@ impl Config {
         })
     }
 
+    /// The value of `key`: `UnknownKey` when the schema does not declare it,
+    /// `MissingKey` when it is declared but holds no value.
     pub(crate) fn get(&self, key: &Key) -> Result<&Value, GraphError> {
+        if !self.schema.contains_key(key) {
+            return Err(GraphError::UnknownKey { key: key.clone() });
+        }
         self.values
             .get(key)
             .ok_or_else(|| GraphError::MissingKey { key: key.clone() })

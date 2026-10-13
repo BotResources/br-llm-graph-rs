@@ -24,8 +24,8 @@ impl Count {
 
     /// The count for this run: the fixed number, or the value of the
     /// configuration key. A negative configuration value is refused
-    /// (`CountNegative`), a key missing from `config` too (`MissingKey`, or
-    /// `KindMismatch` when it holds another kind).
+    /// (`CountNegative`), a key `config` does not declare too (`UnknownKey`,
+    /// or `KindMismatch` when it holds another kind).
     ///
     /// A node of the caller reads the same configuration as the graph:
     ///

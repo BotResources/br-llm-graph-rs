@@ -358,3 +358,36 @@ fn given_batch_with_a_late_failure_when_applied_then_all_or_nothing() {
     assert_eq!(state.int(&key("count")).unwrap(), 0);
     assert!(state.list(&key("items")).unwrap().is_empty());
 }
+
+#[test]
+fn given_an_update_of_an_undeclared_key_when_applied_then_unknown_key_and_state_unchanged() {
+    let stray = key("stray");
+    let updates = [
+        Update::Set {
+            key: stray.clone(),
+            value: Value::int(1),
+        },
+        Update::Append {
+            key: stray.clone(),
+            value: Value::int(1),
+        },
+        Update::Input {
+            key: stray.clone(),
+            input: input("hi"),
+        },
+        Update::PushTurn {
+            key: stray.clone(),
+            turn: turn("t1"),
+        },
+    ];
+    for update in updates {
+        let mut state = state();
+        let before = state.clone();
+        let error = state.apply_batch(&[update]).err();
+        assert!(
+            matches!(error, Some(GraphError::UnknownKey { ref key }) if *key == stray),
+            "{error:?}"
+        );
+        assert_eq!(state, before);
+    }
+}
