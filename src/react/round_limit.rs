@@ -86,6 +86,14 @@ impl RoundLimit {
     }
 }
 
+/// The stop reason of the step that closes a turn cut by `OnLimit::End`.
+const LIMIT_REACHED: &str = "tool_round_limit";
+
+/// Whether `step` is the step `OnLimit::End` closes a turn with.
+pub(crate) fn closes_on_limit(step: &Step) -> bool {
+    matches!(step.stop_reason(), StopReason::Other { reason } if reason == LIMIT_REACHED)
+}
+
 pub(crate) fn completed_rounds(conversation: &Conversation, author: &Author) -> usize {
     match last_turn_by_author(conversation, author) {
         Some(turn) if !matches!(turn.state(), TurnState::Finished { .. }) => turn
@@ -167,7 +175,7 @@ impl Node for LimitNode {
                 let step = Step::new(
                     vec![AssistantBlock::Text { text }],
                     StopReason::Other {
-                        reason: "tool_round_limit".to_owned(),
+                        reason: LIMIT_REACHED.to_owned(),
                     },
                     None,
                     None,

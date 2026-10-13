@@ -17,7 +17,7 @@ use crate::react::react_agent::{
     declare_count, declare_input, declare_limit, declare_sources, declare_switch, round_limit_flag,
 };
 use crate::react::react_loop::ReactLoop;
-use crate::react::round_limit::RoundLimit;
+use crate::react::round_limit::{RoundLimit, closes_on_limit};
 use crate::react::tool::Tool;
 use crate::react::verdict::{Verdict, VerdictForm, VerdictOverride};
 use crate::state::{Config, Kind, Schema, State, Value};
@@ -124,7 +124,8 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 ///   else its text blocks joined verbatim; empty if none), `is_validated`,
 ///   `nb_generations` (the generator answers in `conversation` since its
 ///   last user input) and, when the generator's round limit has a flag, that
-///   flag. The histories are not outputs: a host that resumes a call gives
+///   flag (true when the limit was reached in at least one generation of this
+///   call). The histories are not outputs: a host that resumes a call gives
 ///   back the histories it saved from the observer. The run ends with
 ///   `validated` or `exhausted`.
 /// - Configuration: the keys the text sources, switches and limits read.
@@ -164,7 +165,11 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 ///
 /// With tools, the generation is the `ReactLoop` fragment inline in this
 /// graph; each generation opens a new generator turn, so the round limit
-/// counts per generation.
+/// counts per generation. A generation cut by `OnLimit::End` (its final step
+/// is the limit's closing step) is an empty answer: rejected without the
+/// critic where the critic would judge it, and, as the last generation, an
+/// empty `answer`. The limit's flag output is true when the round limit was
+/// reached in at least one generation of this call.
 pub struct GeneratorCritic {
     pub generator: GeneratorSeat,
     pub critic: CriticSeat,
@@ -749,9 +754,12 @@ fn last_answer<'a>(
         })
 }
 
-/// Whether an answer is empty: no non-blank text and no structured block.
+/// Whether an answer is empty: no non-blank text and no structured block,
+/// or a generation the round limit cut (`OnLimit::End`'s closing step).
 fn empty_step(step: &Step) -> bool {
-    step.structured().next().is_none() && step.text().all(|text| text.as_str().trim().is_empty())
+    closes_on_limit(step)
+        || (step.structured().next().is_none()
+            && step.text().all(|text| text.as_str().trim().is_empty()))
 }
 
 /// The text of an answer: the JSON text of its structured block when it has
@@ -819,9 +827,10 @@ impl Node for FinishNode {
                 .iter()
                 .filter(|entry| authored_by(entry, &self.generator))
                 .count();
-            let answer = last_answer(conversation, &self.generator)
-                .map(|(_, step)| answer_text(step))
-                .unwrap_or_default();
+            let answer = match last_answer(conversation, &self.generator) {
+                Some((_, step)) if !closes_on_limit(step) => answer_text(step),
+                Some(_) | None => String::new(),
+            };
             Ok(vec![
                 Update::Set {
                     key: self.answer.clone(),

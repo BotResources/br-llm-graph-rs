@@ -755,6 +755,80 @@ async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_o
     assert_eq!(state.str(&key("answer")).unwrap(), "answer two");
 }
 
+/// A generator with `echo` and one tool round, cut by `OnLimit::End`.
+fn cut_generator(model: Arc<LoggingModel>) -> GeneratorSeat {
+    GeneratorSeat {
+        tools: vec![Arc::new(EchoTool)],
+        round_limit: Some(RoundLimit {
+            max_rounds: limit(1),
+            on_limit: OnLimit::End {
+                node: nid("limit"),
+                flag: key("limited"),
+            },
+        }),
+        ..generator(model)
+    }
+}
+
+const CUT: &str = "Tool round limit reached (1): no final reply.";
+
+#[tokio::test]
+async fn given_a_generation_cut_by_the_round_limit_when_run_then_rejected_as_empty_without_the_critic()
+ {
+    let generator_model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "echo", json!({})),
+        tool_call_step("c2", "echo", json!({})),
+        text_step("full"),
+    ]));
+    let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+    let graph = GeneratorCritic::new(
+        cut_generator(generator_model.clone()),
+        critic(critic_model.clone()),
+        Count::Fixed(2),
+    )
+    .graph()
+    .unwrap();
+    let state = ended(call(&graph, question("explain")).await, "validated");
+    assert_eq!(
+        shape_of(&state, "conversation"),
+        [
+            "user".to_owned(),
+            format!("writer:{CUT}"),
+            empty_critique(),
+            "writer:full".to_owned()
+        ]
+    );
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
+    assert_eq!(state.str(&key("answer")).unwrap(), "full");
+    assert!(state.bool(&key("limited")).unwrap());
+    assert_eq!(critic_model.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn given_a_last_generation_cut_by_the_round_limit_when_run_then_the_answer_is_empty() {
+    let generator_model = Arc::new(LoggingModel::new(vec![
+        tool_call_step("c1", "echo", json!({})),
+        tool_call_step("c2", "echo", json!({})),
+    ]));
+    let critic_model = Arc::new(LoggingModel::new(Vec::new()));
+    let graph = GeneratorCritic::new(
+        cut_generator(generator_model),
+        critic(critic_model.clone()),
+        Count::Fixed(0),
+    )
+    .graph()
+    .unwrap();
+    let state = ended(call(&graph, question("explain")).await, "exhausted");
+    assert_eq!(
+        shape_of(&state, "conversation"),
+        ["user".to_owned(), format!("writer:{CUT}")]
+    );
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
+    assert_eq!(state.str(&key("answer")).unwrap(), "");
+    assert!(state.bool(&key("limited")).unwrap());
+    assert!(critic_model.requests().is_empty());
+}
+
 #[tokio::test]
 async fn given_a_generator_with_an_enabled_subset_when_run_then_only_it_is_offered_and_another_call_is_refused()
  {

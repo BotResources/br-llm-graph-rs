@@ -234,7 +234,8 @@ form to decide whether a version ships.
     the last user input, as in the critic's wrapped message; empty if none),
     `is_validated` (bool), `nb_generations` (int, the generator answers in
     `conversation` since its last user input), and the generator's
-    round-limit flag when it has one. The histories are not outputs: a host
+    round-limit flag when it has one, true when the round limit was reached
+    in at least one generation of this call. The histories are not outputs: a host
     that resumes a call gives back the histories it saved from the observer.
     The run ends with `validated` or `exhausted`.
   - `generator_history` holds the generator's whole traffic and the critiques;
@@ -288,7 +289,10 @@ form to decide whether a version ships.
     generation) ends `exhausted` with nothing appended.
   - With tools, the generation is the `ReactLoop` fragment inline in the graph;
     each generation opens a new generator turn, so the round limit counts per
-    generation.
+    generation. A generation cut by `OnLimit::End` (its final step is the
+    limit's closing step) is an empty answer: rejected without the critic
+    where the critic would judge it, and, as the last generation, an empty
+    `answer`.
 - Example `generator_critic`: the two seats called through `SubGraph`; a
   `prepare` node opens the conversation from a question id, the generator's
   system text is computed from the state, the critic's review request and
