@@ -16,6 +16,7 @@ use crate::graph::{
 };
 use crate::observe::NoopObserver;
 use crate::react::generator_critic::{CriticSeat, GeneratorCritic, GeneratorSeat, verdict_schema};
+use crate::react::llm_node::Source;
 use crate::react::model::OutputMode;
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::test_support::*;
@@ -28,11 +29,11 @@ fn nid(name: &str) -> NodeId {
     NodeId::new(name).unwrap()
 }
 
-fn writer() -> Author {
+pub(crate) fn writer() -> Author {
     Author::new("writer").unwrap()
 }
 
-fn reviewer() -> Author {
+pub(crate) fn reviewer() -> Author {
     Author::new("reviewer").unwrap()
 }
 
@@ -40,7 +41,7 @@ fn limit(value: usize) -> Limit {
     Limit::Fixed(NonZeroUsize::new(value).unwrap())
 }
 
-fn question(body: &str) -> Conversation {
+pub(crate) fn question(body: &str) -> Conversation {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
@@ -53,14 +54,15 @@ fn question(body: &str) -> Conversation {
     chat
 }
 
-fn verdict(is_valid: bool, message: &str) -> br_llm_messages::Step {
+pub(crate) fn verdict(is_valid: bool, message: &str) -> br_llm_messages::Step {
     structured_step(json!({ "thinking": "weighing it", "is_valid": is_valid, "message": message }))
 }
 
-fn generator(model: Arc<LoggingModel>) -> GeneratorSeat {
+pub(crate) fn generator(model: Arc<LoggingModel>) -> GeneratorSeat {
     GeneratorSeat {
         author: writer(),
         model,
+        system: Source::Const("Answer the question.".to_owned()),
         output: OutputMode::Text,
         thinking: None,
         tools: Vec::new(),
@@ -71,15 +73,18 @@ fn generator(model: Arc<LoggingModel>) -> GeneratorSeat {
     }
 }
 
-fn critic(model: Arc<LoggingModel>) -> CriticSeat {
-    CriticSeat {
-        author: reviewer(),
+pub(crate) fn critic(model: Arc<LoggingModel>) -> CriticSeat {
+    CriticSeat::new(
+        reviewer(),
         model,
-        thinking: None,
-    }
+        Source::Const("Judge the answer.".to_owned()),
+    )
 }
 
-fn duo(generator_model: Arc<LoggingModel>, critic_model: Arc<LoggingModel>) -> GeneratorCritic {
+pub(crate) fn duo(
+    generator_model: Arc<LoggingModel>,
+    critic_model: Arc<LoggingModel>,
+) -> GeneratorCritic {
     GeneratorCritic::new(
         generator(generator_model),
         critic(critic_model),
@@ -87,11 +92,11 @@ fn duo(generator_model: Arc<LoggingModel>, critic_model: Arc<LoggingModel>) -> G
     )
 }
 
-fn ctx() -> Context {
+pub(crate) fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-async fn call_with(
+pub(crate) async fn call_with(
     graph: &Graph,
     conversation: Conversation,
     generator_history: Conversation,
@@ -104,8 +109,6 @@ async fn call_with(
                 key("generator_history"),
                 Value::conversation(generator_history),
             ),
-            (key("generator_system"), Value::str("Answer the question.")),
-            (key("critic_system"), Value::str("Judge the answer.")),
         ])
         .unwrap();
     let config = Config::new(graph.schema(), config).unwrap();
@@ -114,7 +117,7 @@ async fn call_with(
 }
 
 /// A new call on `question("explain")` with the given extra inputs.
-async fn start(
+pub(crate) async fn start(
     graph: &Graph,
     extra: Vec<(crate::value::Key, Value)>,
 ) -> Result<Outcome, RunFailure> {
@@ -127,8 +130,6 @@ async fn start(
             key("generator_history"),
             Value::conversation(Conversation::new()),
         ),
-        (key("generator_system"), Value::str("Answer the question.")),
-        (key("critic_system"), Value::str("Judge the answer.")),
     ];
     inputs.extend(extra);
     let state = graph.start_state(inputs).unwrap();
@@ -137,11 +138,11 @@ async fn start(
     run(graph, &config, state, None, &ctx(), &mut inbox).await
 }
 
-async fn call(graph: &Graph, conversation: Conversation) -> Result<Outcome, RunFailure> {
+pub(crate) async fn call(graph: &Graph, conversation: Conversation) -> Result<Outcome, RunFailure> {
     call_with(graph, conversation, Conversation::new(), BTreeMap::new()).await
 }
 
-fn ended(result: Result<Outcome, RunFailure>, label: &str) -> State {
+pub(crate) fn ended(result: Result<Outcome, RunFailure>, label: &str) -> State {
     match result.map_err(|f| f.error).unwrap() {
         Outcome::Finished { state, end } => {
             assert_eq!(end.as_str(), label);
@@ -153,7 +154,7 @@ fn ended(result: Result<Outcome, RunFailure>, label: &str) -> State {
 
 /// Each entry as `user`, or `author:text` with the text of the turn's final
 /// step, or `author:[n items]` for a turn of several items.
-fn shape(conversation: &Conversation) -> Vec<String> {
+pub(crate) fn shape(conversation: &Conversation) -> Vec<String> {
     conversation
         .entries()
         .iter()
@@ -174,7 +175,7 @@ fn turn_text(turn: &Turn) -> String {
     }
 }
 
-fn shape_of(state: &State, name: &str) -> Vec<String> {
+pub(crate) fn shape_of(state: &State, name: &str) -> Vec<String> {
     shape(state.conversation(&key(name)).unwrap())
 }
 
@@ -212,11 +213,47 @@ async fn given_a_valid_first_answer_when_run_then_validated_and_nothing_is_appen
     assert_eq!(shape_of(&state, "answer"), ["writer:draft"]);
 }
 
+pub(crate) fn user_message(text: &str) -> WireMessage {
+    WireMessage::User {
+        content: vec![WireUserBlock::Text {
+            text: Text::new(text).unwrap(),
+        }],
+    }
+}
+
+pub(crate) fn assistant_message(blocks: Vec<AssistantBlock>) -> WireMessage {
+    WireMessage::Assistant { content: blocks }
+}
+
+pub(crate) fn text_block(text: &str) -> AssistantBlock {
+    AssistantBlock::Text {
+        text: Text::new(text).unwrap(),
+    }
+}
+
+pub(crate) fn thinking_block(text: &str) -> AssistantBlock {
+    AssistantBlock::Thinking(br_llm_messages::Thinking {
+        text: text.to_owned(),
+        signature: None,
+    })
+}
+
+/// An answer whose reasoning comes before its text.
+pub(crate) fn thought_step(thinking: &str, text: &str) -> br_llm_messages::Step {
+    br_llm_messages::Step::new(
+        vec![thinking_block(thinking), text_block(text)],
+        br_llm_messages::StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap()
+}
+
 #[tokio::test]
 async fn given_a_rejection_then_a_validation_when_run_then_each_seat_reads_its_own_perspective() {
     let generator_model = Arc::new(LoggingModel::new(vec![
-        text_step("first"),
-        text_step("second"),
+        thought_step("plan one", "first"),
+        thought_step("plan two", "second"),
     ]));
     let critic_model = Arc::new(LoggingModel::new(vec![
         verdict(false, "add an example"),
@@ -235,38 +272,53 @@ async fn given_a_rejection_then_a_validation_when_run_then_each_seat_reads_its_o
     ];
     assert_eq!(shape_of(&state, "conversation"), expected);
     assert_eq!(shape_of(&state, "generator_history"), expected);
-    assert_eq!(shape_of(&state, "answer"), ["writer:second"]);
 
+    let opening = user_message("<message role=\"user\">explain</message>");
+    let critique =
+        user_message("<message author=\"reviewer\" role=\"agent\">add an example</message>");
     let generator_requests = generator_model.requests();
     assert_eq!(
         generator_requests[0].system.as_deref(),
         Some("Answer the question.")
     );
-    let messages = &generator_requests[1].messages;
-    assert_eq!(messages.len(), 3);
-    assert!(matches!(messages[1], WireMessage::Assistant { .. }));
-    let WireMessage::User { content } = &messages[2] else {
-        panic!("expected the critique as a framed message");
-    };
-    assert!(matches!(
-        &content[..],
-        [WireUserBlock::Text { text }]
-            if text.as_str() == "<message author=\"reviewer\" role=\"agent\">add an example</message>"
-    ));
+    assert_eq!(
+        generator_requests[0].messages,
+        std::slice::from_ref(&opening)
+    );
+    assert_eq!(
+        generator_requests[1].messages,
+        [
+            opening.clone(),
+            assistant_message(vec![thinking_block("plan one"), text_block("first")]),
+            critique.clone(),
+        ]
+    );
 
     let critic_requests = critic_model.requests();
     assert_eq!(
         critic_requests[0].system.as_deref(),
         Some("Judge the answer.")
     );
-    let messages = &critic_requests[1].messages;
-    assert_eq!(messages.len(), 3);
-    assert!(matches!(
-        &messages[1],
-        WireMessage::Assistant { content }
-            if content == &vec![AssistantBlock::Text { text: Text::new("add an example").unwrap() }]
-    ));
-    assert!(matches!(messages[2], WireMessage::User { .. }));
+    assert_eq!(
+        critic_requests[0].messages,
+        [
+            opening.clone(),
+            user_message(
+                "<generator_response>\nfirst\n</generator_response>\n\nPlease evaluate the generator's response above."
+            ),
+        ]
+    );
+    assert_eq!(
+        critic_requests[1].messages,
+        [
+            opening,
+            assistant_message(vec![text_block("first")]),
+            critique,
+            user_message(
+                "<generator_response>\nsecond\n</generator_response>\n\nPlease evaluate the generator's response above."
+            ),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -451,8 +503,10 @@ async fn given_a_negative_critique_budget_in_the_configuration_when_run_then_cou
     assert!(critic_model.requests().is_empty());
 }
 
+const EMPTY: &str = "The answer was empty. Write a complete answer.";
+
 /// An answer with no text and no structured block: its reasoning only.
-fn empty_step() -> br_llm_messages::Step {
+pub(crate) fn empty_step() -> br_llm_messages::Step {
     br_llm_messages::Step::new(
         vec![AssistantBlock::Thinking(br_llm_messages::Thinking {
             text: "nothing to say".to_owned(),
@@ -466,7 +520,7 @@ fn empty_step() -> br_llm_messages::Step {
 }
 
 fn empty_critique() -> String {
-    format!("reviewer:{}", GeneratorCritic::EMPTY_ANSWER_CRITIQUE)
+    format!("reviewer:{EMPTY}")
 }
 
 #[tokio::test]
@@ -515,10 +569,7 @@ async fn given_an_empty_answer_on_the_last_judged_generation_when_run_then_exhau
     let state = ended(call(&graph, question("explain")).await, "exhausted");
     assert!(!state.bool(&key("validated")).unwrap());
     assert_eq!(state.int(&key("generations")).unwrap(), 1);
-    assert_eq!(
-        state.str(&key("last_critique")).unwrap(),
-        GeneratorCritic::EMPTY_ANSWER_CRITIQUE
-    );
+    assert_eq!(state.str(&key("last_critique")).unwrap(), EMPTY);
     assert_eq!(
         shape_of(&state, "conversation"),
         ["user".to_owned(), "writer:".to_owned(), empty_critique()]
@@ -548,7 +599,7 @@ async fn given_an_empty_unassessed_final_generation_when_run_then_exhausted_with
     assert_eq!(critic_model.requests().len(), 1);
 }
 
-fn property_names(schema: &Json) -> Vec<String> {
+pub(crate) fn property_names(schema: &Json) -> Vec<String> {
     schema["properties"]
         .as_object()
         .unwrap()
@@ -574,7 +625,7 @@ fn given_the_critic_thinking_or_not_when_the_verdict_schema_is_chosen_then_think
     assert_eq!(native["required"], json!(["is_valid", "message"]));
 }
 
-async fn critic_request(
+pub(crate) async fn critic_request(
     thinking: Option<Switch>,
     config: BTreeMap<crate::value::Key, Value>,
 ) -> crate::react::model::Request {
@@ -599,7 +650,7 @@ async fn critic_request(
     critic_model.requests().remove(0)
 }
 
-fn structured_schema(request: &crate::react::model::Request) -> &Json {
+pub(crate) fn structured_schema(request: &crate::react::model::Request) -> &Json {
     match &request.output {
         OutputMode::Structured { schema } => schema,
         OutputMode::Text => panic!("expected a structured request"),
@@ -846,7 +897,6 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
     for name in [
         "conversation",
         "generator_history",
-        "critic_system",
         "answer",
         "validated",
         "generations",
@@ -964,14 +1014,6 @@ fn duo_call(graph: Arc<Graph>, conversation: &str) -> SubGraph {
         .input(
             key("generator_history"),
             Input::Const(Value::conversation(Conversation::new())),
-        )
-        .input(
-            key("generator_system"),
-            Input::Const(Value::str("Answer the question.")),
-        )
-        .input(
-            key("critic_system"),
-            Input::Const(Value::str("Judge the answer.")),
         )
 }
 

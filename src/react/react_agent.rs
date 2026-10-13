@@ -187,6 +187,35 @@ pub(crate) fn declare_input(schema: &mut Schema, key: &Key, kind: Kind) -> Resul
     Ok(())
 }
 
+/// Declares the keys text sources read: each `State` key as a string input
+/// of the graph, each `Config` key as a string configuration key. A key
+/// several sources read is declared once; a key the graph already has is
+/// refused (`KeyCollision`). Gives the input keys, in order.
+pub(crate) fn declare_sources<'a>(
+    schema: &mut Schema,
+    sources: impl IntoIterator<Item = &'a Source>,
+) -> Result<Vec<Key>, GraphError> {
+    let mut inputs: Vec<Key> = Vec::new();
+    let mut configs: Vec<Key> = Vec::new();
+    for source in sources {
+        match source {
+            Source::State(key) if !inputs.contains(key) => {
+                declare_input(schema, key, Kind::Str)?;
+                inputs.push(key.clone());
+            }
+            Source::Config(key) if !configs.contains(key) => {
+                if schema.config.contains_key(key) {
+                    return Err(GraphError::KeyCollision { key: key.clone() });
+                }
+                schema.config.insert(key.clone(), Kind::Str);
+                configs.push(key.clone());
+            }
+            Source::State(_) | Source::Config(_) | Source::Const(_) | Source::Fn(_) => {}
+        }
+    }
+    Ok(inputs)
+}
+
 /// Declares the configuration key a count reads, as an int.
 pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuilder {
     match count {

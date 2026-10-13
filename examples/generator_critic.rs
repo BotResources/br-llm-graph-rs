@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use br_llm_graph::{
     Always, Config, Count, CriticSeat, EndLabel, GeneratorCritic, GeneratorSeat, GraphBuilder,
-    Input, Kind, NodeId, Outcome, Output, OutputMode, Schema, SubGraph, Switch, Target, Value,
-    channel, run,
+    Input, Kind, NodeId, Outcome, Output, OutputMode, Schema, Source, SubGraph, Switch, Target,
+    Value, channel, run,
 };
 use br_llm_messages::{Author, Conversation, Entry};
 use serde_json::json;
@@ -25,6 +25,7 @@ use common::{ScriptedModel, key, quiet_context, structured_step, text_step, user
 async fn main() {
     let generator = GeneratorSeat {
         author: Author::new("writer").expect("author"),
+        system: Source::Const("Answer the question precisely.".to_owned()),
         model: Arc::new(ScriptedModel::new(vec![
             text_step("Supersteps run nodes in rounds."),
             text_step(
@@ -40,20 +41,23 @@ async fn main() {
         enabled: None,
     };
     let critic = CriticSeat {
-        author: Author::new("reviewer").expect("author"),
-        model: Arc::new(ScriptedModel::new(vec![
-            structured_step(json!({
-                "thinking": "It does not say when updates are applied.",
-                "is_valid": false,
-                "message": "Say when the updates of a round are applied."
-            })),
-            structured_step(json!({
-                "thinking": "Complete now.",
-                "is_valid": true,
-                "message": ""
-            })),
-        ])),
         thinking: Some(Switch::Config(key("critic_thinking"))),
+        ..CriticSeat::new(
+            Author::new("reviewer").expect("author"),
+            Arc::new(ScriptedModel::new(vec![
+                structured_step(json!({
+                    "thinking": "It does not say when updates are applied.",
+                    "is_valid": false,
+                    "message": "Say when the updates of a round are applied."
+                })),
+                structured_step(json!({
+                    "thinking": "Complete now.",
+                    "is_valid": true,
+                    "message": ""
+                })),
+            ])),
+            Source::Const("Reject an answer that leaves out a key fact.".to_owned()),
+        )
     };
     let duo = GeneratorCritic::new(generator, critic, Count::Fixed(3))
         .graph()
@@ -71,14 +75,6 @@ async fn main() {
         .input(
             key("generator_history"),
             Input::Const(Value::conversation(Conversation::new())),
-        )
-        .input(
-            key("generator_system"),
-            Input::Const(Value::str("Answer the question precisely.")),
-        )
-        .input(
-            key("critic_system"),
-            Input::Const(Value::str("Reject an answer that leaves out a key fact.")),
         )
         .config(
             key("critic_thinking"),

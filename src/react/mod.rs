@@ -11,6 +11,8 @@ mod tool_node;
 #[cfg(test)]
 mod generator_critic_tests;
 #[cfg(test)]
+mod generator_critic_text_tests;
+#[cfg(test)]
 mod react_agent_tests;
 #[cfg(test)]
 mod react_background_task_tests;
