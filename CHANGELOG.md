@@ -283,8 +283,8 @@ form to decide whether a version ships.
   - An empty answer (its final step holds no non-blank text and no structured
     block) is rejected without calling the critic: where the critic would
     judge it, a critique of the critic holding the `empty_answer_critique`
-    text is appended to both histories and the run goes on as after a
-    rejection. The empty answer counts as a generation and the budget rules
+    text (the default text when it resolves to a blank text) is appended to
+    both histories and the run goes on as after a rejection. The empty answer counts as a generation and the budget rules
     are unchanged: an empty answer that is not judged (the unassessed final
     generation) ends `exhausted` with nothing appended.
   - With tools, the generation is the `ReactLoop` fragment inline in the graph;

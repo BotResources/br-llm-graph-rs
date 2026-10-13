@@ -179,7 +179,8 @@ pub struct GeneratorCritic {
     /// tools.
     pub inputs: Vec<(Key, Kind)>,
     /// The critique that rejects an empty answer, written without calling
-    /// the critic. `None`: `The answer was empty. Write a complete answer.`
+    /// the critic. `None`, or a source that resolves to a blank text: `The
+    /// answer was empty. Write a complete answer.`
     pub empty_answer_critique: Option<Source>,
     /// A node run once, as the graph's entry, before the routing: it may do
     /// I/O (it holds its capabilities as fields) and writes through ordinary
@@ -622,7 +623,7 @@ impl Node for CritiqueNode {
                 }
                 Some(_) | None => Verdict {
                     is_valid: false,
-                    message: self.empty_answer_critique.resolve(state, config)?,
+                    message: self.empty_answer_text(state, config)?,
                 },
             };
             if verdict.is_valid {
@@ -666,6 +667,17 @@ impl Node for CritiqueNode {
 }
 
 impl CritiqueNode {
+    /// The critique of an empty answer: `empty_answer_critique`, or the
+    /// default text when it resolves to a blank text.
+    fn empty_answer_text(&self, state: &State, config: &Config) -> Result<String, GraphError> {
+        let text = self.empty_answer_critique.resolve(state, config)?;
+        if text.trim().is_empty() {
+            Ok(EMPTY_ANSWER_CRITIQUE.to_owned())
+        } else {
+            Ok(text)
+        }
+    }
+
     /// What the critic reads: `conversation` before the answer at `index`,
     /// rendered as the generator sees it with the generator's thinking
     /// removed, then one user message holding the answer, wrapped, and the

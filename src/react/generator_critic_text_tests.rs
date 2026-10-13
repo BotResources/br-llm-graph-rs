@@ -236,3 +236,40 @@ async fn given_an_empty_answer_then_a_full_one_when_the_critic_judges_then_the_e
         ]
     );
 }
+
+#[tokio::test]
+async fn given_an_empty_answer_critique_that_resolves_blank_when_an_empty_answer_is_rejected_then_the_default_text()
+ {
+    for nudge in ["", "  \n"] {
+        let generator_model = Arc::new(LoggingModel::new(vec![empty_step(), text_step("full")]));
+        let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+        let graph = GeneratorCritic {
+            empty_answer_critique: Some(Source::State(key("nudge"))),
+            ..GeneratorCritic::new(
+                generator(generator_model),
+                critic(critic_model),
+                Count::Fixed(2),
+            )
+        }
+        .graph()
+        .unwrap();
+        let state = ended(
+            run_with(
+                &graph,
+                vec![(key("nudge"), Value::str(nudge))],
+                BTreeMap::new(),
+            )
+            .await,
+            "validated",
+        );
+        assert_eq!(
+            shape_of(&state, "conversation"),
+            [
+                "user",
+                "writer:",
+                "reviewer:The answer was empty. Write a complete answer.",
+                "writer:full"
+            ]
+        );
+    }
+}
