@@ -7,7 +7,7 @@ use br_llm_messages::{
     ToolResultBlock, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource, WireMessage,
     WireUserBlock,
 };
-use serde_json::{Value as Json, json};
+use serde_json::json;
 
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{
@@ -15,7 +15,7 @@ use crate::graph::{
     Switch, Target,
 };
 use crate::observe::NoopObserver;
-use crate::react::generator_critic::{CriticSeat, GeneratorCritic, GeneratorSeat, verdict_schema};
+use crate::react::generator_critic::{CriticSeat, GeneratorCritic, GeneratorSeat};
 use crate::react::llm_node::Source;
 use crate::react::model::OutputMode;
 use crate::react::round_limit::{OnLimit, RoundLimit};
@@ -597,91 +597,6 @@ async fn given_an_empty_unassessed_final_generation_when_run_then_exhausted_with
         ["user", "writer:a", "reviewer:fix it", "writer:"]
     );
     assert_eq!(critic_model.requests().len(), 1);
-}
-
-pub(crate) fn property_names(schema: &Json) -> Vec<String> {
-    schema["properties"]
-        .as_object()
-        .unwrap()
-        .keys()
-        .cloned()
-        .collect()
-}
-
-#[test]
-fn given_the_critic_thinking_or_not_when_the_verdict_schema_is_chosen_then_thinking_comes_first_only_when_emulated()
- {
-    let emulated = verdict_schema(false);
-    assert_eq!(
-        property_names(&emulated),
-        ["thinking", "is_valid", "message"]
-    );
-    assert_eq!(
-        emulated["required"],
-        json!(["thinking", "is_valid", "message"])
-    );
-    let native = verdict_schema(true);
-    assert_eq!(property_names(&native), ["is_valid", "message"]);
-    assert_eq!(native["required"], json!(["is_valid", "message"]));
-}
-
-pub(crate) async fn critic_request(
-    thinking: Option<Switch>,
-    config: BTreeMap<crate::value::Key, Value>,
-) -> crate::react::model::Request {
-    let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
-    let critic_model = Arc::new(LoggingModel::new(vec![structured_step(
-        json!({ "is_valid": true, "message": "" }),
-    )]));
-    let graph = GeneratorCritic::new(
-        generator(generator_model),
-        CriticSeat {
-            thinking,
-            ..critic(critic_model.clone())
-        },
-        Count::Fixed(1),
-    )
-    .graph()
-    .unwrap();
-    ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
-        "validated",
-    );
-    critic_model.requests().remove(0)
-}
-
-pub(crate) fn structured_schema(request: &crate::react::model::Request) -> &Json {
-    match &request.output {
-        OutputMode::Structured { schema } => schema,
-        OutputMode::Text => panic!("expected a structured request"),
-    }
-}
-
-#[tokio::test]
-async fn given_a_critic_with_or_without_native_thinking_when_it_judges_then_the_request_carries_the_matching_schema()
- {
-    let native = critic_request(Some(Switch::Fixed(true)), BTreeMap::new()).await;
-    assert_eq!(native.thinking, Some(true));
-    assert_eq!(structured_schema(&native), &verdict_schema(true));
-
-    let emulated = critic_request(Some(Switch::Fixed(false)), BTreeMap::new()).await;
-    assert_eq!(emulated.thinking, Some(false));
-    assert_eq!(structured_schema(&emulated), &verdict_schema(false));
-
-    let default = critic_request(None, BTreeMap::new()).await;
-    assert_eq!(default.thinking, None);
-    assert_eq!(structured_schema(&default), &verdict_schema(false));
-
-    for deep in [true, false] {
-        let request = critic_request(
-            Some(Switch::Config(key("critic_thinks"))),
-            BTreeMap::from([(key("critic_thinks"), Value::bool(deep))]),
-        )
-        .await;
-        assert_eq!(request.thinking, Some(deep));
-        assert_eq!(structured_schema(&request), &verdict_schema(deep));
-        assert!(request.tools.is_empty());
-    }
 }
 
 #[test]

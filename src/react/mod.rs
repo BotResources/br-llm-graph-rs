@@ -7,11 +7,14 @@ mod react_loop;
 mod round_limit;
 mod tool;
 mod tool_node;
+mod verdict;
 
 #[cfg(test)]
 mod generator_critic_tests;
 #[cfg(test)]
 mod generator_critic_text_tests;
+#[cfg(test)]
+mod generator_critic_verdict_tests;
 #[cfg(test)]
 mod react_agent_tests;
 #[cfg(test)]
@@ -46,3 +49,4 @@ pub use react_loop::ReactLoop;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
 pub use tool_node::ToolNode;
+pub use verdict::{Verdict, VerdictOverride, VerdictReader};

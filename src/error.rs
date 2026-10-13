@@ -137,6 +137,9 @@ pub enum GraphError {
     SameAuthor {
         author: Author,
     },
+    VerdictSchemaMismatch {
+        reason: &'static str,
+    },
     KeyCollision {
         key: Key,
     },
@@ -320,6 +323,10 @@ impl std::fmt::Display for GraphError {
                 f,
                 "the generator and the critic are both written by {author}; each seat needs its own author"
             ),
+            GraphError::VerdictSchemaMismatch { reason } => write!(
+                f,
+                "the critic's verdict schema cannot be read without a reader: {reason}"
+            ),
             GraphError::KeyCollision { key } => {
                 write!(f, "key {key} is already a key of the graph")
             }
@@ -450,6 +457,7 @@ impl std::error::Error for GraphError {
             | GraphError::CountKeyMismatch { .. }
             | GraphError::CountNegative { .. }
             | GraphError::SameAuthor { .. }
+            | GraphError::VerdictSchemaMismatch { .. }
             | GraphError::KeyCollision { .. }
             | GraphError::FlagKeyMismatch { .. }
             | GraphError::ToolLimitReached { .. }

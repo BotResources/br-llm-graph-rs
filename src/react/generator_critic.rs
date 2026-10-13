@@ -4,13 +4,12 @@ use br_llm_messages::{
     AssistantBlock, Author, Conversation, Entry, Step, StopReason, Text, Turn, WireMessage,
     WireUserBlock,
 };
-use serde_json::json;
 
 use crate::error::GraphError;
 use crate::graph::{
     CheckSite, Context, Count, FnEdge, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
 };
-use crate::react::helpers::{complete, final_step, last_turn_by_author, structured, wire};
+use crate::react::helpers::{complete, final_step, last_turn_by_author, wire};
 use crate::react::llm_node::{LlmNode, Source};
 use crate::react::model::{Model, OutputMode, Request, ToolCalls};
 use crate::react::react_agent::{
@@ -19,6 +18,7 @@ use crate::react::react_agent::{
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
 use crate::react::tool::Tool;
+use crate::react::verdict::{Verdict, VerdictForm, VerdictOverride};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -54,10 +54,26 @@ pub struct CriticSeat {
     /// message. `None`: `Please evaluate the generator's response above.` A
     /// request that resolves to a blank text leaves the wrapped answer alone.
     pub review_request: Option<Source>,
+    /// Whether the default verdict schema asks for `thinking` before
+    /// `is_valid` and `message`, whatever `thinking` says. Default `true`.
+    pub reasoning_field: bool,
+    /// The description of `thinking` in the default schema. `None`:
+    /// `Explanation of the thought process and validation steps`.
+    pub thinking_description: Option<Source>,
+    /// The description of `is_valid` in the default schema. `None`:
+    /// `Boolean indicating if the generated message is valid`.
+    pub is_valid_description: Option<Source>,
+    /// The description of `message` in the default schema. `None`:
+    /// `Feedback message for the generator, empty if validation passed`.
+    pub message_description: Option<Source>,
+    /// A verdict schema of the caller's, instead of the default one;
+    /// `reasoning_field` and the descriptions are then ignored.
+    pub verdict: Option<VerdictOverride>,
 }
 
 impl CriticSeat {
-    /// A critic with the default request and no thinking setting.
+    /// A critic with the default request, the default verdict schema and no
+    /// thinking setting.
     pub fn new(author: Author, model: Arc<dyn Model>, system: Source) -> Self {
         Self {
             author,
@@ -65,6 +81,11 @@ impl CriticSeat {
             system,
             thinking: None,
             review_request: None,
+            reasoning_field: true,
+            thinking_description: None,
+            is_valid_description: None,
+            message_description: None,
+            verdict: None,
         }
     }
 }
@@ -288,15 +309,24 @@ impl GeneratorCritic {
         let empty_answer_critique = self
             .empty_answer_critique
             .unwrap_or_else(|| Source::Const(EMPTY_ANSWER_CRITIQUE.to_owned()));
-        let text_inputs = declare_sources(
-            &mut schema,
-            [
-                &generator.system,
-                &critic.system,
-                &review_request,
-                &empty_answer_critique,
-            ],
-        )?;
+        let verdict = match critic.verdict {
+            Some(custom) => VerdictForm::Override(custom),
+            None => VerdictForm::default_form(
+                critic.reasoning_field,
+                critic.thinking_description,
+                critic.is_valid_description,
+                critic.message_description,
+            ),
+        };
+        verdict.check()?;
+        let mut sources = vec![
+            &generator.system,
+            &critic.system,
+            &review_request,
+            &empty_answer_critique,
+        ];
+        sources.extend(verdict.sources());
+        let text_inputs = declare_sources(&mut schema, sources)?;
         if let Some(key) = &generator.enabled {
             declare_input(&mut schema, key, Kind::list(Kind::Str))?;
         }
@@ -402,6 +432,7 @@ impl GeneratorCritic {
                     thinking: critic.thinking,
                     review_request,
                     empty_answer_critique,
+                    verdict,
                 },
             )
             .edge(
@@ -434,49 +465,6 @@ impl GeneratorCritic {
             .build()?;
         Ok(Arc::new(graph))
     }
-}
-
-/// The JSON Schema of the critic's verdict. A critic that does not think
-/// natively writes its reasoning first, in `thinking`.
-pub(crate) fn verdict_schema(native_thinking: bool) -> serde_json::Value {
-    if native_thinking {
-        json!({
-            "type": "object",
-            "properties": {
-                "is_valid": { "type": "boolean" },
-                "message": { "type": "string" }
-            },
-            "required": ["is_valid", "message"],
-            "additionalProperties": false
-        })
-    } else {
-        json!({
-            "type": "object",
-            "properties": {
-                "thinking": { "type": "string" },
-                "is_valid": { "type": "boolean" },
-                "message": { "type": "string" }
-            },
-            "required": ["thinking", "is_valid", "message"],
-            "additionalProperties": false
-        })
-    }
-}
-
-#[derive(serde::Deserialize)]
-struct Verdict {
-    is_valid: bool,
-    message: String,
-}
-
-fn read_verdict(step: &Step) -> Result<Verdict, GraphError> {
-    let verdict: Verdict = structured(step)?;
-    if !verdict.is_valid && verdict.message.trim().is_empty() {
-        return Err(GraphError::Structured {
-            message: "a rejecting verdict carries an empty message".to_owned(),
-        });
-    }
-    Ok(verdict)
 }
 
 fn since_last_input(conversation: &Conversation) -> &[Entry] {
@@ -569,6 +557,7 @@ struct CritiqueNode {
     thinking: Option<Switch>,
     review_request: Source,
     empty_answer_critique: Source,
+    verdict: VerdictForm,
 }
 
 impl Node for CritiqueNode {
@@ -684,12 +673,12 @@ impl CritiqueNode {
             tools: Vec::new(),
             tool_calls: ToolCalls::Allowed,
             output: OutputMode::Structured {
-                schema: verdict_schema(thinking == Some(true)),
+                schema: self.verdict.schema(state, config)?,
             },
             thinking,
         };
         let step = complete(self.model.as_ref(), request, ctx, &self.conversation).await?;
-        read_verdict(&step)
+        self.verdict.read(&step)
     }
 }
 
