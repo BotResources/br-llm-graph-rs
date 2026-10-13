@@ -174,10 +174,12 @@ form to decide whether a version ships.
   (conversation): a new call is a history holding one user input, a resumed call
   the history the host saved, and the loop always enters through the model call.
   `output` (`OutputMode`) is sent on every model call. Outputs `history`,
-  `answer` (a conversation holding the agent's last turn with its final step
-  only, so a structured reply reaches the caller), `reply` (the text of that
-  step, empty if none or for a structured reply) and, when the round limit's
-  `OnLimit` is `Continue` or `End`, its `flag`. The configuration keys of
+  `answer` (a string built like the generator-critic's `answer`, from the
+  final step of the agent's last turn: the JSON text of its structured block
+  when it has one, else its text blocks joined verbatim; empty when there is
+  no final step) and, when the round limit's `OnLimit` is `Continue` or
+  `End`, its `flag`. With `End`, the final step may be the limit's closing
+  step. The configuration keys of
   `system` (`Source::Config`, strings), of `thinking` and of the limits are
   declared from them; each `Source::State` key of `system` is a string input.
   `enabled` (`Option<Key>`), when set, is an input holding a list of strings,

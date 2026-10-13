@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use br_llm_messages::{Author, Conversation, Turn};
+use br_llm_messages::Author;
 
 use crate::error::GraphError;
 use crate::graph::{
     Always, Context, Count, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
 };
-use crate::react::helpers::{final_step, last_turn_by_author};
+use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
 use crate::react::llm_node::{LlmNode, Source};
 use crate::react::model::{Model, OutputMode};
 use crate::react::react_loop::ReactLoop;
@@ -19,7 +19,7 @@ use crate::value::{EndLabel, Key, NodeId};
 /// A ReAct agent as a graph, to call with `SubGraph` or run on its own.
 ///
 /// The graph is the `ReactLoop` fragment on the key `history`, followed by a
-/// node that reads the reply; it ends with `done`.
+/// node that reads the answer; it ends with `done`.
 ///
 /// - Inputs: `history` (conversation), the agent's chat history: a new call is
 ///   a history holding one user input, a resumed call the history the host
@@ -28,12 +28,12 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   `enabled` key, a list of strings, when set. Each key of `inputs` is an
 ///   input of its kind, for the tools to read through the state they
 ///   receive.
-/// - Outputs: `history` (the conversation after the run), `answer`
-///   (conversation, the agent's last turn with its final step only, empty if
-///   none), `reply` (string, the text of that step, empty if none or for a
-///   structured reply) and,
-///   when the round limit's `OnLimit` is `Continue` or `End`, its `flag`
-///   (bool, true when the limit was reached).
+/// - Outputs: `history` (the conversation after the run), `answer` (string,
+///   the final step of the agent's last turn: the JSON text of its structured
+///   block when it has one, else its text blocks joined verbatim; empty when
+///   there is no final step) and, when the round limit's `OnLimit` is
+///   `Continue` or `End`, its `flag` (bool, true when the limit was reached).
+///   With `End`, the final step may be the limit's closing step.
 /// - Configuration: each `Source::Config` key of `system` (string), the
 ///   `thinking` switch, the tool concurrency and the round limit when they
 ///   read a configuration key.
@@ -45,8 +45,8 @@ use crate::value::{EndLabel, Key, NodeId};
 /// (`KeyCollision`).
 ///
 /// `output` is sent on every model call; with `OutputMode::Structured`, the
-/// final step carries the structured block and reaches the caller through
-/// `answer`.
+/// final step carries the structured block and reaches the caller as the
+/// JSON text in `answer`.
 ///
 /// The round limit counts the rounds of the agent's open turn, as in
 /// `ReactLoop`.
@@ -71,15 +71,13 @@ pub struct ReactAgent {
 impl ReactAgent {
     pub fn graph(self) -> Result<Arc<Graph>, GraphError> {
         let history = Key::new("history")?;
-        let reply = Key::new("reply")?;
         let answer = Key::new("answer")?;
         let llm = NodeId::new("llm")?;
-        let reply_node = NodeId::new("reply")?;
+        let answer_node = NodeId::new("answer")?;
 
         let mut schema = Schema::builder()
             .state(history.clone(), Kind::Conversation)
-            .state(reply.clone(), Kind::Str)
-            .state(answer.clone(), Kind::Conversation);
+            .state(answer.clone(), Kind::Str);
         schema = declare_switch(schema, self.thinking.as_ref());
         schema = declare_limit(schema, self.tool_concurrency.as_ref());
         let flag = self.round_limit.as_ref().and_then(round_limit_flag);
@@ -109,7 +107,7 @@ impl ReactAgent {
         let react = ReactLoop {
             llm: llm.clone(),
             tool_nodes,
-            after: Target::Node(reply_node.clone()),
+            after: Target::Node(answer_node.clone()),
             tool_concurrency: self.tool_concurrency,
             round_limit: self.round_limit,
         };
@@ -128,25 +126,21 @@ impl ReactAgent {
         for key in inputs {
             builder = builder.input(key);
         }
-        builder = builder
-            .output(history.clone())
-            .output(answer.clone())
-            .output(reply.clone());
+        builder = builder.output(history.clone()).output(answer.clone());
         if let Some(flag) = flag {
             builder = builder.output(flag);
         }
         let builder = react.add(builder, llm_node)?;
         let graph = builder
             .node(
-                reply_node.clone(),
-                ReplyNode {
+                answer_node.clone(),
+                AnswerNode {
                     history,
-                    reply,
                     answer,
                     author: self.author,
                 },
             )
-            .edge(reply_node, Always(Target::End(EndLabel::new("done")?)))
+            .edge(answer_node, Always(Target::End(EndLabel::new("done")?)))
             .build()?;
         Ok(Arc::new(graph))
     }
@@ -223,16 +217,15 @@ pub(crate) fn round_limit_flag(round_limit: &RoundLimit) -> Option<Key> {
     }
 }
 
-/// Sets `answer` to the agent's last turn with its final step only, and
-/// `reply` to the text of that step.
-struct ReplyNode {
+/// Sets `answer` to the text of the final step of the agent's last turn,
+/// empty when there is none.
+struct AnswerNode {
     history: Key,
-    reply: Key,
     answer: Key,
     author: Author,
 }
 
-impl Node for ReplyNode {
+impl Node for AnswerNode {
     fn run<'a>(
         &'a self,
         state: &'a State,
@@ -241,32 +234,14 @@ impl Node for ReplyNode {
     ) -> NodeFuture<'a> {
         Box::pin(async move {
             let conversation = state.conversation(&self.history)?;
-            let mut answer = Conversation::new();
-            let mut text = String::new();
-            if let Some(turn) = last_turn_by_author(conversation, &self.author)
-                && let Some(step) = final_step(turn)
-            {
-                text = step
-                    .text()
-                    .map(|text| text.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-                answer.push_turn(Turn::new(
-                    turn.id().clone(),
-                    Some(self.author.clone()),
-                    step.clone(),
-                ))?;
-            }
-            Ok(vec![
-                Update::Set {
-                    key: self.answer.clone(),
-                    value: Value::conversation(answer),
-                },
-                Update::Set {
-                    key: self.reply.clone(),
-                    value: Value::str(text),
-                },
-            ])
+            let answer = last_turn_by_author(conversation, &self.author)
+                .and_then(final_step)
+                .map(answer_text)
+                .unwrap_or_default();
+            Ok(vec![Update::Set {
+                key: self.answer.clone(),
+                value: Value::str(answer),
+            }])
         })
     }
 }

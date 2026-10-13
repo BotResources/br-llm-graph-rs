@@ -10,7 +10,7 @@ use crate::graph::{
     Always, CheckSite, Context, Count, FnEdge, Graph, GraphBuilder, Limit, Node, NodeFuture,
     Switch, Target,
 };
-use crate::react::helpers::{complete, final_step, last_turn_by_author, wire};
+use crate::react::helpers::{answer_text, complete, final_step, last_turn_by_author, wire};
 use crate::react::llm_node::{LlmNode, Source};
 use crate::react::model::{Model, OutputMode, Request, ToolCalls};
 use crate::react::react_agent::{
@@ -774,15 +774,6 @@ fn empty_step(step: &Step) -> bool {
     closes_on_limit(step)
         || (step.structured().next().is_none()
             && step.text().all(|text| text.as_str().trim().is_empty()))
-}
-
-/// The text of an answer: the JSON text of its structured block when it has
-/// one, else its text blocks joined verbatim.
-fn answer_text(step: &Step) -> String {
-    match step.structured().next() {
-        Some(value) => value.to_string(),
-        None => step.text().map(Text::as_str).collect(),
-    }
 }
 
 /// Removes the thinking blocks of every assistant message. A message left

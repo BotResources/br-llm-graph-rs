@@ -121,7 +121,7 @@ fn last_turn(state: &State) -> Turn {
 }
 
 #[test]
-fn given_an_agent_when_built_then_its_signature_names_history_reply_and_the_limit_flag() {
+fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_limit_flag() {
     let model = Arc::new(LoggingModel::new(Vec::new()));
     let plain = agent(model.clone()).graph().unwrap();
     let signature = plain.signature();
@@ -133,8 +133,7 @@ fn given_an_agent_when_built_then_its_signature_names_history_reply_and_the_limi
         signature.outputs,
         BTreeMap::from([
             (key("history"), Kind::Conversation),
-            (key("answer"), Kind::Conversation),
-            (key("reply"), Kind::Str),
+            (key("answer"), Kind::Str),
         ])
     );
     assert_eq!(
@@ -175,14 +174,14 @@ fn given_an_agent_when_built_then_its_signature_names_history_reply_and_the_limi
 }
 
 #[test]
-fn given_a_limit_flag_that_names_the_reply_when_built_then_flag_key_mismatch() {
+fn given_a_limit_flag_that_names_the_answer_when_built_then_flag_key_mismatch() {
     let model = Arc::new(LoggingModel::new(Vec::new()));
     let built = limited(
         model,
         1,
         OnLimit::Continue {
             node: nid("limit"),
-            flag: key("reply"),
+            flag: key("answer"),
         },
     )
     .graph();
@@ -190,11 +189,11 @@ fn given_a_limit_flag_that_names_the_reply_when_built_then_flag_key_mismatch() {
 }
 
 #[tokio::test]
-async fn given_a_plain_answer_when_the_agent_runs_then_history_and_reply_come_back() {
+async fn given_a_plain_answer_when_the_agent_runs_then_history_and_answer_come_back() {
     let model = Arc::new(LoggingModel::new(vec![text_step("hello there")]));
     let graph = agent(model.clone()).graph().unwrap();
     let state = finished(call(&graph, question("hi")).await);
-    assert_eq!(state.str(&key("reply")).unwrap(), "hello there");
+    assert_eq!(state.str(&key("answer")).unwrap(), "hello there");
     assert_eq!(
         state.conversation(&key("history")).unwrap().entries().len(),
         2
@@ -216,47 +215,40 @@ async fn given_one_tool_round_when_the_agent_runs_then_the_turn_holds_the_round_
     ]));
     let graph = agent(model).graph().unwrap();
     let state = finished(call(&graph, question("hi")).await);
-    assert_eq!(state.str(&key("reply")).unwrap(), "echo said echoed");
+    assert_eq!(state.str(&key("answer")).unwrap(), "echo said echoed");
     let turn = last_turn(&state);
     assert_eq!(turn.items().len(), 3);
     assert!(matches!(turn.items()[1], TurnItem::ToolResults(_)));
 }
 
-fn answer_steps(state: &State) -> Vec<br_llm_messages::Step> {
-    state
-        .conversation(&key("answer"))
-        .unwrap()
-        .entries()
-        .iter()
-        .map(|entry| match entry {
-            Entry::Turn(turn) => {
-                assert_eq!(turn.items().len(), 1);
-                match &turn.items()[0] {
-                    TurnItem::Step(step) => step.clone(),
-                    TurnItem::ToolResults(_) => panic!("expected the final step only"),
-                }
-            }
-            Entry::UserInput(_) => panic!("expected the agent's turn only"),
-        })
-        .collect()
-}
-
 #[tokio::test]
-async fn given_a_tool_round_then_a_text_reply_when_the_agent_runs_then_answer_holds_the_final_step_only()
+async fn given_a_final_step_of_several_text_blocks_when_the_agent_runs_then_answer_joins_them_verbatim()
  {
+    let several = br_llm_messages::Step::new(
+        vec![
+            br_llm_messages::AssistantBlock::Text {
+                text: Text::new("one ").unwrap(),
+            },
+            br_llm_messages::AssistantBlock::Text {
+                text: Text::new("two").unwrap(),
+            },
+        ],
+        br_llm_messages::StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap();
     let model = Arc::new(LoggingModel::new(vec![
         tool_call_step("c1", "echo", json!({})),
-        text_step("echo said echoed"),
+        several,
     ]));
     let graph = agent(model).graph().unwrap();
     let state = finished(call(&graph, question("hi")).await);
-    assert_eq!(answer_steps(&state), [text_step("echo said echoed")]);
-    assert_eq!(state.str(&key("reply")).unwrap(), "echo said echoed");
+    assert_eq!(state.str(&key("answer")).unwrap(), "one two");
 }
 
 #[tokio::test]
-async fn given_a_structured_output_when_the_agent_runs_then_answer_carries_the_block_and_reply_is_empty()
- {
+async fn given_a_structured_output_when_the_agent_runs_then_answer_is_the_json_text_of_the_block() {
     let schema = json!({ "type": "object", "properties": { "n": { "type": "integer" } } });
     let model = Arc::new(LoggingModel::new(vec![
         tool_call_step("c1", "echo", json!({})),
@@ -271,8 +263,7 @@ async fn given_a_structured_output_when_the_agent_runs_then_answer_carries_the_b
     .graph()
     .unwrap();
     let state = finished(call(&graph, question("count")).await);
-    assert_eq!(answer_steps(&state), [structured_step(json!({ "n": 3 }))]);
-    assert_eq!(state.str(&key("reply")).unwrap(), "");
+    assert_eq!(state.str(&key("answer")).unwrap(), r#"{"n":3}"#);
     let requests = model.requests();
     assert_eq!(requests.len(), 2);
     assert!(requests.iter().all(|request| request.output
@@ -301,7 +292,7 @@ async fn given_the_round_limit_ends_the_turn_when_the_agent_runs_then_limit_reac
     assert!(state.bool(&key("limit_reached")).unwrap());
     assert!(
         state
-            .str(&key("reply"))
+            .str(&key("answer"))
             .unwrap()
             .starts_with("Tool round limit reached (1)")
     );
@@ -342,7 +333,7 @@ async fn given_a_history_with_a_finished_tool_round_when_called_again_then_the_t
     let model = Arc::new(LoggingModel::new(vec![text_step("resumed reply")]));
     let graph = agent(model.clone()).graph().unwrap();
     let state = finished(call(&graph, history).await);
-    assert_eq!(state.str(&key("reply")).unwrap(), "resumed reply");
+    assert_eq!(state.str(&key("answer")).unwrap(), "resumed reply");
     assert_eq!(
         state.conversation(&key("history")).unwrap().entries().len(),
         2
@@ -374,7 +365,7 @@ async fn given_a_new_activation_when_the_round_limit_counts_then_it_starts_from_
         .unwrap(),
     );
     let state = finished(call_in(&graph, history, &ctx).await);
-    assert_eq!(state.str(&key("reply")).unwrap(), "second");
+    assert_eq!(state.str(&key("answer")).unwrap(), "second");
 }
 
 fn selective(model: Arc<LoggingModel>, writer: Arc<WriteFileTool>) -> ReactAgent {
@@ -405,7 +396,7 @@ async fn given_an_enabled_subset_when_the_agent_runs_then_only_it_is_offered_and
         ])
         .unwrap();
     let state = finished(run_agent(&graph, state).await);
-    assert_eq!(state.str(&key("reply")).unwrap(), "could not write");
+    assert_eq!(state.str(&key("answer")).unwrap(), "could not write");
     assert_eq!(
         results_of(&last_turn(&state)),
         [
@@ -433,7 +424,7 @@ async fn given_an_enabled_subset_when_the_agent_runs_then_only_it_is_offered_and
 
 #[test]
 fn given_an_enabled_key_that_names_a_key_of_the_graph_when_built_then_key_collision() {
-    for name in ["history", "reply", "answer"] {
+    for name in ["history", "answer"] {
         let built = ReactAgent {
             enabled: Some(key(name)),
             ..agent(Arc::new(LoggingModel::new(Vec::new())))
@@ -486,7 +477,7 @@ async fn run_caller(graph: &Graph, state: State) -> State {
 }
 
 #[tokio::test]
-async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_history_and_reply() {
+async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_history_and_answer() {
     let model = Arc::new(LoggingModel::new(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("done with echo"),
@@ -496,7 +487,7 @@ async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_hist
         .config(key("base"), Input::Config(key("prompt")))
         .config(key("deep"), Input::Config(key("deep")))
         .output(key("history"), Output::Set(key("chat")))
-        .output(key("reply"), Output::Set(key("answer")));
+        .output(key("answer"), Output::Set(key("answer")));
     let graph = GraphBuilder::new(caller_schema())
         .entry(nid("agent"))
         .subgraph(nid("agent"), call)
@@ -600,14 +591,7 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
         }
         .graph()
     };
-    for name in [
-        "history",
-        "reply",
-        "answer",
-        "persona",
-        "offered",
-        "limit_reached",
-    ] {
+    for name in ["history", "answer", "persona", "offered", "limit_reached"] {
         let built = flagged(vec![(key(name), Kind::Str)]);
         assert!(
             matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
@@ -662,7 +646,7 @@ fn given_a_source_that_names_a_key_of_the_graph_when_built_then_key_collision() 
         }
         .graph()
     };
-    for name in ["history", "reply", "answer", "limit_reached"] {
+    for name in ["history", "answer", "limit_reached"] {
         let built = flagged(Source::State(key(name)));
         assert!(
             matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
@@ -686,7 +670,7 @@ async fn given_the_agent_as_a_map_body_when_run_then_each_question_gets_its_repl
         .input(key("history"), Input::From(key("question")))
         .config(key("base"), Input::Config(key("prompt")))
         .config(key("deep"), Input::Config(key("deep")))
-        .output(key("reply"), Output::Append(key("replies")));
+        .output(key("answer"), Output::Append(key("replies")));
     let map = Map {
         list: key("questions"),
         item: key("question"),

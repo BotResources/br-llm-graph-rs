@@ -54,7 +54,7 @@ async fn main() {
         .config(key("base"), Input::Config(key("prompt")))
         .config(key("thinking"), Input::Config(key("deep_thinking")))
         .output(key("history"), Output::Set(key("chat")))
-        .output(key("reply"), Output::Set(key("answer")));
+        .output(key("answer"), Output::Set(key("answer")));
     let graph = GraphBuilder::new(schema.clone())
         .entry(NodeId::new("agent").expect("id"))
         .subgraph(NodeId::new("agent").expect("id"), call)
@@ -80,7 +80,7 @@ async fn main() {
     match run(&graph, &config, state, None, &context(), &mut inbox).await {
         Ok(Outcome::Finished { state, end }) => {
             println!("react_agent finished on End({end})");
-            println!("  reply: {}", state.str(&key("answer")).expect("answer"));
+            println!("  answer: {}", state.str(&key("answer")).expect("answer"));
             println!(
                 "  history: {} entries",
                 state

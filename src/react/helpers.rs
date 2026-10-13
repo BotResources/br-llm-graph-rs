@@ -110,6 +110,15 @@ pub(crate) fn final_step(turn: &Turn) -> Option<&Step> {
     })
 }
 
+/// The text of an answer: the JSON text of its structured block when it has
+/// one, else its text blocks joined verbatim, with nothing between them.
+pub(crate) fn answer_text(step: &Step) -> String {
+    match step.structured().next() {
+        Some(value) => value.to_string(),
+        None => step.text().map(br_llm_messages::Text::as_str).collect(),
+    }
+}
+
 pub(crate) fn last_turn_state(conversation: &Conversation, author: &Author) -> Option<TurnState> {
     last_turn_by_author(conversation, author).map(Turn::state)
 }
