@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/^version = "([^"]+)".*/\1/')
+version=$(grep -m1 '^version = ' crates/br-llm-graph/Cargo.toml | sed -E 's/^version = "([^"]+)".*/\1/')
 if [ -z "$version" ]; then
-  echo "::error file=Cargo.toml::could not extract the package version" >&2
+  echo "::error file=crates/br-llm-graph/Cargo.toml::could not extract the package version" >&2
   exit 1
 fi
 
-changelog="CHANGELOG.md"
+changelog="crates/br-llm-graph/CHANGELOG.md"
 if [ ! -f "$changelog" ]; then
   echo "::error::package version ${version} but ${changelog} is missing" >&2
   exit 1

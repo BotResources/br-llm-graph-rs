@@ -6,9 +6,9 @@ repo_url="https://github.com/BotResources/br-llm-graph-rs"
 crate="br-llm-graph"
 readme="README.md"
 
-version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/^version = "([^"]+)".*/\1/')
+version=$(grep -m1 '^version = ' crates/br-llm-graph/Cargo.toml | sed -E 's/^version = "([^"]+)".*/\1/')
 if [ -z "$version" ]; then
-  echo "::error file=Cargo.toml::could not extract the package version" >&2
+  echo "::error file=crates/br-llm-graph/Cargo.toml::could not extract the package version" >&2
   exit 1
 fi
 

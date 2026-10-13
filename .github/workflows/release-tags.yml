@@ -34,9 +34,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/^version = "([^"]+)".*/\1/')
+          version=$(grep -m1 '^version = ' crates/br-llm-graph/Cargo.toml | sed -E 's/^version = "([^"]+)".*/\1/')
           if [ -z "$version" ]; then
-            echo "::error file=Cargo.toml::could not extract the package version"
+            echo "::error file=crates/br-llm-graph/Cargo.toml::could not extract the package version"
             exit 1
           fi
           if [ "$version" = "0.0.0" ]; then
@@ -51,7 +51,7 @@ jobs:
             echo "→ creating tag ${tag}"
             git tag -a "${tag}" \
               -m "br-llm-graph ${version}" \
-              -m "Auto-tagged from main. See CHANGELOG.md for the entry."
+              -m "Auto-tagged from main. See crates/br-llm-graph/CHANGELOG.md for the entry."
             git push origin "${tag}"
           fi
 
@@ -67,10 +67,10 @@ jobs:
               }
               in_section && /^## / { exit }
               in_section { print }
-            ' CHANGELOG.md > "$notes_file"
+            ' crates/br-llm-graph/CHANGELOG.md > "$notes_file"
             if [ ! -s "$notes_file" ]; then
-              echo "::warning file=CHANGELOG.md::could not extract notes for ${tag}; using placeholder"
-              printf 'See [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md) for changes.\n' \
+              echo "::warning file=crates/br-llm-graph/CHANGELOG.md::could not extract notes for ${tag}; using placeholder"
+              printf 'See [crates/br-llm-graph/CHANGELOG.md](https://github.com/%s/blob/%s/crates/br-llm-graph/CHANGELOG.md) for changes.\n' \
                 "$GITHUB_REPOSITORY" "$tag" > "$notes_file"
             fi
             gh release create "${tag}" \
