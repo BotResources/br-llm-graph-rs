@@ -165,8 +165,8 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 /// appended to both histories, and the run goes on as after a rejection. The
 /// empty answer counts as a generation.
 ///
-/// With tools, the generation is the `ReactLoop` fragment inline in this
-/// graph; each generation opens a new generator turn, so the round limit
+/// With tools, the generation is the ReAct loop of `ReactAgent` inline in
+/// this graph; each generation opens a new generator turn, so the round limit
 /// counts per generation. A generation cut by `OnLimit::End` (its final step
 /// is the limit's closing step) is an empty answer: rejected without the
 /// critic where the critic would judge it, and, as the last generation, an

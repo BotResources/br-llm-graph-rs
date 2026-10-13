@@ -12,16 +12,30 @@ use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{Key, NodeId};
 
+/// Bounds the tool rounds of one agent turn. A round is one reply that calls
+/// tools plus the execution of all its calls; the count starts again with
+/// each new turn of the agent. `on_limit` says what happens when a reply asks
+/// for tools after the last allowed round.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoundLimit {
     pub max_rounds: Limit,
     pub on_limit: OnLimit,
 }
 
+/// What a reply asking for tools after the last allowed round does. `node`
+/// names the node added to do it; `flag`, a bool state key, is set to true.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnLimit {
+    /// The run fails with `ToolLimitReached`.
     Error,
+    /// Each call is answered with an error result saying it was not
+    /// executed, and the model is called once more with tool calls
+    /// forbidden; a reply that still calls tools fails the run with
+    /// `ToolLimitReached`.
     Continue { node: NodeId, flag: Key },
+    /// Each call is answered the same way and the turn is closed with a step
+    /// whose stop reason is `other(tool_round_limit)`, without calling the
+    /// model.
     End { node: NodeId, flag: Key },
 }
 

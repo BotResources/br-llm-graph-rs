@@ -49,21 +49,22 @@ form to decide whether a version ships.
   graph reads the block as given.
 - `Map::max_concurrency`: at most that many bodies run at once; the results
   keep the item order. `None` runs every item at once, as before.
-- `ToolNode::enabled` (`Option<Key>`, set by `ReactLoop` from
-  `LlmNode::enabled`): a pending call naming a tool of the node that the key
-  does not hold is not executed; it is answered with an error result saying
-  so, and the turn goes on. An `enabled` key of `LlmNode` or `ToolNode` that
+- `ToolNode::enabled` (`Option<Key>`, set by `ReactAgent` and
+  `GeneratorSeat` from their `enabled`): a pending call naming a tool of the
+  node that the key does not hold is not executed; it is answered with an
+  error result saying so, and the turn goes on. An `enabled` key of `LlmNode` or `ToolNode` that
   is not a list-of-strings state key is refused at build
   (`EnabledKeyMismatch`).
-- `ToolNode::max_concurrency` and `ReactLoop::tool_concurrency`: at most that
-  many pending calls of one tool node run at once; the results keep the call
-  order. `None` runs every call at once, as before. A key that is not an int
-  configuration key is refused at build (`LimitKeyMismatch`), by `ReactLoop`
-  and by `ToolNode::check` alike.
-- `ReactLoop::round_limit` (`RoundLimit`, `OnLimit`): bounds the tool rounds of
-  one agent turn. A round is one reply that calls tools plus the execution of
-  all its calls; the count starts again with each new turn of the agent. When
-  a reply asks for tools after the last allowed round:
+- `ToolNode::max_concurrency` and `tool_concurrency` (on `ReactAgent` and
+  `GeneratorSeat`): at most that many pending calls of one tool node run at
+  once; the results keep the call order. `None` runs every call at once, as
+  before. A key that is not an int configuration key is refused at build
+  (`LimitKeyMismatch`), by the agent and by `ToolNode::check` alike.
+- `round_limit` on `ReactAgent` and `GeneratorSeat` (`RoundLimit`,
+  `OnLimit`): bounds the tool rounds of one agent turn. A round is one reply
+  that calls tools plus the execution of all its calls; the count starts again
+  with each new turn of the agent. When a reply asks for tools after the last
+  allowed round:
   - `OnLimit::Error` fails the run with `ToolLimitReached`;
   - `OnLimit::Continue { node, flag }` answers each call with an error result
     saying it was not executed, sets `flag` to true, and calls the model once
@@ -71,10 +72,10 @@ form to decide whether a version ships.
     run with `ToolLimitReached`;
   - `OnLimit::End { node, flag }` answers each call the same way, sets `flag`
     to true, and closes the turn with a step whose stop reason is
-    `other(tool_round_limit)`, without calling the model; the loop goes on to
-    `after`.
+    `other(tool_round_limit)`, without calling the model; the agent goes on
+    as after a reply that calls no tool.
 
-  `node` names the node the loop adds to do this. A `flag` that is not a bool
+  `node` names the node the agent adds to do this. A `flag` that is not a bool
   state key is refused at build (`FlagKeyMismatch`).
 - `Request::tool_calls` (`ToolCalls::Allowed`, `ToolCalls::Forbidden`): whether
   the model may call tools in this reply. The tools stay declared either way; a
@@ -174,8 +175,8 @@ form to decide whether a version ships.
 - `ReactAgent`: a ReAct agent as a graph with a declared signature, built with
   `ReactAgent { author, model, system, output, tools, tool_nodes,
   tool_concurrency, round_limit, thinking, enabled, inputs }.graph()` (an
-  `Arc<Graph>`, ready for `SubGraph` or a `Map` body). It is the `ReactLoop`
-  fragment on the key `history`, so the loop code exists once; empty
+  `Arc<Graph>`, ready for `SubGraph` or a `Map` body). It is the ReAct loop
+  on the key `history`, the same code as the generator's generations; empty
   `tool_nodes` means one node, `tools`, runs every tool. Input `history`
   (conversation): a new call is a history holding one user input, a resumed call
   the history the host saved, and the loop always enters through the model call.
@@ -298,7 +299,7 @@ form to decide whether a version ships.
     both histories and the run goes on as after a rejection. The empty answer counts as a generation and the budget rules
     are unchanged: an empty answer that is not judged (the unassessed final
     generation) ends `exhausted` with nothing appended.
-  - With tools, the generation is the `ReactLoop` fragment inline in the graph;
+  - With tools, the generation is the ReAct loop of `ReactAgent` inline in the graph;
     each generation opens a new generator turn, so the round limit counts per
     generation. A generation cut by `OnLimit::End` (its final step is the
     limit's closing step) is an empty answer: rejected without the critic
@@ -343,8 +344,8 @@ form to decide whether a version ships.
 - `NodeFault::Returned` carries the error value the node returned
   (`NodeError`) instead of its text, so a host can downcast it to its own error
   type.
-- `Map`, `ToolNode`, `ReactLoop`, `LlmNode` and `Request` gain the fields
-  above; struct literals must set them.
+- `Map`, `ToolNode`, `LlmNode` and `Request` gain the fields above; struct
+  literals must set them.
 - `serde_json` is built with `preserve_order`: JSON objects keep the order
   of their keys, so a schema lists its properties in the order written.
 - Examples `react_agent` and `generator_critic` show the graph forms above
@@ -410,6 +411,13 @@ form to decide whether a version ships.
 - `Schema` gains the public field `defaults` (serialized only when not empty,
   so earlier schemas and checkpoints still load) and no longer implements
   `Eq`, since a default is a `Value`.
+
+### Removed
+
+- `ReactLoop` is no longer public: it is the internal building block of
+  `ReactAgent` and of the generator's generations. Use `ReactAgent`, run on
+  its own or called with `SubGraph`; its rules (tool partition, routing after
+  the model call, tool concurrency, enabled key, round limit) are unchanged.
 
 ## 0.2.0 - 2026-09-22
 

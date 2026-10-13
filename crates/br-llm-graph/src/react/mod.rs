@@ -47,7 +47,6 @@ pub use model::{
     Model, ModelError, ModelFuture, OutputMode, Request, StreamSink, ToolCalls, ToolSpec,
 };
 pub use react_agent::ReactAgent;
-pub use react_loop::ReactLoop;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
 pub use tool_node::ToolNode;

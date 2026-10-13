@@ -18,8 +18,10 @@ use crate::value::{EndLabel, Key, NodeId};
 
 /// A ReAct agent as a graph, to call with `SubGraph` or run on its own.
 ///
-/// The graph is the `ReactLoop` fragment on the key `history`, followed by a
-/// node that reads the answer; it ends with `done`.
+/// The graph is the ReAct loop on the key `history`: the model call, then,
+/// while the reply calls tools, the tool nodes that run the calls and the
+/// model call again; when a reply calls no tool, a node reads the answer and
+/// the graph ends with `done`.
 ///
 /// - Inputs: `history` (conversation), the agent's chat history: a new call is
 ///   a history holding one user input, a resumed call the history the host
@@ -48,8 +50,13 @@ use crate::value::{EndLabel, Key, NodeId};
 /// final step carries the structured block and reaches the caller as the
 /// JSON text in `answer`.
 ///
-/// The round limit counts the rounds of the agent's open turn, as in
-/// `ReactLoop`.
+/// Each tool of `tool_nodes` must be one of `tools` (`ToolNotDeclared`), and
+/// each of `tools` run by exactly one tool node (`ToolNotCovered`,
+/// `ToolCoveredTwice`). A pending call no tool node runs fails the run
+/// (`PendingToolUnsatisfiable`).
+///
+/// The round limit counts the rounds of the agent's open turn (see
+/// `RoundLimit`).
 pub struct ReactAgent {
     pub author: Author,
     pub model: Arc<dyn Model>,

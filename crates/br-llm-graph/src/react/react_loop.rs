@@ -12,16 +12,24 @@ use crate::react::tool::Tool;
 use crate::react::tool_node::ToolNode;
 use crate::value::NodeId;
 
-pub struct ReactLoop {
-    pub llm: NodeId,
-    pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
-    pub after: Target,
-    pub tool_concurrency: Option<Limit>,
-    pub round_limit: Option<RoundLimit>,
+/// The ReAct loop, added to a graph under construction: the model call
+/// `llm`, the tool nodes, the routing edge after the model call and, with a
+/// round limit that does not fail the run, its limit node. The building block
+/// of `ReactAgent` and of the generator's generations; not public.
+pub(crate) struct ReactLoop {
+    pub(crate) llm: NodeId,
+    pub(crate) tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
+    pub(crate) after: Target,
+    pub(crate) tool_concurrency: Option<Limit>,
+    pub(crate) round_limit: Option<RoundLimit>,
 }
 
 impl ReactLoop {
-    pub fn add(self, builder: GraphBuilder, llm_node: LlmNode) -> Result<GraphBuilder, GraphError> {
+    pub(crate) fn add(
+        self,
+        builder: GraphBuilder,
+        llm_node: LlmNode,
+    ) -> Result<GraphBuilder, GraphError> {
         self.check_partition(&llm_node)?;
         if let Some(limit) = &self.tool_concurrency {
             limit.check(builder.schema())?;
