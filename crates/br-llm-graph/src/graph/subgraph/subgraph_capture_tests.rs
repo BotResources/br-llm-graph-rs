@@ -204,6 +204,26 @@ fn given_a_capture_from_a_missing_source_or_into_a_target_of_another_kind_when_b
     assert!(parent_with(call).is_ok());
 }
 
+#[test]
+fn given_two_capture_updates_that_set_one_caller_key_when_built_then_capture_set_twice() {
+    let call = picky_call().on_failure(OnFailure::Capture(vec![
+        CaptureUpdate::Set(key("result"), CaptureSource::Reason),
+        CaptureUpdate::Append(key("reasons"), CaptureSource::Reason),
+        CaptureUpdate::Set(key("result"), CaptureSource::Const(Value::str("x"))),
+    ]));
+    let error = crate::testkit::refusal(parent_with(call));
+    assert!(
+        matches!(error, GraphError::CaptureSetTwice { ref key } if *key == self::key("result")),
+        "{error}"
+    );
+    let appends = picky_call().on_failure(OnFailure::Capture(vec![
+        CaptureUpdate::Set(key("result"), CaptureSource::Reason),
+        CaptureUpdate::Append(key("reasons"), CaptureSource::Reason),
+        CaptureUpdate::Append(key("reasons"), CaptureSource::Reason),
+    ]));
+    assert!(parent_with(appends).is_ok());
+}
+
 #[tokio::test]
 async fn given_a_map_that_captures_item_failures_when_its_call_body_fails_then_the_map_lists_them()
 {

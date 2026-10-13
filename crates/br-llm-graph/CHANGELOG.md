@@ -124,7 +124,8 @@ form to decide whether a version ships.
   `CaptureUpdate` is `Set` or `Append` into a parent key, from a
   `CaptureSource`: `Const(value)`, `From(parent_key)` (in a map body, the item
   key included) or `Reason` (the child's error message). Checked at build like
-  outputs (`CaptureMismatch`). Inside a map the captured appends are
+  outputs (`CaptureMismatch`); two capture updates that `Set` the same caller
+  key are refused (`CaptureSetTwice`). Inside a map the captured appends are
   forwarded in item order and the item is recorded as finished.
 - Pending writes and resume: `PendingWrites` (occurrence key to
   `PendingEntry { updates, witness }`, with `insert`, `get`, `merge`) and
@@ -326,8 +327,9 @@ form to decide whether a version ships.
   `SubGraphConfigUnmapped`, `SubGraphConfigTwice`, `SubGraphNotAConfig`,
   `SubGraphConfigMismatch`, `SubGraphNotAnOutput`, `SubGraphTargetMismatch`,
   `SubGraphSetTwice` (two outputs of one call, end label included, that `Set`
-  the same caller key), `CaptureMismatch` and `MapBodySet`, each naming the
-  key.
+  the same caller key), `CaptureMismatch`, `CaptureSetTwice` (two capture
+  updates of one call that `Set` the same caller key) and `MapBodySet`, each
+  naming the key.
 
 ### Changed
 

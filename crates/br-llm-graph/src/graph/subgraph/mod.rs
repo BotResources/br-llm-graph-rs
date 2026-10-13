@@ -12,7 +12,7 @@ use crate::update::Update;
 use crate::value::Key;
 
 use check::check_call;
-pub(crate) use check::check_capture;
+pub(crate) use check::check_captures;
 
 /// Where the value of a child input (or child configuration key) comes from.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,7 +63,9 @@ pub enum OnFailure {
     Propagate,
     /// The node returns these updates instead of its outputs: a captured
     /// failure is a result, not a crash. Inside a map they are forwarded in
-    /// item order like outputs, and the item counts as finished.
+    /// item order like outputs, and the item counts as finished. Two of them
+    /// that `Set` the same caller key are refused at build
+    /// (`GraphError::CaptureSetTwice`).
     Capture(Vec<CaptureUpdate>),
 }
 

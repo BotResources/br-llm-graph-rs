@@ -30,9 +30,7 @@ pub(crate) fn check_call(
         set_once(&mut set, target)?;
     }
     if let OnFailure::Capture(captures) = &call.on_failure {
-        for capture in captures {
-            check_capture(schema, capture, appends_only)?;
-        }
+        check_captures(schema, captures, appends_only)?;
     }
     Ok(())
 }
@@ -139,9 +137,28 @@ fn receives<'a>(schema: &'a Schema, target: &Output) -> Option<&'a Kind> {
     }
 }
 
-/// A capture update fits its target. With `appends_only` (a map's own
-/// captures, a call used as a map body) a `Set` is refused.
-pub(crate) fn check_capture(
+/// Each capture update fits its target, and two of them never `Set` the same
+/// caller key (`CaptureSetTwice`). With `appends_only` (a map's own captures,
+/// a call used as a map body) a `Set` is refused.
+pub(crate) fn check_captures(
+    schema: &Schema,
+    captures: &[CaptureUpdate],
+    appends_only: bool,
+) -> Result<(), GraphError> {
+    let mut set: BTreeSet<&Key> = BTreeSet::new();
+    for capture in captures {
+        check_capture(schema, capture, appends_only)?;
+        if let CaptureUpdate::Set(key, _) = capture
+            && !set.insert(key)
+        {
+            return Err(GraphError::CaptureSetTwice { key: key.clone() });
+        }
+    }
+    Ok(())
+}
+
+/// A capture update fits its target. With `appends_only` a `Set` is refused.
+fn check_capture(
     schema: &Schema,
     capture: &CaptureUpdate,
     appends_only: bool,

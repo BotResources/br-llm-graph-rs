@@ -221,6 +221,9 @@ pub enum GraphError {
     CaptureMismatch {
         key: Key,
     },
+    CaptureSetTwice {
+        key: Key,
+    },
     InvalidNode {
         node: NodeId,
         source: Box<GraphError>,
@@ -436,6 +439,9 @@ impl std::fmt::Display for GraphError {
                 f,
                 "a failure is captured into {key} from a source that is missing or of a kind {key} cannot take"
             ),
+            GraphError::CaptureSetTwice { key } => {
+                write!(f, "a failure is captured by setting {key} twice")
+            }
             GraphError::InvalidNode { node, source } => {
                 write!(f, "node {node} is refused: {source}")
             }
@@ -511,7 +517,8 @@ impl std::error::Error for GraphError {
             | GraphError::MapBodyNotAppend { .. }
             | GraphError::MapBodySet { .. }
             | GraphError::MapWithoutOccurrence
-            | GraphError::CaptureMismatch { .. } => None,
+            | GraphError::CaptureMismatch { .. }
+            | GraphError::CaptureSetTwice { .. } => None,
         }
     }
 }

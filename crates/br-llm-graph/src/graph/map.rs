@@ -7,7 +7,7 @@ use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::limit::Limit;
 use crate::graph::node::{CheckSite, Node, NodeError, NodeFuture};
-use crate::graph::subgraph::{CaptureUpdate, captured, check_capture};
+use crate::graph::subgraph::{CaptureUpdate, captured, check_captures};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
@@ -107,9 +107,7 @@ impl Node for Map {
             limit.check(schema)?;
         }
         if let ItemFailure::Capture(captures) = &self.on_item_failure {
-            for capture in captures {
-                check_capture(schema, capture, true)?;
-            }
+            check_captures(schema, captures, true)?;
         }
         self.body.check(schema, CheckSite::MapBody)
     }
