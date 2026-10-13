@@ -31,6 +31,14 @@ form to decide whether a version ships.
   translates it for its provider. `LlmNode::thinking` (`Option<Switch>`) is
   resolved at each call and sent on the request; its key is checked at build
   through `Node::check`.
+- `Source::Const(String)`, a text fixed at build, and `Source::Fn(SourceFn)`,
+  a text computed at each model call from the state and the configuration
+  (`SourceFn` is `Arc<dyn Fn(&State, &Config) -> Result<String, GraphError> +
+  Send + Sync>`). The function is pure and synchronous: no I/O, anything
+  fetched belongs in a node that writes it to the state; it reads only keys
+  the graph declares otherwise. `Source::resolve(&State, &Config)` gives the
+  text of any source (a list of strings joined by a blank line); `LlmNode`
+  reads its `system` through it. `Config(Key)` and `State(Key)` are unchanged.
 - The `Model` contract, documented on the trait: for `OutputMode::Structured`,
   `complete` returns a step whose structured block is valid against the
   schema, or an error. Validation and retries belong to the model adapter; the

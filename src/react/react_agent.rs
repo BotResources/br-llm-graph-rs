@@ -84,6 +84,7 @@ impl ReactAgent {
                     inputs.push(key.clone());
                     schema.state(key.clone(), Kind::Str)
                 }
+                Source::Const(_) | Source::Fn(_) => schema,
             };
         }
         schema = schema

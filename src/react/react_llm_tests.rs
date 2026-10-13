@@ -175,3 +175,64 @@ async fn given_multiple_system_sources_when_llm_runs_then_joined_by_blank_line()
     let system = recording.system_seen.lock().unwrap().clone().unwrap();
     assert_eq!(system, "You are a helpful agent.\n\necho\n\ntally");
 }
+
+#[tokio::test]
+async fn given_a_constant_and_a_computed_source_when_llm_runs_then_both_are_in_the_system_text() {
+    let model = Arc::new(RecordingModel::new());
+    let recording = model.clone();
+    let computed = Source::Fn(Arc::new(|state, config| {
+        let tools = state.list(&key("enabled"))?.len();
+        Ok(format!("{} Tools: {tools}.", config.str(&key("base"))?))
+    }));
+    let llm = LlmNode {
+        key: key("chat"),
+        author: author(),
+        model,
+        system: vec![Source::Const("Be brief.".to_owned()), computed],
+        tools: Vec::new(),
+        enabled: None,
+        output: OutputMode::Text,
+        thinking: None,
+    };
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("llm"))
+        .node(nid("llm"), llm)
+        .edge(
+            nid("llm"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    run(&graph, &config(), seeded_state(), None, &ctx(), &mut inbox)
+        .await
+        .map_err(|f| f.error)
+        .unwrap();
+    let system = recording.system_seen.lock().unwrap().clone().unwrap();
+    assert_eq!(system, "Be brief.\n\nYou are a helpful agent. Tools: 2.");
+}
+
+#[test]
+fn given_each_kind_of_source_when_resolved_then_one_text() {
+    let (state, config) = (seeded_state(), config());
+    let resolved = |source: Source| source.resolve(&state, &config).unwrap();
+    assert_eq!(
+        resolved(Source::Config(key("base"))),
+        "You are a helpful agent."
+    );
+    assert_eq!(resolved(Source::State(key("enabled"))), "echo\n\ntally");
+    assert_eq!(resolved(Source::Const("fixed".to_owned())), "fixed");
+    assert_eq!(
+        resolved(Source::Fn(Arc::new(|state, _config| {
+            Ok(state.list(&key("log"))?.len().to_string())
+        }))),
+        "0"
+    );
+    let failing = Source::Fn(Arc::new(|state, _config| {
+        Ok(state.str(&key("missing"))?.to_owned())
+    }));
+    assert!(matches!(
+        failing.resolve(&state, &config),
+        Err(GraphError::MissingKey { .. })
+    ));
+}

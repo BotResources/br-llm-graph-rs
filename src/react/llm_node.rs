@@ -11,9 +11,44 @@ use crate::state::{Config, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
 
+/// A text computed from the state and the configuration: pure and
+/// synchronous.
+pub type SourceFn = Arc<dyn Fn(&State, &Config) -> Result<String, GraphError> + Send + Sync>;
+
+/// Where a text comes from.
+#[derive(Clone)]
 pub enum Source {
+    /// A string, or a list of strings, read from a configuration key.
     Config(Key),
+    /// A string, or a list of strings, read from a state key.
     State(Key),
+    /// A text fixed at build.
+    Const(String),
+    /// A text computed at each model call from the state and the
+    /// configuration. The function is pure and synchronous: no I/O, anything
+    /// fetched belongs in a node that writes it to the state. It reads only
+    /// keys the graph declares otherwise.
+    Fn(SourceFn),
+}
+
+impl Source {
+    /// The text this source gives on this state and configuration. A list of
+    /// strings gives its items separated by a blank line.
+    pub fn resolve(&self, state: &State, config: &Config) -> Result<String, GraphError> {
+        Ok(self.texts(state, config)?.join("\n\n"))
+    }
+
+    /// The texts this source gives: one, or one per item of a list.
+    pub(crate) fn texts(&self, state: &State, config: &Config) -> Result<Vec<String>, GraphError> {
+        let mut parts = Vec::new();
+        match self {
+            Source::Config(key) => append_strings(key, config.get(key)?, &mut parts)?,
+            Source::State(key) => append_strings(key, state.get(key)?, &mut parts)?,
+            Source::Const(text) => parts.push(text.clone()),
+            Source::Fn(text) => parts.push(text(state, config)?),
+        }
+        Ok(parts)
+    }
 }
 
 pub struct LlmNode {
@@ -96,22 +131,12 @@ fn build_system(
 ) -> Result<Option<String>, GraphError> {
     let mut parts: Vec<String> = Vec::new();
     for source in &node.system {
-        let value = match source {
-            Source::Config(key) => config.get(key)?,
-            Source::State(key) => state.get(key)?,
-        };
-        append_strings(source_key(source), value, &mut parts)?;
+        parts.extend(source.texts(state, config)?);
     }
     if parts.is_empty() {
         Ok(None)
     } else {
         Ok(Some(parts.join("\n\n")))
-    }
-}
-
-fn source_key(source: &Source) -> &Key {
-    match source {
-        Source::Config(key) | Source::State(key) => key,
     }
 }
 
