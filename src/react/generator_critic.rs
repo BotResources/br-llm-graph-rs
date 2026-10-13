@@ -7,7 +7,8 @@ use br_llm_messages::{
 
 use crate::error::GraphError;
 use crate::graph::{
-    CheckSite, Context, Count, FnEdge, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
+    Always, CheckSite, Context, Count, FnEdge, Graph, GraphBuilder, Limit, Node, NodeFuture,
+    Switch, Target,
 };
 use crate::react::helpers::{complete, final_step, last_turn_by_author, wire};
 use crate::react::llm_node::{LlmNode, Source};
@@ -135,6 +136,7 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 /// both; nothing is appended on validation, and nothing of the critic's
 /// reasoning enters a history.
 ///
+/// With `prepare`, the graph enters through it, once, then the routing.
 /// The entry is routed on how `conversation` ends: a generator answer goes
 /// to the critic and a critique is routed as a rejection (both are resumed
 /// calls), anything else goes to the generator. After an
@@ -166,6 +168,12 @@ pub struct GeneratorCritic {
     /// The critique that rejects an empty answer, written without calling
     /// the critic. `None`: `The answer was empty. Write a complete answer.`
     pub empty_answer_critique: Option<Source>,
+    /// A node run once, as the graph's entry, before the routing: it may do
+    /// I/O (it holds its capabilities as fields) and writes through ordinary
+    /// updates, typically the opening message into `conversation`. It is
+    /// checked through `Node::check` like any node; its failure fails the
+    /// graph. A resumed caller restarts the whole call, `prepare` included.
+    pub prepare: Option<Box<dyn Node>>,
 }
 
 /// The names of the graph's keys and nodes.
@@ -175,6 +183,7 @@ struct Names {
     answer: Key,
     validated: Key,
     generations: Key,
+    prepare: NodeId,
     route: NodeId,
     generate: NodeId,
     publish: NodeId,
@@ -190,6 +199,7 @@ impl Names {
             answer: Key::new("answer")?,
             validated: Key::new("is_validated")?,
             generations: Key::new("nb_generations")?,
+            prepare: NodeId::new("prepare")?,
             route: NodeId::new("route")?,
             generate: NodeId::new("generate")?,
             publish: NodeId::new("publish")?,
@@ -271,6 +281,7 @@ impl GeneratorCritic {
             final_generation: true,
             inputs: Vec::new(),
             empty_answer_critique: None,
+            prepare: None,
         }
     }
 
@@ -346,7 +357,10 @@ impl GeneratorCritic {
         };
 
         let mut builder = GraphBuilder::new(schema)
-            .entry(names.route.clone())
+            .entry(match &self.prepare {
+                Some(_) => names.prepare.clone(),
+                None => names.route.clone(),
+            })
             .input(names.conversation.clone())
             .input(names.generator_history.clone())
             .output(names.answer.clone())
@@ -387,8 +401,14 @@ impl GeneratorCritic {
             output: generator.output,
             thinking: generator.thinking,
         };
-        let builder = react.add(builder, llm)?;
+        let mut builder = react.add(builder, llm)?;
 
+        if let Some(prepare) = self.prepare {
+            builder = builder.node(names.prepare.clone(), Prepare(prepare)).edge(
+                names.prepare.clone(),
+                Always(Target::Node(names.route.clone())),
+            );
+        }
         let (entry, published, judged) = (router.clone(), router.clone(), router);
         let validated = names.validated.clone();
         let graph = builder
@@ -473,6 +493,19 @@ fn authored_by(entry: &Entry, author: &Author) -> bool {
     match entry {
         Entry::Turn(turn) => turn.author() == Some(author),
         Entry::UserInput(_) => false,
+    }
+}
+
+/// The caller's `prepare` node, run as it is.
+struct Prepare(Box<dyn Node>);
+
+impl Node for Prepare {
+    fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
+        self.0.run(state, config, ctx)
+    }
+
+    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
+        self.0.check(schema, site)
     }
 }
 
