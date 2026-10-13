@@ -118,12 +118,14 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 ///   set, and each key of `inputs`, for the generator's tools to read through
 ///   the state they receive. A source, `enabled` or `inputs` key the graph
 ///   already has is refused (`KeyCollision`).
-/// - Outputs: `answer` (a conversation holding the generator's last answer,
-///   one turn with its final step), `validated`, `generations` (the generator
-///   answers in `conversation` since its last user input), `last_critique`
-///   (the message of the last rejection, empty when validated),
-///   `conversation`, `generator_history` and, when the generator's round limit
-///   has a flag, that flag. The run ends with `validated` or `exhausted`.
+/// - Outputs: `answer` (string, the generator's last answer since the last
+///   user input: the JSON text of its structured block when it has one,
+///   else its text blocks joined verbatim; empty if none), `is_validated`,
+///   `nb_generations` (the generator answers in `conversation` since its
+///   last user input) and, when the generator's round limit has a flag, that
+///   flag. The histories are not outputs: a host that resumes a call gives
+///   back the histories it saved from the observer. The run ends with
+///   `validated` or `exhausted`.
 /// - Configuration: the keys the text sources, switches and limits read.
 ///
 /// `generator_history` holds the generator's whole traffic (tool calls and
@@ -173,7 +175,6 @@ struct Names {
     answer: Key,
     validated: Key,
     generations: Key,
-    last_critique: Key,
     route: NodeId,
     generate: NodeId,
     publish: NodeId,
@@ -187,9 +188,8 @@ impl Names {
             conversation: Key::new("conversation")?,
             generator_history: Key::new("generator_history")?,
             answer: Key::new("answer")?,
-            validated: Key::new("validated")?,
-            generations: Key::new("generations")?,
-            last_critique: Key::new("last_critique")?,
+            validated: Key::new("is_validated")?,
+            generations: Key::new("nb_generations")?,
             route: NodeId::new("route")?,
             generate: NodeId::new("generate")?,
             publish: NodeId::new("publish")?,
@@ -287,10 +287,9 @@ impl GeneratorCritic {
         let mut schema = Schema::builder()
             .state(names.conversation.clone(), Kind::Conversation)
             .state(names.generator_history.clone(), Kind::Conversation)
-            .state(names.answer.clone(), Kind::Conversation)
+            .state(names.answer.clone(), Kind::Str)
             .state(names.validated.clone(), Kind::Bool)
-            .state(names.generations.clone(), Kind::Int)
-            .state(names.last_critique.clone(), Kind::Str);
+            .state(names.generations.clone(), Kind::Int);
         schema = declare_switch(schema, generator.thinking.as_ref());
         schema = declare_switch(schema, critic.thinking.as_ref());
         schema = declare_count(schema, &self.max_critiques);
@@ -352,10 +351,7 @@ impl GeneratorCritic {
             .input(names.generator_history.clone())
             .output(names.answer.clone())
             .output(names.validated.clone())
-            .output(names.generations.clone())
-            .output(names.last_critique.clone())
-            .output(names.conversation.clone())
-            .output(names.generator_history.clone());
+            .output(names.generations.clone());
         if let Some(flag) = flag {
             builder = builder.output(flag);
         }
@@ -444,11 +440,8 @@ impl GeneratorCritic {
                 FinishNode {
                     conversation: names.conversation,
                     answer: names.answer,
-                    validated: names.validated,
                     generations: names.generations,
-                    last_critique: names.last_critique,
                     generator: generator.author,
-                    critic: critic.author,
                 },
             )
             .edge(
@@ -710,7 +703,7 @@ fn empty_step(step: &Step) -> bool {
 
 /// The text of an answer: the JSON text of its structured block when it has
 /// one, else its text blocks joined verbatim.
-pub(crate) fn answer_text(step: &Step) -> String {
+fn answer_text(step: &Step) -> String {
     match step.structured().next() {
         Some(value) => value.to_string(),
         None => step.text().map(Text::as_str).collect(),
@@ -752,15 +745,12 @@ fn without_thinking(messages: Vec<WireMessage>) -> Vec<WireMessage> {
     kept
 }
 
-/// Sets `answer`, `generations` and `last_critique` from `conversation`.
+/// Sets `answer` and `nb_generations` from `conversation`.
 struct FinishNode {
     conversation: Key,
     answer: Key,
-    validated: Key,
     generations: Key,
-    last_critique: Key,
     generator: Author,
-    critic: Author,
 }
 
 impl Node for FinishNode {
@@ -771,51 +761,22 @@ impl Node for FinishNode {
         _ctx: &'a Context,
     ) -> NodeFuture<'a> {
         Box::pin(async move {
-            let recent = since_last_input(state.conversation(&self.conversation)?);
-            let generations = recent
+            let conversation = state.conversation(&self.conversation)?;
+            let generations = since_last_input(conversation)
                 .iter()
                 .filter(|entry| authored_by(entry, &self.generator))
                 .count();
-            let mut answer = Conversation::new();
-            if let Some(Entry::Turn(turn)) = recent
-                .iter()
-                .rev()
-                .find(|entry| authored_by(entry, &self.generator))
-            {
-                answer.push_turn(turn.clone())?;
-            }
-            let last_critique = if state.bool(&self.validated)? {
-                String::new()
-            } else {
-                recent
-                    .iter()
-                    .rev()
-                    .find_map(|entry| match entry {
-                        Entry::Turn(turn) if turn.author() == Some(&self.critic) => {
-                            final_step(turn)
-                        }
-                        Entry::Turn(_) | Entry::UserInput(_) => None,
-                    })
-                    .map(|step| {
-                        step.text()
-                            .map(Text::as_str)
-                            .collect::<Vec<_>>()
-                            .join("\n\n")
-                    })
-                    .unwrap_or_default()
-            };
+            let answer = last_answer(conversation, &self.generator)
+                .map(|(_, step)| answer_text(step))
+                .unwrap_or_default();
             Ok(vec![
                 Update::Set {
                     key: self.answer.clone(),
-                    value: Value::conversation(answer),
+                    value: Value::str(answer),
                 },
                 Update::Set {
                     key: self.generations.clone(),
                     value: Value::int(i64::try_from(generations).unwrap_or(i64::MAX)),
-                },
-                Update::Set {
-                    key: self.last_critique.clone(),
-                    value: Value::str(last_critique),
                 },
             ])
         })

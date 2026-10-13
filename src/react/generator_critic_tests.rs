@@ -202,15 +202,77 @@ async fn given_a_valid_first_answer_when_run_then_validated_and_nothing_is_appen
     let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
     let graph = duo(generator_model, critic_model).graph().unwrap();
     let state = ended(call(&graph, question("explain")).await, "validated");
-    assert!(state.bool(&key("validated")).unwrap());
-    assert_eq!(state.int(&key("generations")).unwrap(), 1);
-    assert_eq!(state.str(&key("last_critique")).unwrap(), "");
+    assert!(state.bool(&key("is_validated")).unwrap());
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
     assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
     assert_eq!(
         shape_of(&state, "generator_history"),
         ["user", "writer:draft"]
     );
-    assert_eq!(shape_of(&state, "answer"), ["writer:draft"]);
+    assert_eq!(state.str(&key("answer")).unwrap(), "draft");
+}
+
+#[test]
+fn given_a_generator_critic_when_built_then_its_outputs_are_plain_data() {
+    let graph = duo(
+        Arc::new(LoggingModel::new(Vec::new())),
+        Arc::new(LoggingModel::new(Vec::new())),
+    )
+    .graph()
+    .unwrap();
+    let outputs: Vec<(&str, &Kind)> = graph
+        .signature()
+        .outputs
+        .iter()
+        .map(|(key, kind)| (key.as_str(), kind))
+        .collect();
+    assert_eq!(
+        outputs,
+        [
+            ("answer", &Kind::Str),
+            ("is_validated", &Kind::Bool),
+            ("nb_generations", &Kind::Int),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn given_an_answer_of_several_text_blocks_or_a_structured_one_when_run_then_answer_is_its_text()
+ {
+    let several = br_llm_messages::Step::new(
+        vec![
+            thinking_block("plan"),
+            text_block("one "),
+            text_block("two"),
+        ],
+        br_llm_messages::StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap();
+    let structured = structured_step(json!({ "title": "Tides", "pages": 2 }));
+    for (step, expected) in [
+        (several, "one two"),
+        (structured, r#"{"title":"Tides","pages":2}"#),
+    ] {
+        let generator_model = Arc::new(LoggingModel::new(vec![step]));
+        let critic_model = Arc::new(LoggingModel::new(vec![verdict(true, "")]));
+        let graph = GeneratorCritic::new(
+            generator(generator_model),
+            critic(critic_model.clone()),
+            Count::Fixed(1),
+        )
+        .graph()
+        .unwrap();
+        let state = ended(call(&graph, question("explain")).await, "validated");
+        assert_eq!(state.str(&key("answer")).unwrap(), expected);
+        assert_eq!(
+            critic_model.requests()[0].messages.last(),
+            Some(&user_message(&format!(
+                "<generator_response>\n{expected}\n</generator_response>\n\nPlease evaluate the generator's response above."
+            )))
+        );
+    }
 }
 
 pub(crate) fn user_message(text: &str) -> WireMessage {
@@ -263,7 +325,7 @@ async fn given_a_rejection_then_a_validation_when_run_then_each_seat_reads_its_o
         .graph()
         .unwrap();
     let state = ended(call(&graph, question("explain")).await, "validated");
-    assert_eq!(state.int(&key("generations")).unwrap(), 2);
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
     let expected = [
         "user",
         "writer:first",
@@ -334,10 +396,9 @@ async fn given_every_answer_rejected_with_a_final_generation_when_run_then_exhau
     .graph()
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "exhausted");
-    assert!(!state.bool(&key("validated")).unwrap());
-    assert_eq!(state.int(&key("generations")).unwrap(), 2);
-    assert_eq!(state.str(&key("last_critique")).unwrap(), "fix it");
-    assert_eq!(shape_of(&state, "answer"), ["writer:b"]);
+    assert!(!state.bool(&key("is_validated")).unwrap());
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
+    assert_eq!(state.str(&key("answer")).unwrap(), "b");
     assert_eq!(
         shape_of(&state, "conversation"),
         ["user", "writer:a", "reviewer:fix it", "writer:b"]
@@ -364,10 +425,9 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
     .graph()
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "exhausted");
-    assert!(!state.bool(&key("validated")).unwrap());
-    assert_eq!(state.int(&key("generations")).unwrap(), 2);
-    assert_eq!(state.str(&key("last_critique")).unwrap(), "still wrong");
-    assert_eq!(shape_of(&state, "answer"), ["writer:b"]);
+    assert!(!state.bool(&key("is_validated")).unwrap());
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
+    assert_eq!(state.str(&key("answer")).unwrap(), "b");
     assert_eq!(
         shape_of(&state, "conversation"),
         [
@@ -411,10 +471,9 @@ async fn given_a_critique_budget_of_zero_when_run_then_one_generation_no_critic_
             final_generation,
         );
         let state = ended(call(&graph, question("explain")).await, "exhausted");
-        assert!(!state.bool(&key("validated")).unwrap());
-        assert_eq!(state.int(&key("generations")).unwrap(), 1);
-        assert_eq!(state.str(&key("last_critique")).unwrap(), "");
-        assert_eq!(shape_of(&state, "answer"), ["writer:draft"]);
+        assert!(!state.bool(&key("is_validated")).unwrap());
+        assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
+        assert_eq!(state.str(&key("answer")).unwrap(), "draft");
         assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
         assert_eq!(generator_model.requests().len(), 1);
         assert!(critic_model.requests().is_empty());
@@ -445,8 +504,8 @@ async fn given_histories_ending_on_a_critique_with_a_budget_of_zero_when_called_
         call_with(&graph, conversation.clone(), conversation, BTreeMap::new()).await,
         "exhausted",
     );
-    assert_eq!(state.int(&key("generations")).unwrap(), 1);
-    assert_eq!(shape_of(&state, "answer"), ["writer:a"]);
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
+    assert_eq!(state.str(&key("answer")).unwrap(), "a");
     assert!(generator_model.requests().is_empty());
 }
 
@@ -466,7 +525,7 @@ async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_
         call_with(&graph, question("explain"), Conversation::new(), config).await,
         "exhausted",
     );
-    assert_eq!(state.int(&key("generations")).unwrap(), 1);
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
     assert!(critic_model.requests().is_empty());
 
     let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
@@ -536,8 +595,7 @@ async fn given_an_empty_answer_then_a_valid_one_when_run_then_the_empty_one_is_r
     .graph()
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "validated");
-    assert_eq!(state.int(&key("generations")).unwrap(), 2);
-    assert_eq!(state.str(&key("last_critique")).unwrap(), "");
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
     let expected = [
         "user".to_owned(),
         "writer:".to_owned(),
@@ -546,7 +604,7 @@ async fn given_an_empty_answer_then_a_valid_one_when_run_then_the_empty_one_is_r
     ];
     assert_eq!(shape_of(&state, "conversation"), expected);
     assert_eq!(shape_of(&state, "generator_history"), expected);
-    assert_eq!(shape_of(&state, "answer"), ["writer:full"]);
+    assert_eq!(state.str(&key("answer")).unwrap(), "full");
     assert_eq!(critic_model.requests().len(), 1);
     assert_eq!(generator_model.requests().len(), 2);
 }
@@ -567,9 +625,8 @@ async fn given_an_empty_answer_on_the_last_judged_generation_when_run_then_exhau
     .graph()
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "exhausted");
-    assert!(!state.bool(&key("validated")).unwrap());
-    assert_eq!(state.int(&key("generations")).unwrap(), 1);
-    assert_eq!(state.str(&key("last_critique")).unwrap(), EMPTY);
+    assert!(!state.bool(&key("is_validated")).unwrap());
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
     assert_eq!(
         shape_of(&state, "conversation"),
         ["user".to_owned(), "writer:".to_owned(), empty_critique()]
@@ -590,8 +647,7 @@ async fn given_an_empty_unassessed_final_generation_when_run_then_exhausted_with
     .graph()
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "exhausted");
-    assert_eq!(state.int(&key("generations")).unwrap(), 2);
-    assert_eq!(state.str(&key("last_critique")).unwrap(), "fix it");
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
     assert_eq!(
         shape_of(&state, "conversation"),
         ["user", "writer:a", "reviewer:fix it", "writer:"]
@@ -696,7 +752,7 @@ async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_o
             "writer:answer two"
         ]
     );
-    assert_eq!(shape_of(&state, "answer"), ["writer:answer two"]);
+    assert_eq!(state.str(&key("answer")).unwrap(), "answer two");
 }
 
 #[tokio::test]
@@ -813,9 +869,8 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
         "conversation",
         "generator_history",
         "answer",
-        "validated",
-        "generations",
-        "last_critique",
+        "is_validated",
+        "nb_generations",
     ] {
         let built = GeneratorCritic {
             inputs: vec![(key(name), Kind::Str)],
@@ -861,9 +916,8 @@ async fn given_histories_ending_on_the_last_allowed_rejection_without_a_final_ge
         call_with(&graph, conversation.clone(), conversation, BTreeMap::new()).await,
         "exhausted",
     );
-    assert_eq!(state.int(&key("generations")).unwrap(), 1);
-    assert_eq!(state.str(&key("last_critique")).unwrap(), "fix it");
-    assert_eq!(shape_of(&state, "answer"), ["writer:a"]);
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
+    assert_eq!(state.str(&key("answer")).unwrap(), "a");
     assert!(generator_model.requests().is_empty());
     assert!(critic_model.requests().is_empty());
 }
@@ -902,8 +956,8 @@ async fn given_both_histories_ending_on_an_answer_when_called_again_then_the_cri
         call_with(&graph, conversation, generator_history, BTreeMap::new()).await,
         "validated",
     );
-    assert_eq!(state.int(&key("generations")).unwrap(), 1);
-    assert_eq!(shape_of(&state, "answer"), ["writer:saved answer"]);
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
+    assert_eq!(state.str(&key("answer")).unwrap(), "saved answer");
     assert_eq!(
         shape_of(&state, "generator_history"),
         ["user", "writer:[3 items]"]
@@ -914,11 +968,12 @@ async fn given_both_histories_ending_on_an_answer_when_called_again_then_the_cri
 fn caller_schema() -> Schema {
     Schema::builder()
         .state(key("chat"), Kind::Conversation)
-        .state(key("best"), Kind::Conversation)
+        .state(key("best"), Kind::Str)
+        .state(key("count"), Kind::Int)
         .state(key("label"), Kind::Str)
         .state(key("questions"), Kind::list(Kind::Conversation))
         .state(key("question"), Kind::Conversation)
-        .state(key("answers"), Kind::list(Kind::Conversation))
+        .state(key("answers"), Kind::list(Kind::Str))
         .state(key("verdicts"), Kind::list(Kind::Bool))
         .build()
 }
@@ -954,8 +1009,8 @@ async fn given_the_duo_called_as_a_subgraph_when_run_then_the_caller_reads_the_a
         verdict(true, ""),
     ]));
     let call = duo_call(duo(generator_model, critic_model).graph().unwrap(), "chat")
-        .output(key("conversation"), Output::Set(key("chat")))
         .output(key("answer"), Output::Set(key("best")))
+        .output(key("nb_generations"), Output::Set(key("count")))
         .output_end_label(Output::Set(key("label")));
     let graph = GraphBuilder::new(caller_schema())
         .entry(nid("duo"))
@@ -972,11 +1027,8 @@ async fn given_the_duo_called_as_a_subgraph_when_run_then_the_caller_reads_the_a
         .unwrap();
     let state = run_caller(&graph, state).await;
     assert_eq!(state.str(&key("label")).unwrap(), "validated");
-    assert_eq!(
-        shape(state.conversation(&key("best")).unwrap()),
-        ["writer:b"]
-    );
-    assert_eq!(shape_of(&state, "chat").len(), 4);
+    assert_eq!(state.str(&key("best")).unwrap(), "b");
+    assert_eq!(state.int(&key("count")).unwrap(), 2);
 }
 
 #[tokio::test]
@@ -996,7 +1048,7 @@ async fn given_the_duo_as_a_map_body_when_run_then_each_question_gets_its_answer
         "question",
     )
     .output(key("answer"), Output::Append(key("answers")))
-    .output(key("validated"), Output::Append(key("verdicts")));
+    .output(key("is_validated"), Output::Append(key("verdicts")));
     let map = Map {
         list: key("questions"),
         item: key("question"),
@@ -1020,16 +1072,10 @@ async fn given_the_duo_as_a_map_body_when_run_then_each_question_gets_its_answer
     ]);
     let state = graph.start_state([(key("questions"), questions)]).unwrap();
     let state = run_caller(&graph, state).await;
-    let answers: Vec<Vec<String>> = state
-        .list(&key("answers"))
-        .unwrap()
-        .iter()
-        .map(|value| match value {
-            Value::Conversation(conversation) => shape(conversation),
-            other => panic!("expected a conversation, got {other}"),
-        })
-        .collect();
-    assert_eq!(answers, [vec!["writer:one"], vec!["writer:two, revised"]]);
+    assert_eq!(
+        state.list(&key("answers")).unwrap(),
+        &[Value::str("one"), Value::str("two, revised")]
+    );
     assert_eq!(
         state.list(&key("verdicts")).unwrap(),
         &[Value::bool(true), Value::bool(true)]

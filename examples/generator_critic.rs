@@ -16,7 +16,7 @@ use br_llm_graph::{
     Input, Kind, NodeId, Outcome, Output, OutputMode, Schema, Source, SubGraph, Switch, Target,
     Value, channel, run,
 };
-use br_llm_messages::{Author, Conversation, Entry};
+use br_llm_messages::{Author, Conversation};
 use serde_json::json;
 
 use common::{ScriptedModel, key, quiet_context, structured_step, text_step, user};
@@ -65,7 +65,8 @@ async fn main() {
 
     let schema = Schema::builder()
         .state(key("chat"), Kind::Conversation)
-        .state(key("answer"), Kind::Conversation)
+        .state(key("answer"), Kind::Str)
+        .state(key("validated"), Kind::Bool)
         .state(key("generations"), Kind::Int)
         .state(key("outcome"), Kind::Str)
         .config(key("native_thinking"), Kind::Bool)
@@ -80,9 +81,9 @@ async fn main() {
             key("critic_thinking"),
             Input::Config(key("native_thinking")),
         )
-        .output(key("conversation"), Output::Set(key("chat")))
         .output(key("answer"), Output::Set(key("answer")))
-        .output(key("generations"), Output::Set(key("generations")))
+        .output(key("is_validated"), Output::Set(key("validated")))
+        .output(key("nb_generations"), Output::Set(key("generations")))
         .output_end_label(Output::Set(key("outcome")));
     let graph = GraphBuilder::new(schema.clone())
         .entry(NodeId::new("duo").expect("id"))
@@ -108,20 +109,12 @@ async fn main() {
     match run(&graph, &config, state, None, &quiet_context(), &mut inbox).await {
         Ok(Outcome::Finished { state, .. }) => {
             println!(
-                "generator_critic ended {} after {} generations",
+                "generator_critic ended {} after {} generations (validated: {})",
                 state.str(&key("outcome")).expect("outcome"),
-                state.int(&key("generations")).expect("generations")
+                state.int(&key("generations")).expect("generations"),
+                state.bool(&key("validated")).expect("validated"),
             );
-            for entry in state.conversation(&key("chat")).expect("chat").entries() {
-                match entry {
-                    Entry::UserInput(input) => println!("  {input}"),
-                    Entry::Turn(turn) => println!("  {turn}"),
-                }
-            }
-            println!(
-                "  answer: {}",
-                state.conversation(&key("answer")).expect("answer")
-            );
+            println!("  answer: {}", state.str(&key("answer")).expect("answer"));
         }
         Ok(_) => println!("generator_critic paused or cancelled"),
         Err(failure) => println!("generator_critic failed: {}", failure.error),
