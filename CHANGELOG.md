@@ -358,6 +358,8 @@ form to decide whether a version ships.
   item keys only; like every build-time reason of a node, it reaches the
   caller inside `InvalidNode`. A `Map` registered with `node` or `join` is now
   checked too.
+- A run given an empty cursor fails with `GraphError::EmptyCursor` before
+  running anything, instead of `AmbiguousEnd` naming no label.
 - `Schema` gains the public field `defaults` (serialized only when not empty,
   so earlier schemas and checkpoints still load) and no longer implements
   `Eq`, since a default is a `Value`.

@@ -16,7 +16,8 @@ use crate::update::Update;
 use crate::value::NodeId;
 
 /// Runs `graph` from `state` (and `cursor`, when resuming) until it ends,
-/// pauses, is cancelled or fails.
+/// pauses, is cancelled or fails. A cursor naming a node the graph does not
+/// hold fails the run (`UnknownNode`), an empty cursor too (`EmptyCursor`).
 ///
 /// A superstep runs its nodes together and is applied as a whole: when one of
 /// them fails, its updates are refused, or the edges or the end cannot be
@@ -55,6 +56,9 @@ pub(crate) async fn run_nested(
     inbox: &mut Inbox,
 ) -> Result<Outcome, RunFailure> {
     let (mut active, mut deferred) = match cursor {
+        Some(cursor) if cursor.is_empty() => {
+            return Err(fail(state, ctx, &[], &[], GraphError::EmptyCursor));
+        }
         Some(cursor) => (cursor.active, cursor.deferred),
         None => (vec![graph.entry().clone()], Vec::new()),
     };

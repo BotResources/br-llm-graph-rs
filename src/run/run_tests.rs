@@ -108,6 +108,34 @@ async fn given_two_distinct_ends_in_one_superstep_when_run_then_ambiguous() {
 }
 
 #[tokio::test]
+async fn given_an_empty_cursor_when_run_then_empty_cursor_error_and_nothing_runs() {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(nid("a"), set_count_node(3))
+        .edge(nid("a"), Always(end("done")))
+        .build()
+        .unwrap();
+    let (_sender, mut inbox) = channel();
+    let failure = run(
+        &graph,
+        &config(),
+        base_state(),
+        Some(crate::run::Cursor::default()),
+        &ctx(),
+        &mut inbox,
+    )
+    .await
+    .err()
+    .unwrap();
+    assert!(matches!(
+        failure.error,
+        crate::error::GraphError::EmptyCursor
+    ));
+    assert_eq!(failure.checkpoint.state.int(&key("count")).unwrap(), 0);
+    assert!(failure.checkpoint.cursor.is_empty());
+}
+
+#[tokio::test]
 async fn given_two_nodes_set_same_key_when_run_then_declaration_order_wins() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("start"))

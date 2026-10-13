@@ -96,6 +96,7 @@ pub enum GraphError {
     AmbiguousEnd {
         labels: Vec<EndLabel>,
     },
+    EmptyCursor,
     ToolNotCovered {
         name: ToolName,
     },
@@ -276,6 +277,9 @@ impl std::fmt::Display for GraphError {
                     labels.join(", ")
                 )
             }
+            GraphError::EmptyCursor => {
+                f.write_str("the run was given an empty cursor: no node to run")
+            }
             GraphError::ToolNotCovered { name } => {
                 write!(
                     f,
@@ -444,6 +448,7 @@ impl std::error::Error for GraphError {
             | GraphError::EmptyEdge { .. }
             | GraphError::MapKeyMismatch { .. }
             | GraphError::AmbiguousEnd { .. }
+            | GraphError::EmptyCursor
             | GraphError::ToolNotCovered { .. }
             | GraphError::ToolCoveredTwice { .. }
             | GraphError::ToolNotDeclared { .. }
