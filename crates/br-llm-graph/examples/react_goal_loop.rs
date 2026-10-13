@@ -1,3 +1,8 @@
+//! A goal loop around a ReAct agent called with `SubGraph`: after each
+//! answer, a goal node asks a judge model whether the goal is achieved and
+//! either ends the run or calls the agent again on the same history, up to
+//! three tries.
+
 #[allow(dead_code)]
 mod common;
 
@@ -5,9 +10,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use br_llm_graph::{
-    Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Kind, LlmNode, Model,
-    NodeFuture, NodeId, Outcome, OutputMode, ReactLoop, Request, Schema, Source, State, Target,
-    ToolCalls, Value, channel, complete, run, structured, wire,
+    Always, Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Input, Kind, Model,
+    NodeFuture, NodeId, Outcome, Output, OutputMode, ReactAgent, Request, Schema, Source, State,
+    SubGraph, Target, ToolCalls, Value, channel, complete, run, structured, wire,
 };
 use br_llm_messages::{Author, Conversation};
 use serde::Deserialize;
@@ -38,30 +43,35 @@ async fn main() {
         structured_step(json!({ "achieved": true })),
     ]));
 
-    let llm = LlmNode {
-        key: key("chat"),
+    // Input `history`; configuration `base`. No tools: each call is one
+    // model reply.
+    let agent = ReactAgent {
         author: Author::new("agent").expect("author"),
         model: agent_model,
         system: vec![Source::Config(key("base"))],
-        tools: Vec::new(),
-        enabled: None,
         output: OutputMode::Text,
-        thinking: None,
-    };
-    let react = ReactLoop {
-        llm: NodeId::new("llm").expect("id"),
+        tools: Vec::new(),
         tool_nodes: Vec::new(),
-        after: Target::Node(NodeId::new("goal").expect("id")),
         tool_concurrency: None,
         round_limit: None,
-    };
+        thinking: None,
+        enabled: None,
+        inputs: Vec::new(),
+    }
+    .graph()
+    .expect("agent graph");
+    let call = SubGraph::call(agent)
+        .input(key("history"), Input::From(key("chat")))
+        .config(key("base"), Input::Config(key("base")))
+        .output(key("history"), Output::Set(key("chat")));
 
-    let graph = react
-        .add(
-            GraphBuilder::new(schema.clone()).entry(NodeId::new("llm").expect("id")),
-            llm,
+    let graph = GraphBuilder::new(schema.clone())
+        .entry(NodeId::new("agent").expect("id"))
+        .subgraph(NodeId::new("agent").expect("id"), call)
+        .edge(
+            NodeId::new("agent").expect("id"),
+            Always(Target::Node(NodeId::new("goal").expect("id"))),
         )
-        .expect("partition")
         .node(NodeId::new("goal").expect("id"), goal_node(goal_model))
         .edge(NodeId::new("goal").expect("id"), goal_edge())
         .build()
@@ -138,7 +148,7 @@ fn goal_edge() -> impl Edge {
         } else if num_iter >= 3 {
             Ok(vec![Target::End(EndLabel::new("gave_up").expect("label"))])
         } else {
-            Ok(vec![Target::Node(NodeId::new("llm").expect("id"))])
+            Ok(vec![Target::Node(NodeId::new("agent").expect("id"))])
         }
     })
 }

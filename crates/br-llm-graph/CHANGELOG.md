@@ -348,7 +348,11 @@ form to decide whether a version ships.
 - `serde_json` is built with `preserve_order`: JSON objects keep the order
   of their keys, so a schema lists its properties in the order written.
 - Examples `react_agent` and `generator_critic` show the graph forms above
-  instead of hand-built loops.
+  instead of hand-built loops, and so do `external_message`, `skills`,
+  `background_task` and `react_goal_loop`: each builds its agent with
+  `ReactAgent`, run on its own or called with `SubGraph`. With `ReactAgent`
+  a `Source::State` key is a string, so `skills` holds the loaded skill's
+  prompt in a string instead of a list.
 - Depends on `br-llm-messages` 0.2.0: nothing in a `<message>` frame is
   escaped any more; the body and the `author` and `kind` attributes are
   rendered verbatim.

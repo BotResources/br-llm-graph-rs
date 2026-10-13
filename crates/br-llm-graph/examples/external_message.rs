@@ -1,3 +1,7 @@
+//! Messages that reach a ReAct agent from outside its run: a user note sent
+//! through the inbox while a tool call is open, then a message of an upper
+//! agent added to the history the host saved before running the agent again.
+
 #[allow(dead_code)]
 mod common;
 
@@ -5,9 +9,8 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use br_llm_graph::{
-    Config, EndLabel, GraphBuilder, Kind, LlmNode, Model, ModelError, ModelFuture, NodeId, Outcome,
-    OutputMode, ReactLoop, Request, Schema, Source, State, StreamSink, Target, Update, Value,
-    channel, run,
+    Config, Model, ModelError, ModelFuture, Outcome, OutputMode, ReactAgent, Request, Source,
+    StreamSink, Update, Value, channel, run,
 };
 use br_llm_messages::{
     Author, Conversation, Step, Text, UserBlock, UserInput, UserSource, WireMessage,
@@ -54,11 +57,6 @@ impl Model for PrintingModel {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let schema = Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .config(key("base"), Kind::Str)
-        .build();
-
     let model: Arc<dyn Model> = Arc::new(PrintingModel::new(
         "model",
         vec![
@@ -68,47 +66,38 @@ async fn main() {
         ],
     ));
 
-    let llm = LlmNode {
-        key: key("chat"),
+    // Input `history`; configuration `base` (the system prompt).
+    let graph = ReactAgent {
         author: Author::new("agent").expect("author"),
         model,
         system: vec![Source::Config(key("base"))],
-        tools: vec![Arc::new(EchoTool)],
-        enabled: None,
         output: OutputMode::Text,
-        thinking: None,
-    };
-    let react = ReactLoop {
-        llm: NodeId::new("llm").expect("id"),
-        tool_nodes: vec![(NodeId::new("tools").expect("id"), vec![Arc::new(EchoTool)])],
-        after: Target::End(EndLabel::new("done").expect("label")),
+        tools: vec![Arc::new(EchoTool)],
+        tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
-    };
-    let graph = react
-        .add(
-            GraphBuilder::new(schema.clone()).entry(NodeId::new("llm").expect("id")),
-            llm,
-        )
-        .expect("partition")
-        .build()
-        .expect("build");
+        thinking: None,
+        enabled: None,
+        inputs: Vec::new(),
+    }
+    .graph()
+    .expect("agent graph");
 
     let mut config_values = BTreeMap::new();
     config_values.insert(key("base"), Value::str("You are an agent."));
-    let config = Config::new(&schema, config_values).expect("config");
+    let config = Config::new(graph.schema(), config_values).expect("config");
 
     let mut chat = Conversation::new();
     chat.push_input(user("Do the task."));
-    let mut values = BTreeMap::new();
-    values.insert(key("chat"), Value::conversation(chat));
-    let first_state = State::new(schema.clone(), values).expect("state");
+    let first_state = graph
+        .start_state([(key("history"), Value::conversation(chat))])
+        .expect("start state");
 
     let ctx = context();
 
     println!("external_message: first run (a user note arrives while the tool call is open)");
     let (sender, mut inbox) = channel();
-    sender.send(key("chat"), user("Actually, also mention supersteps."));
+    sender.send(key("history"), user("Actually, also mention supersteps."));
     let outcome = run(&graph, &config, first_state, None, &ctx, &mut inbox).await;
     let Ok(Outcome::Finished { state, end }) = outcome else {
         println!("external_message: first run did not finish cleanly");
@@ -128,7 +117,7 @@ async fn main() {
     .expect("input");
     relaunch_state
         .apply_batch(&[Update::Input {
-            key: key("chat"),
+            key: key("history"),
             input: supervisor,
         }])
         .expect("apply");

@@ -1,3 +1,8 @@
+//! A ReAct agent that starts background work and returns at once, called
+//! with `SubGraph`. After the agent, a gate ends the run `waiting` until the
+//! completion arrives through the session's inbox as a runtime input; the
+//! next run gives it to the agent and ends `done`.
+
 #[allow(dead_code)]
 mod common;
 
@@ -5,8 +10,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use br_llm_graph::{
-    Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Kind, LlmNode, NodeFuture,
-    NodeId, Outcome, OutputMode, ReactLoop, Schema, Session, Source, State, Target, Value,
+    Config, Edge, EndLabel, FnEdge, GraphBuilder, Input, Kind, NodeId, Outcome, Output, OutputMode,
+    ReactAgent, Schema, Session, Source, State, SubGraph, Target, Value,
 };
 use br_llm_messages::{Author, Conversation, Entry, UserSource};
 
@@ -15,12 +20,6 @@ use serde_json::json;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let schema = Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("pending_tasks"), Kind::list(Kind::Str))
-        .config(key("base"), Kind::Str)
-        .build();
-
     let model = Arc::new(common::ScriptedModel::new(vec![
         tool_call_step("c1", "start_task", json!({})),
         text_step("Task started; I will wait."),
@@ -29,36 +28,44 @@ async fn main() {
 
     let start_task = Arc::new(StartTaskTool {
         sender: Arc::new(Mutex::new(None)),
-        chat: key("chat"),
+        chat: key("history"),
         pending: key("pending_tasks"),
     });
 
-    let llm = LlmNode {
-        key: key("chat"),
+    // Inputs `history` and `pending_tasks` (written by the tool);
+    // configuration `base`.
+    let agent = ReactAgent {
         author: Author::new("agent").expect("author"),
         model,
         system: vec![Source::Config(key("base"))],
-        tools: vec![start_task.clone()],
-        enabled: None,
         output: OutputMode::Text,
-        thinking: None,
-    };
-    let react = ReactLoop {
-        llm: NodeId::new("llm").expect("id"),
-        tool_nodes: vec![(NodeId::new("tools").expect("id"), vec![start_task])],
-        after: Target::Node(NodeId::new("gate").expect("id")),
+        tools: vec![start_task],
+        tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
-    };
+        thinking: None,
+        enabled: None,
+        inputs: vec![(key("pending_tasks"), Kind::list(Kind::Str))],
+    }
+    .graph()
+    .expect("agent graph");
+
+    let schema = Schema::builder()
+        .state(key("chat"), Kind::Conversation)
+        .state(key("pending_tasks"), Kind::list(Kind::Str))
+        .config(key("base"), Kind::Str)
+        .build();
+    let call = SubGraph::call(agent)
+        .input(key("history"), Input::From(key("chat")))
+        .input(key("pending_tasks"), Input::From(key("pending_tasks")))
+        .config(key("base"), Input::Config(key("base")))
+        .output(key("history"), Output::Set(key("chat")));
     let graph = Arc::new(
-        react
-            .add(
-                GraphBuilder::new(schema.clone()).entry(NodeId::new("llm").expect("id")),
-                llm,
-            )
-            .expect("partition")
-            .node(NodeId::new("gate").expect("id"), noop())
-            .edge(NodeId::new("gate").expect("id"), gate_edge())
+        GraphBuilder::new(schema.clone())
+            .entry(NodeId::new("agent").expect("id"))
+            .subgraph(NodeId::new("agent").expect("id"), call)
+            .edge(NodeId::new("agent").expect("id"), gate_edge())
+            .input(key("chat"))
             .build()
             .expect("build"),
     );
@@ -97,12 +104,6 @@ fn report(label: &str, outcome: &Outcome) {
         Outcome::Paused { .. } => println!("background_task {label}: paused"),
         Outcome::Cancelled { .. } => println!("background_task {label}: cancelled"),
     }
-}
-
-fn noop() -> impl br_llm_graph::Node {
-    FnNode::new(|_s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
-        Box::pin(async { Ok(Vec::new()) })
-    })
 }
 
 fn gate_edge() -> impl Edge {
