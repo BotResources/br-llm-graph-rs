@@ -235,9 +235,9 @@ form to decide whether a version ships.
     `is_validated` (bool), `nb_generations` (int, the generator answers in
     `conversation` since its last user input), and the generator's
     round-limit flag when it has one, true when the round limit was reached
-    in at least one generation of this call. The histories are not outputs: a host
-    that resumes a call gives back the histories it saved from the observer.
-    The run ends with `validated` or `exhausted`.
+    in at least one generation of this call. The histories are not outputs: a
+    host that resumes a call gives back the histories it saved from the
+    observer. The run ends with `validated` or `exhausted`.
   - `generator_history` holds the generator's whole traffic and the critiques;
     `conversation` holds the user input, the answers (final step only) and the
     critiques. A critique is a turn of the critic holding one text step, the
@@ -258,8 +258,9 @@ form to decide whether a version ships.
     verdict and the build checks the schema: an object (`"type": "object"`)
     whose properties include `is_valid` (boolean) and `message` (string), both
     required, else `VerdictSchemaMismatch`. A missing structured block, a
-    verdict that cannot be read or a rejection with an empty `message` fails
-    the run with `Structured`.
+    block that does not read as the default verdict (without a `reader`) or a
+    rejection with an empty `message` fails the run with `Structured`; an
+    error of the `reader` reaches the caller as the reader returned it.
   - `prepare` (`Option<Box<dyn Node>>`): when set, the graph's entry, run once
     before the routing. It may do I/O (it holds its capabilities as fields)
     and writes through ordinary updates, typically the opening message into
