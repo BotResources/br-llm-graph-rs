@@ -112,6 +112,9 @@ pub enum GraphError {
     EnabledKeyMismatch {
         key: Key,
     },
+    SourceKeyMismatch {
+        key: Key,
+    },
     Model {
         message: String,
     },
@@ -197,6 +200,9 @@ pub enum GraphError {
         key: Key,
     },
     SubGraphTargetMismatch {
+        key: Key,
+    },
+    SubGraphSetTwice {
         key: Key,
     },
     SubGraphFailed {
@@ -301,6 +307,10 @@ impl std::fmt::Display for GraphError {
             GraphError::EnabledKeyMismatch { key } => {
                 write!(f, "enabled key {key} is not a list of strings state key")
             }
+            GraphError::SourceKeyMismatch { key } => write!(
+                f,
+                "source key {key} is not a declared key holding a string or a list of strings"
+            ),
             GraphError::Model { message } => write!(f, "model call failed: {message}"),
             GraphError::Structured { message } => {
                 write!(f, "structured output could not be read: {message}")
@@ -397,6 +407,9 @@ impl std::fmt::Display for GraphError {
                 f,
                 "the call writes into {key}, which is missing or cannot take the value"
             ),
+            GraphError::SubGraphSetTwice { key } => {
+                write!(f, "the call sets {key} from two outputs")
+            }
             GraphError::SubGraphFailed { source } => write!(f, "the called graph failed: {source}"),
             GraphError::SubGraphSuspended => {
                 f.write_str("the called graph stopped before its end (paused or cancelled)")
@@ -454,6 +467,7 @@ impl std::error::Error for GraphError {
             | GraphError::ToolNotDeclared { .. }
             | GraphError::PendingToolUnsatisfiable { .. }
             | GraphError::EnabledKeyMismatch { .. }
+            | GraphError::SourceKeyMismatch { .. }
             | GraphError::Model { .. }
             | GraphError::Structured { .. }
             | GraphError::LimitKeyMismatch { .. }
@@ -482,6 +496,7 @@ impl std::error::Error for GraphError {
             | GraphError::SubGraphConfigMismatch { .. }
             | GraphError::SubGraphNotAnOutput { .. }
             | GraphError::SubGraphTargetMismatch { .. }
+            | GraphError::SubGraphSetTwice { .. }
             | GraphError::SubGraphSuspended
             | GraphError::MapBodyNotAppend { .. }
             | GraphError::MapBodySet { .. }

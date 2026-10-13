@@ -7,7 +7,7 @@ use crate::graph::{CheckSite, Context, Node, NodeFuture, Switch};
 use crate::react::helpers::{check_enabled, complete, enabled_names, last_turn_by_author, wire};
 use crate::react::model::{Model, OutputMode, Request, ToolCalls, ToolSpec};
 use crate::react::tool::Tool;
-use crate::state::{Config, Schema, State, Value};
+use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
 
@@ -38,6 +38,22 @@ impl Source {
         Ok(self.texts(state, config)?.join("\n\n"))
     }
 
+    /// A `State` key must be a declared state key, a `Config` key a declared
+    /// configuration key, holding a string or a list of strings
+    /// (`SourceKeyMismatch`).
+    pub(crate) fn check(&self, schema: &Schema) -> Result<(), GraphError> {
+        let (key, kind) = match self {
+            Source::State(key) => (key, schema.state.get(key)),
+            Source::Config(key) => (key, schema.config.get(key)),
+            Source::Const(_) | Source::Fn(_) => return Ok(()),
+        };
+        match kind {
+            Some(Kind::Str) => Ok(()),
+            Some(Kind::List { element }) if **element == Kind::Str => Ok(()),
+            Some(_) | None => Err(GraphError::SourceKeyMismatch { key: key.clone() }),
+        }
+    }
+
     /// The texts this source gives: one, or one per item of a list.
     pub(crate) fn texts(&self, state: &State, config: &Config) -> Result<Vec<String>, GraphError> {
         let mut parts = Vec::new();
@@ -51,6 +67,11 @@ impl Source {
     }
 }
 
+/// Calls a model for `author` on the conversation `key` and adds the reply.
+///
+/// At build, the node checks its `enabled` key (`EnabledKeyMismatch`), the
+/// keys its `system` sources read (`SourceKeyMismatch`) and its `thinking`
+/// switch (`SwitchKeyMismatch`).
 pub struct LlmNode {
     pub key: Key,
     pub author: Author,
@@ -74,6 +95,9 @@ impl Node for LlmNode {
 
     fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
         check_enabled(schema, self.enabled.as_ref())?;
+        for source in &self.system {
+            source.check(schema)?;
+        }
         match &self.thinking {
             Some(switch) => switch.check(schema),
             None => Ok(()),
@@ -153,7 +177,7 @@ fn append_strings(key: &Key, value: &Value, parts: &mut Vec<String>) -> Result<(
                     other => {
                         return Err(GraphError::KindMismatch {
                             key: key.clone(),
-                            expected: crate::state::Kind::Str,
+                            expected: Kind::Str,
                             found: other.tag(),
                         });
                     }
@@ -163,7 +187,7 @@ fn append_strings(key: &Key, value: &Value, parts: &mut Vec<String>) -> Result<(
         }
         other => Err(GraphError::KindMismatch {
             key: key.clone(),
-            expected: crate::state::Kind::Str,
+            expected: Kind::Str,
             found: other.tag(),
         }),
     }

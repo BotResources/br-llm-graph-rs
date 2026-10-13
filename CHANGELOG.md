@@ -38,7 +38,10 @@ form to decide whether a version ships.
   fetched belongs in a node that writes it to the state; it reads only keys
   the graph declares otherwise. `Source::resolve(&State, &Config)` gives the
   text of any source (a list of strings joined by a blank line); `LlmNode`
-  reads its `system` through it. `Config(Key)` and `State(Key)` are unchanged.
+  reads its `system` through it. `Config(Key)` and `State(Key)` are unchanged
+  at run time; at build, `LlmNode` refuses a `State` key that is not a state
+  key, or a `Config` key that is not a configuration key, holding a string or
+  a list of strings (`SourceKeyMismatch`).
 - The `Model` contract, documented on the trait: for `OutputMode::Structured`,
   `complete` returns a step whose structured block is valid against the
   schema, or an error. Validation and retries belong to the model adapter; the
@@ -53,7 +56,9 @@ form to decide whether a version ships.
   (`EnabledKeyMismatch`).
 - `ToolNode::max_concurrency` and `ReactLoop::tool_concurrency`: at most that
   many pending calls of one tool node run at once; the results keep the call
-  order. `None` runs every call at once, as before.
+  order. `None` runs every call at once, as before. A key that is not an int
+  configuration key is refused at build (`LimitKeyMismatch`), by `ReactLoop`
+  and by `ToolNode::check` alike.
 - `ReactLoop::round_limit` (`RoundLimit`, `OnLimit`): bounds the tool rounds of
   one agent turn. A round is one reply that calls tools plus the execution of
   all its calls; the count starts again with each new turn of the agent. When
@@ -318,7 +323,9 @@ form to decide whether a version ships.
   `SubGraphInputTwice`, `SubGraphNotAnInput`, `SubGraphSourceMismatch`,
   `SubGraphConfigUnmapped`, `SubGraphConfigTwice`, `SubGraphNotAConfig`,
   `SubGraphConfigMismatch`, `SubGraphNotAnOutput`, `SubGraphTargetMismatch`,
-  `CaptureMismatch` and `MapBodySet`, each naming the key.
+  `SubGraphSetTwice` (two outputs of one call, end label included, that `Set`
+  the same caller key), `CaptureMismatch` and `MapBodySet`, each naming the
+  key.
 
 ### Changed
 

@@ -36,7 +36,8 @@ fn names(error: &GraphError) -> Option<Key> {
         | GraphError::SubGraphConfigUnmapped { key, .. }
         | GraphError::SubGraphConfigMismatch { key, .. }
         | GraphError::SubGraphNotAnOutput { key, .. }
-        | GraphError::SubGraphTargetMismatch { key, .. } => Some(key.clone()),
+        | GraphError::SubGraphTargetMismatch { key, .. }
+        | GraphError::SubGraphSetTwice { key, .. } => Some(key.clone()),
         _ => None,
     }
 }
@@ -190,4 +191,24 @@ fn given_an_end_label_target_that_is_not_text_when_built_then_target_mismatch() 
             Output::Append(_) => assert!(parent_with(call).is_ok()),
         }
     }
+}
+
+#[test]
+fn given_two_outputs_that_set_one_caller_key_when_built_then_set_twice() {
+    for call in [
+        refine_call().output(key("answer"), Output::Set(key("result"))),
+        refine_call().output_end_label(Output::Set(key("result"))),
+    ] {
+        let error = refused(call);
+        assert!(
+            matches!(error, GraphError::SubGraphSetTwice { .. }),
+            "{error}"
+        );
+        assert_eq!(names(&error), Some(key("result")));
+    }
+    let appends = refine_call()
+        .output(key("answer"), Output::Append(key("results")))
+        .output(key("answer"), Output::Append(key("results")))
+        .output_end_label(Output::Append(key("results")));
+    assert!(parent_with(appends).is_ok());
 }

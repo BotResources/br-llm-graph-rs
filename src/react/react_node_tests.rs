@@ -213,6 +213,74 @@ fn given_an_enabled_key_that_is_not_a_list_of_strings_when_built_then_refused() 
     }
 }
 
+/// The build of a graph whose single node is `node`.
+fn built_alone(node: impl crate::graph::Node + 'static) -> crate::error::GraphError {
+    crate::testkit::refusal(
+        GraphBuilder::new(schema())
+            .entry(nid("only"))
+            .node(nid("only"), node)
+            .edge(
+                nid("only"),
+                Always(Target::End(EndLabel::new("done").unwrap())),
+            )
+            .build(),
+    )
+}
+
+#[test]
+fn given_a_tool_concurrency_on_a_key_that_is_not_an_int_configuration_key_when_built_then_refused()
+{
+    for name in ["base", "missing"] {
+        let tools = ToolNode {
+            key: key("chat"),
+            author: author(),
+            tools: vec![Arc::new(EchoTool)],
+            max_concurrency: Some(crate::graph::Limit::Config(key(name))),
+            enabled: None,
+        };
+        assert!(matches!(
+            built_alone(tools),
+            crate::error::GraphError::LimitKeyMismatch { key: found } if found == key(name)
+        ));
+    }
+}
+
+#[test]
+fn given_a_system_source_on_a_key_that_holds_no_text_when_built_then_refused() {
+    let model: Arc<dyn Model> = Arc::new(ScriptedModel::new(Vec::new()));
+    let llm = |source: Source| LlmNode {
+        key: key("chat"),
+        author: author(),
+        model: model.clone(),
+        system: vec![Source::Config(key("base")), source],
+        tools: Vec::new(),
+        enabled: None,
+        output: OutputMode::Text,
+        thinking: None,
+    };
+    for (source, name) in [
+        (Source::State(key("chat")), "chat"),
+        (Source::State(key("missing")), "missing"),
+        (Source::State(key("base")), "base"),
+        (Source::Config(key("log")), "log"),
+        (Source::Config(key("missing")), "missing"),
+    ] {
+        assert!(matches!(
+            built_alone(llm(source)),
+            crate::error::GraphError::SourceKeyMismatch { key: found } if found == key(name)
+        ));
+    }
+    let accepted = GraphBuilder::new(schema())
+        .entry(nid("only"))
+        .node(nid("only"), llm(Source::State(key("log"))))
+        .edge(
+            nid("only"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .build();
+    assert!(accepted.is_ok());
+}
+
 #[tokio::test]
 async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed() {
     let state = state_with_call(tool_call_step("c1", "echo", json!({})));

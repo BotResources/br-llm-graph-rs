@@ -18,6 +18,10 @@ use crate::value::Key;
 /// With `enabled` (the `enabled` key of the `LlmNode`), a call naming a tool
 /// the key does not hold is not executed: it is answered with an error result
 /// saying so, and the turn goes on.
+///
+/// At build, `enabled` must be a list-of-strings state key
+/// (`EnabledKeyMismatch`) and the key of `max_concurrency` an int
+/// configuration key (`LimitKeyMismatch`).
 pub struct ToolNode {
     pub key: Key,
     pub author: Author,
@@ -119,7 +123,11 @@ impl Node for ToolNode {
     }
 
     fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
-        check_enabled(schema, self.enabled.as_ref())
+        check_enabled(schema, self.enabled.as_ref())?;
+        match &self.max_concurrency {
+            Some(limit) => limit.check(schema),
+            None => Ok(()),
+        }
     }
 }
 

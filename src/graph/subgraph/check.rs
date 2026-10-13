@@ -15,6 +15,7 @@ pub(crate) fn check_call(
     check_inputs(schema, call)?;
     check_config(schema, call)?;
     let outputs = &call.graph.signature().outputs;
+    let mut set: BTreeSet<&Key> = BTreeSet::new();
     for (child_key, target) in &call.outputs {
         let kind = outputs
             .get(child_key)
@@ -22,9 +23,11 @@ pub(crate) fn check_call(
                 key: child_key.clone(),
             })?;
         check_target(schema, kind, target, appends_only)?;
+        set_once(&mut set, target)?;
     }
     if let Some(target) = &call.end_label {
         check_target(schema, &Kind::Str, target, appends_only)?;
+        set_once(&mut set, target)?;
     }
     if let OnFailure::Capture(captures) = &call.on_failure {
         for capture in captures {
@@ -32,6 +35,16 @@ pub(crate) fn check_call(
         }
     }
     Ok(())
+}
+
+/// Two outputs of one call never `Set` the same caller key.
+fn set_once<'a>(set: &mut BTreeSet<&'a Key>, target: &'a Output) -> Result<(), GraphError> {
+    match target {
+        Output::Set(key) if !set.insert(key) => {
+            Err(GraphError::SubGraphSetTwice { key: key.clone() })
+        }
+        Output::Set(_) | Output::Append(_) => Ok(()),
+    }
 }
 
 fn check_inputs(schema: &Schema, call: &SubGraph) -> Result<(), GraphError> {
