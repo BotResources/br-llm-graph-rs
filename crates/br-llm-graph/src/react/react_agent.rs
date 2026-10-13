@@ -1,0 +1,257 @@
+use std::sync::Arc;
+
+use br_llm_messages::Author;
+
+use crate::error::GraphError;
+use crate::graph::{
+    Always, Context, Count, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
+};
+use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
+use crate::react::llm_node::{LlmNode, Source};
+use crate::react::model::{Model, OutputMode};
+use crate::react::react_loop::ReactLoop;
+use crate::react::round_limit::{OnLimit, RoundLimit};
+use crate::react::tool::Tool;
+use crate::state::{Config, Kind, Schema, SchemaBuilder, State, Value};
+use crate::update::Update;
+use crate::value::{EndLabel, Key, NodeId};
+
+/// A ReAct agent as a graph, to call with `SubGraph` or run on its own.
+///
+/// The graph is the ReAct loop on the key `history`: the model call, then,
+/// while the reply calls tools, the tool nodes that run the calls and the
+/// model call again; when a reply calls no tool, a node reads the answer and
+/// the graph ends with `done`.
+///
+/// - Inputs: `history` (conversation), the agent's chat history: a new call is
+///   a history holding one user input, a resumed call the history the host
+///   saved. The loop always enters through the model call. Each
+///   `Source::State` key of `system` is a string input too, and so is the
+///   `enabled` key, a list of strings, when set. Each key of `inputs` is an
+///   input of its kind, for the tools to read through the state they
+///   receive.
+/// - Outputs: `history` (the conversation after the run), `answer` (string,
+///   the final step of the agent's last turn: the JSON text of its structured
+///   block when it has one, else its text blocks joined verbatim; empty when
+///   there is no final step) and, when the round limit's `OnLimit` is
+///   `Continue` or `End`, its `flag` (bool, true when the limit was reached).
+///   With `End`, the final step may be the limit's closing step.
+/// - Configuration: each `Source::Config` key of `system` (string), the
+///   `thinking` switch, the tool concurrency and the round limit when they
+///   read a configuration key.
+///
+/// With `enabled`, only the tools the key names are offered to the model, and
+/// a call naming another tool is answered with an error result, never
+/// executed. A key read by several sources of `system` is declared once; a
+/// source, `enabled` or `inputs` key the graph already has, the round limit's
+/// flag included, is refused (`KeyCollision`). A flag that names `history` or
+/// `answer` is refused (`FlagKeyMismatch`).
+///
+/// `output` is sent on every model call; with `OutputMode::Structured`, the
+/// final step carries the structured block and reaches the caller as the
+/// JSON text in `answer`.
+///
+/// Each tool of `tool_nodes` must be one of `tools` (`ToolNotDeclared`), and
+/// each of `tools` run by exactly one tool node (`ToolNotCovered`,
+/// `ToolCoveredTwice`). A pending call no tool node runs fails the run
+/// (`PendingToolUnsatisfiable`).
+///
+/// The round limit counts the rounds of the agent's open turn (see
+/// `RoundLimit`).
+pub struct ReactAgent {
+    pub author: Author,
+    pub model: Arc<dyn Model>,
+    pub system: Vec<Source>,
+    pub output: OutputMode,
+    pub tools: Vec<Arc<dyn Tool>>,
+    /// How the tools are split between tool nodes. Empty: one node, `tools`,
+    /// runs them all.
+    pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
+    /// At most that many tool calls run at once, across all the tool nodes
+    /// together. `None`: every call at once.
+    pub tool_concurrency: Option<Limit>,
+    pub round_limit: Option<RoundLimit>,
+    pub thinking: Option<Switch>,
+    /// A state key holding the names of the tools offered on this run.
+    pub enabled: Option<Key>,
+    /// Extra state keys the caller maps per run, read by the tools.
+    pub inputs: Vec<(Key, Kind)>,
+}
+
+impl ReactAgent {
+    pub fn graph(self) -> Result<Arc<Graph>, GraphError> {
+        let history = Key::new("history")?;
+        let answer = Key::new("answer")?;
+        let llm = NodeId::new("llm")?;
+        let answer_node = NodeId::new("answer")?;
+
+        let mut schema = Schema::builder()
+            .state(history.clone(), Kind::Conversation)
+            .state(answer.clone(), Kind::Str);
+        schema = declare_switch(schema, self.thinking.as_ref());
+        schema = declare_limit(schema, self.tool_concurrency.as_ref());
+        let flag = self.round_limit.as_ref().and_then(round_limit_flag);
+        if let Some(round_limit) = &self.round_limit {
+            schema = declare_limit(schema, Some(&round_limit.max_rounds));
+        }
+        let mut schema = schema.build();
+        if let Some(flag) = &flag {
+            schema.state.entry(flag.clone()).or_insert(Kind::Bool);
+        }
+        let mut inputs = vec![history.clone()];
+        inputs.extend(declare_sources(&mut schema, &self.system)?);
+        if let Some(key) = &self.enabled {
+            declare_input(&mut schema, key, Kind::list(Kind::Str))?;
+            inputs.push(key.clone());
+        }
+        for (key, kind) in self.inputs {
+            declare_input(&mut schema, &key, kind)?;
+            inputs.push(key);
+        }
+
+        let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {
+            vec![(NodeId::new("tools")?, self.tools.clone())]
+        } else {
+            self.tool_nodes
+        };
+        let react = ReactLoop {
+            llm: llm.clone(),
+            tool_nodes,
+            after: Target::Node(answer_node.clone()),
+            tool_concurrency: self.tool_concurrency,
+            round_limit: self.round_limit,
+        };
+        let llm_node = LlmNode {
+            key: history.clone(),
+            author: self.author.clone(),
+            model: self.model,
+            system: self.system,
+            tools: self.tools,
+            enabled: self.enabled,
+            output: self.output,
+            thinking: self.thinking,
+        };
+
+        let mut builder = GraphBuilder::new(schema).entry(llm);
+        for key in inputs {
+            builder = builder.input(key);
+        }
+        builder = builder.output(history.clone()).output(answer.clone());
+        if let Some(flag) = flag {
+            builder = builder.output(flag);
+        }
+        let builder = react.add(builder, llm_node)?;
+        let graph = builder
+            .node(
+                answer_node.clone(),
+                AnswerNode {
+                    history,
+                    answer,
+                    author: self.author,
+                },
+            )
+            .edge(answer_node, Always(Target::End(EndLabel::new("done")?)))
+            .build()?;
+        Ok(Arc::new(graph))
+    }
+}
+
+/// Declares the configuration key a switch reads, as a bool.
+pub(crate) fn declare_switch(schema: SchemaBuilder, switch: Option<&Switch>) -> SchemaBuilder {
+    match switch {
+        Some(Switch::Config(key)) => schema.config(key.clone(), Kind::Bool),
+        Some(Switch::Fixed(_)) | None => schema,
+    }
+}
+
+/// Declares the configuration key a limit reads, as an int.
+pub(crate) fn declare_limit(schema: SchemaBuilder, limit: Option<&Limit>) -> SchemaBuilder {
+    match limit {
+        Some(Limit::Config(key)) => schema.config(key.clone(), Kind::Int),
+        Some(Limit::Fixed(_)) | None => schema,
+    }
+}
+
+/// Declares a state key the graph takes from its caller. A key the graph
+/// already has is refused.
+pub(crate) fn declare_input(schema: &mut Schema, key: &Key, kind: Kind) -> Result<(), GraphError> {
+    if schema.state.contains_key(key) {
+        return Err(GraphError::KeyCollision { key: key.clone() });
+    }
+    schema.state.insert(key.clone(), kind);
+    Ok(())
+}
+
+/// Declares the keys text sources read: each `State` key as a string input
+/// of the graph, each `Config` key as a string configuration key. A key
+/// several sources read is declared once; a key the graph already has is
+/// refused (`KeyCollision`). Gives the input keys, in order.
+pub(crate) fn declare_sources<'a>(
+    schema: &mut Schema,
+    sources: impl IntoIterator<Item = &'a Source>,
+) -> Result<Vec<Key>, GraphError> {
+    let mut inputs: Vec<Key> = Vec::new();
+    let mut configs: Vec<Key> = Vec::new();
+    for source in sources {
+        match source {
+            Source::State(key) if !inputs.contains(key) => {
+                declare_input(schema, key, Kind::Str)?;
+                inputs.push(key.clone());
+            }
+            Source::Config(key) if !configs.contains(key) => {
+                if schema.config.contains_key(key) {
+                    return Err(GraphError::KeyCollision { key: key.clone() });
+                }
+                schema.config.insert(key.clone(), Kind::Str);
+                configs.push(key.clone());
+            }
+            Source::State(_) | Source::Config(_) | Source::Const(_) | Source::Fn(_) => {}
+        }
+    }
+    Ok(inputs)
+}
+
+/// Declares the configuration key a count reads, as an int.
+pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuilder {
+    match count {
+        Count::Config(key) => schema.config(key.clone(), Kind::Int),
+        Count::Fixed(_) => schema,
+    }
+}
+
+/// The state key a round limit sets when it is reached, if any.
+pub(crate) fn round_limit_flag(round_limit: &RoundLimit) -> Option<Key> {
+    match &round_limit.on_limit {
+        OnLimit::Error => None,
+        OnLimit::Continue { flag, .. } | OnLimit::End { flag, .. } => Some(flag.clone()),
+    }
+}
+
+/// Sets `answer` to the text of the final step of the agent's last turn,
+/// empty when there is none.
+struct AnswerNode {
+    history: Key,
+    answer: Key,
+    author: Author,
+}
+
+impl Node for AnswerNode {
+    fn run<'a>(
+        &'a self,
+        state: &'a State,
+        _config: &'a Config,
+        _ctx: &'a Context,
+    ) -> NodeFuture<'a> {
+        Box::pin(async move {
+            let conversation = state.conversation(&self.history)?;
+            let answer = last_turn_by_author(conversation, &self.author)
+                .and_then(final_step)
+                .map(answer_text)
+                .unwrap_or_default();
+            Ok(vec![Update::Set {
+                key: self.answer.clone(),
+                value: Value::str(answer),
+            }])
+        })
+    }
+}

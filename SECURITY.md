@@ -24,5 +24,5 @@ guarantee of reward.
 
 ## Supported versions
 
-We support the latest tag (`v{version}`). Older tags receive no fixes; upgrade
+We support the latest tag of each crate (`{crate}/v{version}`). Older tags receive no fixes; upgrade
 to the latest.

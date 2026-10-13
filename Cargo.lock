@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "br-llm-graph"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "br-llm-messages",
  "futures-channel",
@@ -16,12 +16,18 @@ dependencies = [
 
 [[package]]
 name = "br-llm-messages"
-version = "0.1.0"
-source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=v0.1.0#7bcd7f8de3bab71f5010ef648464b4707c61d329"
+version = "0.2.0"
+source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=v0.2.0#53ad03633c1e8b90d62070c5f7ec67a1526e1b0c"
 dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "equivalent"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "futures-channel"
@@ -66,6 +72,22 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+
+[[package]]
+name = "indexmap"
+version = "2.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
+dependencies = [
+ "equivalent",
+ "hashbrown",
 ]
 
 [[package]]
@@ -140,6 +162,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap",
  "itoa",
  "memchr",
  "serde",
