@@ -9,7 +9,7 @@ form to decide whether a version ships.
 
 ## Unreleased
 
-## 0.3.0 - 2026-09-25
+## 0.3.0 - 2026-10-13
 
 ### Added
 
