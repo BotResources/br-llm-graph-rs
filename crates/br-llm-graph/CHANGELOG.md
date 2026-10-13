@@ -122,7 +122,9 @@ form to decide whether a version ships.
   calling node's occurrence; its state stays private and nothing is kept
   between two calls. `OnFailure::Propagate` (the default) fails the node with
   `SubGraphFailed`, whose `source()` is the child's `GraphError`. A nested run
-  that stops before its end gives `SubGraphSuspended`.
+  that stops before its end gives `SubGraphSuspended`, which
+  `OnFailure::Capture` does not capture; nobody holds the child's sender, so
+  this is a safety net.
 - `OnFailure::Capture(Vec<CaptureUpdate>)`: a call whose child fails returns
   declared updates instead of its outputs, and the run goes on. Each
   `CaptureUpdate` is `Set` or `Append` into a parent key, from a
@@ -203,8 +205,9 @@ form to decide whether a version ships.
   key read by several sources of `system` is declared once, and a source,
   `enabled` or `inputs` key the graph already has is refused at build
   (`KeyCollision`). The run ends with
-  `done`. A flag that names another key of the graph is refused
-  (`FlagKeyMismatch`).
+  `done`. A flag that names `history` or `answer` is refused
+  (`FlagKeyMismatch`); a source, `enabled` or `inputs` key that names the
+  flag is a key the graph already has (`KeyCollision`).
 - Example `react_agent`: the agent graph called through `SubGraph`, its
   thinking read from the caller's configuration.
 - `GeneratorCritic`: a generator and a critic writing in one shared history, as
@@ -275,8 +278,9 @@ form to decide whether a version ships.
     whose properties include `is_valid` (boolean) and `message` (string), both
     required, else `VerdictSchemaMismatch`. A missing structured block, a
     block that does not read as the default verdict (without a `reader`) or a
-    rejection with an empty `message` fails the run with `Structured`; an
-    error of the `reader` reaches the caller as the reader returned it.
+    rejection with a blank `message` (empty or whitespace only) fails the run
+    with `Structured`; an error of the `reader` reaches the caller as the
+    reader returned it.
   - `prepare` (`Option<Box<dyn Node>>`): when set, the graph's entry, run once
     before the routing. It may do I/O (it holds its capabilities as fields)
     and writes through ordinary updates, typically the opening message into
@@ -383,7 +387,7 @@ form to decide whether a version ships.
   append to several lists and they stay aligned. Any other update fails the
   map (`MapBodyNotAppend`), never silently dropped: the run-time safety net
   behind the build-time `MapBodySet`. A map run outside a graph, whose context
-  names no node, fails with `MapWithoutOccurrence`.
+  names no node, fails with `MapWithoutOccurrence` when it has an item to run.
 - A superstep is applied as a whole. When one of its nodes fails or panics,
   its updates are refused, or its edges or the end label cannot be resolved,
   nothing of it reaches the state: the failure checkpoint holds the state from

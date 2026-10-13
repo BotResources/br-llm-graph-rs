@@ -8,8 +8,8 @@ use crate::react::helpers::structured;
 use crate::react::llm_node::Source;
 use crate::state::{Config, State};
 
-/// The critic's judgement of one answer. `message` may be empty only when
-/// `is_valid` is true.
+/// The critic's judgement of one answer. `message` may be blank (empty or
+/// whitespace only) only when `is_valid` is true.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Verdict {
     pub is_valid: bool,
@@ -134,8 +134,8 @@ impl VerdictForm {
         }))
     }
 
-    /// Reads the verdict of the critic's step. A rejection with an empty
-    /// message is refused (`Structured`).
+    /// Reads the verdict of the critic's step. A rejection with a blank
+    /// message (empty or whitespace only) is refused (`Structured`).
     pub(crate) fn read(&self, step: &Step) -> Result<Verdict, GraphError> {
         let verdict = match self {
             VerdictForm::Override(VerdictOverride {
@@ -154,7 +154,7 @@ impl VerdictForm {
         };
         if !verdict.is_valid && verdict.message.trim().is_empty() {
             return Err(GraphError::Structured {
-                message: "a rejecting verdict carries an empty message".to_owned(),
+                message: "a rejecting verdict carries a blank message".to_owned(),
             });
         }
         Ok(verdict)

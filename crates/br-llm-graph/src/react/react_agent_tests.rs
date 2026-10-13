@@ -188,6 +188,29 @@ fn given_a_limit_flag_that_names_the_answer_when_built_then_flag_key_mismatch() 
     assert!(matches!(built, Err(GraphError::FlagKeyMismatch { .. })));
 }
 
+#[test]
+fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_collision() {
+    let model = Arc::new(LoggingModel::new(Vec::new()));
+    let on_limit = || OnLimit::End {
+        node: nid("limit"),
+        flag: key("topic"),
+    };
+    let source = ReactAgent {
+        system: vec![Source::State(key("topic"))],
+        ..limited(model.clone(), 1, on_limit())
+    };
+    let input = ReactAgent {
+        inputs: vec![(key("topic"), Kind::Bool)],
+        ..limited(model, 1, on_limit())
+    };
+    for agent in [source, input] {
+        assert!(matches!(
+            agent.graph(),
+            Err(GraphError::KeyCollision { ref key }) if *key == self::key("topic")
+        ));
+    }
+}
+
 #[tokio::test]
 async fn given_a_plain_answer_when_the_agent_runs_then_history_and_answer_come_back() {
     let model = Arc::new(LoggingModel::new(vec![text_step("hello there")]));

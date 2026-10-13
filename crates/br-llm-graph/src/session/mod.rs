@@ -112,6 +112,13 @@ impl Session {
             .with_pending(self.pending.clone())
     }
 
+    /// Runs once from the session's cursor, or from the entry when there is
+    /// none, with the session's pending writes, and keeps the outcome's
+    /// state, cursor and pending writes (a failure keeps its checkpoint).
+    ///
+    /// Not safe to cancel mid-run: dropping the future before it completes
+    /// leaves the session without its state, cursor and pending writes. Stop
+    /// a run through the sender (`Sender::cancel`) instead.
     pub async fn run_once(&mut self) -> Result<Outcome, GraphError> {
         let cursor = self.cursor.take();
         let state = std::mem::replace(&mut self.state, State::empty());
@@ -167,6 +174,12 @@ impl Session {
             .apply_batch(&[crate::update::Update::Input { key, input }])
     }
 
+    /// Serves the session until a cancel or a failure (see `Ended`).
+    ///
+    /// The session keeps a sender of its own, so its inbox never closes:
+    /// between runs, serving waits for a message for as long as none comes,
+    /// even after every sender the host holds is dropped. End it with
+    /// `Sender::cancel`.
     pub async fn serve(mut self, start: Start) -> Ended {
         if let Start::Now = start
             && let Some(ended) = self.pump().await

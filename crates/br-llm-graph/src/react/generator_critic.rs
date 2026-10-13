@@ -142,8 +142,8 @@ const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answ
 /// The critic answers a structured verdict, by default `thinking`,
 /// `is_valid` and `message` in that order, whatever its thinking switch (see
 /// `CriticSeat`). A missing structured block, a block that does not read as
-/// the default verdict (without a reader) or a rejection with an empty
-/// `message` fails the run with `Structured`; an error of a `VerdictReader`
+/// the default verdict (without a reader) or a rejection with a blank
+/// `message` (empty or whitespace only) fails the run with `Structured`; an error of a `VerdictReader`
 /// reaches the caller as the reader returned it.
 ///
 /// With `prepare`, the graph enters through it, once, then the routing.

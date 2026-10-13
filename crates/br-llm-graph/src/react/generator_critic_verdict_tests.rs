@@ -276,11 +276,10 @@ async fn given_an_override_with_a_reader_when_the_critic_rejects_then_its_schema
 }
 
 #[tokio::test]
-async fn given_a_reader_that_rejects_with_an_empty_message_when_the_critic_judges_then_structured()
-{
+async fn given_a_reader_that_rejects_with_a_blank_message_when_the_critic_judges_then_structured() {
     let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
     let critic_model = Arc::new(LoggingModel::new(vec![structured_step(
-        json!({ "grade": "fail", "notes": "" }),
+        json!({ "grade": "fail", "notes": " \n" }),
     )]));
     let graph = GeneratorCritic::new(
         generator(generator_model),
@@ -297,7 +296,7 @@ async fn given_a_reader_that_rejects_with_an_empty_message_when_the_critic_judge
     .unwrap();
     let failure = call(&graph, question("explain")).await.err().unwrap();
     assert!(
-        failure.error.to_string().contains("empty message"),
+        failure.error.to_string().contains("blank message"),
         "{}",
         failure.error
     );

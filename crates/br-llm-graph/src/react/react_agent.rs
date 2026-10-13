@@ -43,8 +43,9 @@ use crate::value::{EndLabel, Key, NodeId};
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
 /// executed. A key read by several sources of `system` is declared once; a
-/// source, `enabled` or `inputs` key the graph already has is refused
-/// (`KeyCollision`).
+/// source, `enabled` or `inputs` key the graph already has, the round limit's
+/// flag included, is refused (`KeyCollision`). A flag that names `history` or
+/// `answer` is refused (`FlagKeyMismatch`).
 ///
 /// `output` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
