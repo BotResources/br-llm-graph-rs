@@ -22,6 +22,11 @@ use crate::value::NodeId;
 /// the graph does not hold fails the run (`UnknownNode`), an empty cursor too
 /// (`EmptyCursor`).
 ///
+/// The run ends when no node is left to run, with the end label the edges of
+/// that final superstep returned (several distinct labels fail it with
+/// `AmbiguousEnd`). An end label returned in a superstep that still leaves
+/// nodes to run, while other branches carry on, is dropped.
+///
 /// A superstep runs its nodes together and is applied as a whole: when one of
 /// them fails, its updates are refused, or the edges or the end cannot be
 /// resolved, nothing of the superstep reaches the state, and the failure
