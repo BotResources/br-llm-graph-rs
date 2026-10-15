@@ -42,6 +42,11 @@ use crate::value::NodeId;
 /// being resumed: its own nodes and the items of its maps (a map directly in
 /// a map included). A called graph restarts whole, so nothing inside it is
 /// recorded or reused.
+///
+/// A graph with private keys, an agent's graph and its `conversation`,
+/// records nothing either: no state it gives back holds its private keys,
+/// and its checkpoints name its entry, through which a resumed run enters
+/// again.
 pub async fn run(
     graph: &Graph,
     config: &Config,

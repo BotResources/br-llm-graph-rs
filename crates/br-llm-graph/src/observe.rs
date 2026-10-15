@@ -26,6 +26,10 @@ pub trait Observer: Send + Sync {
     fn applied(&self, origin: &Origin, update: &Update) {
         let _ = (origin, update);
     }
+    /// The state and the next cursor after each applied superstep (an empty
+    /// cursor once the run ends). For a graph with private keys, such as an
+    /// agent's graph and its `conversation`, the state omits them and the
+    /// cursor names the graph's entry, as its checkpoints do.
     fn checkpoint(&self, origin: &Origin, state: &State, cursor: &Cursor) {
         let _ = (origin, state, cursor);
     }
