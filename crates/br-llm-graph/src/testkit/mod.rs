@@ -1,3 +1,8 @@
+mod faults;
+mod repair;
+mod store;
+mod store_tests;
+
 use std::sync::Mutex;
 
 use br_llm_messages::TurnId;
@@ -9,6 +14,10 @@ use crate::run::Cursor;
 use crate::state::State;
 use crate::update::Update;
 use crate::value::{EndLabel, NodeId};
+
+pub use faults::Op;
+pub use repair::{INTERRUPTED, INTERRUPTED_STOP};
+pub use store::{StoreError, TestStore};
 
 /// A deterministic id source: the n-th request it has not seen yet gets the
 /// n-th id (`t1`, `t2`... for turns; a UUIDv7 ending with `n` for threads),
