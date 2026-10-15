@@ -37,8 +37,8 @@ fn llm_node(client: Arc<dyn br_llm_clients_core::Client>, tools: Vec<Arc<dyn Too
 
 #[test]
 fn given_tool_not_covered_when_react_loop_added_then_refused() {
-    let model = Arc::new(mock(vec![text_step("x")]));
-    let llm = llm_node(model, vec![Arc::new(EchoTool)]);
+    let client = Arc::new(mock(vec![text_step("x")]));
+    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), Vec::new())],
@@ -55,8 +55,8 @@ fn given_tool_not_covered_when_react_loop_added_then_refused() {
 
 #[test]
 fn given_zero_tool_nodes_when_react_loop_added_then_tool_not_covered() {
-    let model = Arc::new(mock(vec![text_step("x")]));
-    let llm = llm_node(model, vec![Arc::new(EchoTool)]);
+    let client = Arc::new(mock(vec![text_step("x")]));
+    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
         tool_nodes: Vec::new(),
@@ -73,8 +73,8 @@ fn given_zero_tool_nodes_when_react_loop_added_then_tool_not_covered() {
 
 #[test]
 fn given_tool_covered_twice_when_react_loop_added_then_refused() {
-    let model = Arc::new(mock(vec![text_step("x")]));
-    let llm = llm_node(model, vec![Arc::new(EchoTool)]);
+    let client = Arc::new(mock(vec![text_step("x")]));
+    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
         tool_nodes: vec![
@@ -94,8 +94,8 @@ fn given_tool_covered_twice_when_react_loop_added_then_refused() {
 
 #[test]
 fn given_tool_node_tool_not_declared_when_react_loop_added_then_refused() {
-    let model = Arc::new(mock(vec![text_step("x")]));
-    let llm = llm_node(model, vec![Arc::new(EchoTool)]);
+    let client = Arc::new(mock(vec![text_step("x")]));
+    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool), Arc::new(TallyTool)])],
@@ -112,8 +112,8 @@ fn given_tool_node_tool_not_declared_when_react_loop_added_then_refused() {
 
 #[tokio::test]
 async fn given_model_calls_unowned_tool_when_run_then_pending_unsatisfiable() {
-    let model = Arc::new(mock(vec![tool_call_step("c1", "ghost", json!({}))]));
-    let llm = llm_node(model, vec![Arc::new(EchoTool)]);
+    let client = Arc::new(mock(vec![tool_call_step("c1", "ghost", json!({}))]));
+    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],

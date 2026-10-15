@@ -6,8 +6,12 @@ use serde_json::Value;
 
 use crate::state::{Config, State};
 
+/// The error of a hook, of the host's type: it fails the tool node and
+/// reaches the caller as `NodeFault::Returned`, where the host can downcast
+/// it.
 pub type HookError = Box<dyn std::error::Error + Send + Sync>;
 
+/// The judgment of one call under way: a `Judgment`, or the hook's error.
 pub type HookFuture<'a> = Pin<Box<dyn Future<Output = Result<Judgment, HookError>> + Send + 'a>>;
 
 /// What a hook decides for one tool call.

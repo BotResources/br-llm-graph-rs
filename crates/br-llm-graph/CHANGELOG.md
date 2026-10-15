@@ -20,11 +20,8 @@ instead, and `LlmCall` makes one model call whose answer is data.
 
 - Dependency on br-llm-clients-core 0.3 (git tag
   `br-llm-clients-core/v0.3.0`). The tests and the examples run on
-  br-llm-clients-mock 0.3, a development dependency: nothing of it appears in
-  the public API. The mock is taken from the release tag of
-  br-llm-clients-core, which names the same commit as its own tag, so that it
-  implements the very `Client` the graph holds (a second tag of one
-  repository is a second source, hence a second br-llm-clients-core).
+  br-llm-clients-mock 0.3, a development dependency pinned on that same tag:
+  nothing of it appears in the public API.
 - `LlmCall { client, system, request, output_mode, output }`: a node that
   makes one model call and gives back its answer as data. `request` is an
   `LlmRequest`: `Text(Source)`, sent as one user message holding its text (a

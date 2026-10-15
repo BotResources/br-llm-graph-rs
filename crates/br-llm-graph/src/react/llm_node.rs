@@ -45,7 +45,7 @@ impl Node for LlmNode {
         Box::pin(async move {
             let messages = wire(state.conversation(&self.key)?, &self.author)?;
             let request = ClientRequest::new(
-                self.system_text(state, config)?,
+                self.system_prompt(state, config)?,
                 messages,
                 self.declared_tools(state)?,
                 self.output.clone(),
@@ -79,7 +79,9 @@ impl Node for LlmNode {
 }
 
 impl LlmNode {
-    fn system_text(&self, state: &State, config: &Config) -> Result<Option<Text>, GraphError> {
+    /// The texts of the `system` sources, in order, each list item a text,
+    /// joined by a blank line; none when there is no text or it is blank.
+    fn system_prompt(&self, state: &State, config: &Config) -> Result<Option<Text>, GraphError> {
         let mut parts: Vec<String> = Vec::new();
         for source in &self.system {
             parts.extend(source.texts(state, config)?);

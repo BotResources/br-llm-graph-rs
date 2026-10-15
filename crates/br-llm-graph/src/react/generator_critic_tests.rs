@@ -2,18 +2,22 @@
 //! streams.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
-use br_llm_messages::Conversation;
+use br_llm_messages::{Author, Conversation};
 use serde_json::json;
 
 use crate::error::GraphError;
-use crate::graph::Count;
+use crate::graph::{Context, Count};
+use crate::observe::Observer;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
-use crate::state::{Kind, Value};
+use crate::run::{channel, run};
+use crate::state::{Config, Kind, Value};
+use crate::testkit::SeqIds;
 
 #[tokio::test]
 async fn given_a_valid_first_answer_when_run_then_validated_and_nothing_is_appended() {
@@ -235,7 +239,7 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
 fn given_both_seats_with_one_author_when_built_then_same_author() {
     // Two authors are one author when their ids are equal, whatever their
     // names (br-llm-messages).
-    let renamed = br_llm_messages::Author::new("writer", "Editor in chief").unwrap();
+    let renamed = Author::new("writer", "Editor in chief").unwrap();
     for author in [writer(), renamed] {
         let built = GeneratorCritic::new(
             generator(&mock(Vec::new())),
@@ -249,7 +253,7 @@ fn given_both_seats_with_one_author_when_built_then_same_author() {
         assert!(matches!(built, Err(GraphError::SameAuthor { .. })));
     }
     // Positive control: one name, two ids, two authors.
-    let namesake = br_llm_messages::Author::new("another", "writer").unwrap();
+    let namesake = Author::new("another", "writer").unwrap();
     let built = GeneratorCritic::new(
         generator(&mock(Vec::new())),
         CriticSeat {
@@ -265,10 +269,9 @@ fn given_both_seats_with_one_author_when_built_then_same_author() {
 #[tokio::test]
 async fn given_a_generator_critic_when_both_seats_stream_then_the_generator_carries_generator_history_and_the_critic_conversation()
  {
-    let recorder = std::sync::Arc::new(StreamRecorder::default());
-    let observer: std::sync::Arc<dyn crate::observe::Observer> = recorder.clone();
-    let ctx =
-        crate::graph::Context::new(observer, std::sync::Arc::new(crate::testkit::SeqIds::new()));
+    let recorder = Arc::new(StreamRecorder::default());
+    let observer: Arc<dyn Observer> = recorder.clone();
+    let ctx = Context::new(observer, Arc::new(SeqIds::new()));
     let graph = duo(
         &mock(vec![text_step("draft")]),
         &mock(vec![verdict(true, "")]),
@@ -287,11 +290,11 @@ async fn given_a_generator_critic_when_both_seats_stream_then_the_generator_carr
             ),
         ])
         .unwrap();
-    let config = crate::state::Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut inbox) = crate::run::channel();
+    let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
+    let (_sender, mut inbox) = channel();
 
     ended(
-        crate::run::run(&graph, &config, state, None, &ctx, &mut inbox).await,
+        run(&graph, &config, state, None, &ctx, &mut inbox).await,
         "validated",
     );
 

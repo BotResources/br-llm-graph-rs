@@ -158,3 +158,17 @@ pub fn scripted_at(reasoning: ReasoningLevel, steps: Vec<Step>) -> MockClient {
 pub fn scripted(steps: Vec<Step>) -> Arc<MockClient> {
     Arc::new(scripted_at(ReasoningLevel::Medium, steps))
 }
+
+/// A client answering `steps` in order, reasoning at a medium level, with
+/// the tool call ids as the script writes them: each must be unique in the
+/// conversation.
+pub fn scripted_as_written(steps: Vec<Step>) -> Arc<MockClient> {
+    let mut builder = MockClient::builder(
+        settings(ReasoningLevel::Medium),
+        Capabilities::new(CapabilitiesSpec::everything()).expect("capabilities"),
+    );
+    for step in steps {
+        builder = builder.reply(Reply::success(step).build().expect("reply"));
+    }
+    Arc::new(builder.build())
+}

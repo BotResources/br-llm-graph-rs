@@ -5,7 +5,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use br_llm_clients_core::OutputMode;
-use br_llm_messages::{Conversation, Text, ToolResultBlock, UserBlock, UserInput, UserSource};
+use br_llm_messages::{
+    Conversation, Text, ToolResultBlock, UserBlock, UserInput, UserSource, WireMessage,
+    WireUserBlock,
+};
 use serde_json::json;
 
 use crate::graph::Context;
@@ -143,9 +146,9 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
     );
     let second = &requests(&client)[1];
     let refusal = second.messages().iter().any(|message| {
-        matches!(message, br_llm_messages::WireMessage::User { content } if content.iter().any(|block| matches!(
+        matches!(message, WireMessage::User { content } if content.iter().any(|block| matches!(
             block,
-            br_llm_messages::WireUserBlock::ToolResult(result)
+            WireUserBlock::ToolResult(result)
                 if result.is_error && result.content.iter().any(|block| matches!(
                     block,
                     ToolResultBlock::Text { text } if text.as_str() == "ask the user first"

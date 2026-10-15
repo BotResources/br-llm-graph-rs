@@ -19,7 +19,7 @@ use br_llm_messages::{Author, Conversation, ToolCallId};
 use serde_json::{Value as Json, json};
 
 use common::tools::WriteFileTool;
-use common::{context, key, scripted, text_step, tool_call_step, user};
+use common::{context, key, scripted_as_written, text_step, tool_call_step, user};
 
 /// Accepts a write under `notes/`, refuses any other.
 struct NotesOnly;
@@ -68,7 +68,8 @@ impl Tool for GuardedWrite {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let client = scripted(vec![
+    // The ids `c1` and `c2` reach the hook as the client gives them.
+    let client = scripted_as_written(vec![
         tool_call_step(
             "c1",
             "write_file",
