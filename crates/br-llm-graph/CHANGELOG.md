@@ -184,6 +184,13 @@ instead, and `LlmCall` makes one model call whose answer is data.
   when a reply still calls tools after its node has answered in this turn.
   Before, both failed the run with `ToolLimitReached` unless the rounds
   equalled the limit.
+- `Continue` recognises its node's answer only in a round of the open turn
+  past the limit (0-based index `max_rounds` or more) whose results are all
+  its refusal (error results holding exactly its text). Before (unreleased),
+  any refusal-looking result anywhere in the turn counted: a tool error
+  holding that text made `Continue` fail without its node answering, and a
+  refusal written under a lower limit failed the turn resumed under a higher
+  one. `OnLimit::Continue` documents the rule and its residual.
 
 ## 0.3.0 - 2026-10-13
 

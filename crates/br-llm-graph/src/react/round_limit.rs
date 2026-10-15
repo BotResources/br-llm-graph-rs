@@ -33,6 +33,16 @@ pub enum OnLimit {
     /// declared (br-llm-clients-core has no setting that forbids tool calls);
     /// a reply that still calls tools once the node has answered in this turn
     /// fails the run with `ToolLimitReached`.
+    ///
+    /// The node has answered in this turn when a round of the open turn at
+    /// 0-based index `max_rounds` or more holds only its refusals (error
+    /// results whose one text is the refusal, whatever limit it names): tool
+    /// nodes never run past the limit, so no other node answers those rounds,
+    /// and a lookalike a tool writes in an earlier round does not count. The
+    /// one residual: after the limit is read lower, a round a tool node
+    /// answered under the higher limit sits past the new one, and a tool
+    /// whose every result there was exactly the refusal would read as the
+    /// node's answer.
     Continue { node: NodeId, flag: Key },
     /// Each call is answered the same way and the turn is closed with a step
     /// whose stop reason is `other(tool_round_limit)`, without calling the
@@ -67,7 +77,7 @@ impl RoundLimit {
     ) -> Result<Vec<Target>, GraphError> {
         match &self.on_limit {
             OnLimit::End { node, .. } => Ok(vec![Target::Node(node.clone())]),
-            OnLimit::Continue { node, .. } if !answered_by_limit(conversation, author) => {
+            OnLimit::Continue { node, .. } if !answered_by_limit(conversation, author, max) => {
                 Ok(vec![Target::Node(node.clone())])
             }
             OnLimit::Error | OnLimit::Continue { .. } => Err(GraphError::ToolLimitReached {
@@ -124,14 +134,20 @@ pub(crate) fn completed_rounds(conversation: &Conversation, author: &Author) -> 
     })
 }
 
-/// Whether the limit node has answered calls in `author`'s open turn: one of
-/// its tool results is the limit's refusal.
-fn answered_by_limit(conversation: &Conversation, author: &Author) -> bool {
+/// Whether the limit node has answered calls in `author`'s open turn under a
+/// limit of `max`: a round at 0-based index `max` or more holds only its
+/// refusals. Tool nodes never run past the limit, so only the limit node
+/// answers those rounds.
+fn answered_by_limit(conversation: &Conversation, author: &Author, max: usize) -> bool {
     open_turn(conversation, author).is_some_and(|turn| {
-        turn.items().iter().any(|item| match item {
-            TurnItem::ToolResults(results) => results.results().iter().any(is_refusal),
-            TurnItem::Step(_) => false,
-        })
+        turn.items()
+            .iter()
+            .filter_map(|item| match item {
+                TurnItem::ToolResults(results) => Some(results.results()),
+                TurnItem::Step(_) => None,
+            })
+            .skip(max)
+            .any(|results| !results.is_empty() && results.iter().all(is_refusal))
     })
 }
 
