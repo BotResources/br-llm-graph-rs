@@ -46,7 +46,8 @@ use crate::value::{EndLabel, Key, NodeId};
 /// executed. A key read by several sources of `system` is declared once; a
 /// source, `enabled` or `inputs` key the graph already has, the round limit's
 /// flag included, is refused (`KeyCollision`). A flag that names `history` or
-/// `answer` is refused (`FlagKeyMismatch`).
+/// `answer` is refused (`FlagKeyMismatch`), before the rules of the ReAct
+/// loop below.
 ///
 /// `output_mode` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
@@ -71,7 +72,8 @@ pub struct ReactAgent {
     pub output_mode: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
-    /// runs them all.
+    /// runs them all; that id is the graph's own even with no tool, so a
+    /// round-limit node named `tools` collides with it (`DuplicateNode`).
     pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
     /// At most that many tool calls run at once, across all the tool nodes
     /// together. `None`: every call at once.
@@ -112,9 +114,16 @@ impl ReactAgent {
             declare_input(&mut schema, &key, kind)?;
             inputs.push(key);
         }
+        if let Some(flag) = &flag
+            && (*flag == history || *flag == answer)
+        {
+            return Err(GraphError::FlagKeyMismatch { key: flag.clone() });
+        }
 
+        let tools_node = NodeId::new("tools")?;
+        reserve_tools_node(&self.tool_nodes, self.round_limit.as_ref(), &tools_node)?;
         let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {
-            vec![(NodeId::new("tools")?, self.tools.clone())]
+            vec![(tools_node, self.tools.clone())]
         } else {
             self.tool_nodes
         };
@@ -211,6 +220,26 @@ pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuild
     match count {
         Count::Config(key) => schema.config(key.clone(), Kind::Int),
         Count::Fixed(_) => schema,
+    }
+}
+
+/// Without a split, `tools` is a node of the graph, whether tools are
+/// declared or not: a round-limit node of that id collides with it
+/// (`DuplicateNode`).
+pub(crate) fn reserve_tools_node(
+    tool_nodes: &[(NodeId, Vec<Arc<dyn Tool>>)],
+    round_limit: Option<&RoundLimit>,
+    tools: &NodeId,
+) -> Result<(), GraphError> {
+    let limit_node = round_limit.and_then(|limit| match &limit.on_limit {
+        OnLimit::Continue { node, .. } | OnLimit::End { node, .. } => Some(node),
+        OnLimit::Error => None,
+    });
+    match limit_node {
+        Some(node) if tool_nodes.is_empty() && node == tools => {
+            Err(GraphError::DuplicateNode { id: node.clone() })
+        }
+        Some(_) | None => Ok(()),
     }
 }
 

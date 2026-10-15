@@ -93,6 +93,8 @@ mod react_node_tests;
 #[cfg(test)]
 mod react_partition_tests;
 #[cfg(test)]
+mod react_reserved_tests;
+#[cfg(test)]
 mod react_round_limit_refusal_tests;
 #[cfg(test)]
 mod react_round_limit_resume_tests;

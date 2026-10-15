@@ -143,6 +143,13 @@ instead, and `LlmCall` makes one model call whose answer is data.
   decorates a client, `skills` reads the requests back from the mock's log,
   and `react_goal_loop` builds its judge's `ClientRequest` with a structured
   shape.
+- Without a split, `tools` is the graph's own node of a `ReactAgent` and of a
+  generator seat even when no tool is declared: a round-limit node named
+  `tools` is refused there too (`DuplicateNode`).
+- A `ReactAgent` flag that names `history` or `answer` is refused
+  (`FlagKeyMismatch`) before the rules of the ReAct loop.
+- `ToolCoveredTwice` says what it refuses whether one tool node lists a tool
+  twice or two nodes run it.
 - The crate description names br-llm-clients-core.
 
 ### Removed

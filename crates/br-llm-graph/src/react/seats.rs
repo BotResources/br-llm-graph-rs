@@ -24,7 +24,8 @@ pub struct GeneratorSeat {
     pub output_mode: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
-    /// runs them all.
+    /// runs them all; that id is the graph's own even with no tool, so a
+    /// round-limit node named `tools` collides with it (`DuplicateNode`).
     pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
     /// At most that many tool calls run at once, across all the tool nodes
     /// together. `None`: every call at once.

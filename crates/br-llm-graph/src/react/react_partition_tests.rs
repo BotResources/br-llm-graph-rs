@@ -136,3 +136,28 @@ async fn given_model_calls_unowned_tool_when_run_then_pending_unsatisfiable() {
         crate::error::GraphError::PendingToolUnsatisfiable { .. }
     ));
 }
+
+#[test]
+fn given_one_tool_node_listing_a_tool_twice_when_react_loop_added_then_tool_covered_twice_saying_so()
+ {
+    let llm = llm_node(Arc::new(mock(Vec::new())), vec![Arc::new(EchoTool)]);
+    let react = ReactLoop {
+        llm: nid("llm"),
+        tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool), Arc::new(EchoTool)])],
+        after: Target::End(EndLabel::new("done").unwrap()),
+        tool_concurrency: None,
+        round_limit: None,
+    };
+    let error = react
+        .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
+        .err()
+        .unwrap();
+    assert!(matches!(
+        error,
+        crate::error::GraphError::ToolCoveredTwice { .. }
+    ));
+    assert_eq!(
+        error.to_string(),
+        "tool echo is run more than once by the tool nodes (twice in one node or in two nodes)"
+    );
+}

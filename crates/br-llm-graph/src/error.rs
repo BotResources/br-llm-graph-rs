@@ -303,7 +303,10 @@ impl std::fmt::Display for GraphError {
                 )
             }
             GraphError::ToolCoveredTwice { name } => {
-                write!(f, "tool {name} is run by more than one tool node")
+                write!(
+                    f,
+                    "tool {name} is run more than once by the tool nodes (twice in one node or in two nodes)"
+                )
             }
             GraphError::ToolNotDeclared { name } => {
                 write!(

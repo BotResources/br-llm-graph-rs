@@ -9,7 +9,8 @@ use crate::react::generator_critic_nodes::{FinishNode, Prepare, PublishNode, Rou
 use crate::react::generator_critic_routing::Router;
 use crate::react::llm_node::LlmNode;
 use crate::react::react_agent::{
-    declare_count, declare_input, declare_limit, declare_sources, round_limit_flag,
+    declare_count, declare_input, declare_limit, declare_sources, reserve_tools_node,
+    round_limit_flag,
 };
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::OnLimit;
@@ -270,8 +271,14 @@ impl GeneratorCritic {
             builder = builder.input(key);
         }
 
+        let tools_node = NodeId::new("tools")?;
+        reserve_tools_node(
+            &generator.tool_nodes,
+            generator.round_limit.as_ref(),
+            &tools_node,
+        )?;
         let tool_nodes = if generator.tool_nodes.is_empty() && !generator.tools.is_empty() {
-            vec![(NodeId::new("tools")?, generator.tools.clone())]
+            vec![(tools_node, generator.tools.clone())]
         } else {
             generator.tool_nodes
         };
