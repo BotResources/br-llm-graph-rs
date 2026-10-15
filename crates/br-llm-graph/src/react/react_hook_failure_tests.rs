@@ -7,9 +7,12 @@ use std::sync::Arc;
 use serde_json::json;
 
 use crate::error::{GraphError, NodeFault};
+use crate::graph::Context;
+use crate::observe::NoopObserver;
 use crate::react::react_hook_support::*;
 use crate::react::test_support::*;
-use crate::run::RunFailure;
+use crate::run::{RunFailure, channel, run};
+use crate::testkit::SeqIds;
 
 /// The error the tool node returned, read as the hook's `PolicyDown`.
 fn policy_down(failure: &RunFailure) -> &'static str {
@@ -175,4 +178,61 @@ async fn given_a_queued_call_and_no_hook_failure_when_the_slot_frees_then_it_run
     assert_eq!(results, [ran("delete_file"), ran("send_email")]);
     assert_eq!(email.seen().len(), 1);
     assert_eq!(email.calls(), 1);
+}
+
+#[tokio::test]
+async fn given_a_node_failed_by_a_hook_when_the_run_is_resumed_then_its_calls_are_judged_and_run_again_under_the_same_ids()
+ {
+    // R3's downstream shape: `delete_file`'s hook is down once while
+    // `send_email` already runs; the failed node records nothing.
+    let gauge = Arc::new(Gauge::default());
+    let delete = GuardedTool::new(
+        "delete_file",
+        Some(Behaviour::SlowFailOnce {
+            yields: 3,
+            name: "delete_file",
+        }),
+        &gauge,
+    );
+    let email = GuardedTool::new("send_email", Some(Behaviour::Accept), &gauge);
+    let graph = tool_graph(vec![delete.clone(), email.clone()], None, false);
+
+    let failure = run_tools(
+        &graph,
+        pending(vec![
+            call("c1", "delete_file", json!({})),
+            call("c2", "send_email", json!({})),
+        ]),
+    )
+    .await
+    .err()
+    .unwrap();
+    assert_eq!(policy_down(&failure), "delete_file");
+    assert_eq!((delete.calls(), email.calls()), (0, 1));
+    assert!(failure.checkpoint.pending.is_empty(), "nothing is recorded");
+
+    let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
+        .with_pending(failure.checkpoint.pending);
+    let (_sender, mut inbox) = channel();
+    let resumed = run(
+        &graph,
+        &config(),
+        failure.checkpoint.state,
+        Some(failure.checkpoint.cursor),
+        &ctx,
+        &mut inbox,
+    )
+    .await;
+
+    assert_eq!(answered(resumed), [ran("delete_file"), ran("send_email")]);
+    assert_eq!(
+        (delete.calls(), email.calls()),
+        (1, 2),
+        "at-least-once: the email ran on both attempts"
+    );
+    let ids = |tool: &GuardedTool| -> Vec<String> {
+        tool.seen().into_iter().map(|seen| seen.0).collect()
+    };
+    assert_eq!(ids(&delete), ["c1", "c1"], "judged again under the same id");
+    assert_eq!(ids(&email), ["c2", "c2"]);
 }

@@ -64,6 +64,13 @@ pub(crate) enum Behaviour {
         yields: usize,
         name: &'static str,
     },
+    /// Fails its first judgment after `yields` turns of the executor, with
+    /// `PolicyDown(name)`, and accepts every later one: a policy service
+    /// down once.
+    SlowFailOnce {
+        yields: usize,
+        name: &'static str,
+    },
 }
 
 /// What a hook was called with: the call's id, its arguments, the length of
@@ -102,12 +109,11 @@ impl Hook for TestHook {
             self.gauge.enter();
             let scope = state.list(&key("log"))?.len().to_string();
             let base = config.str(&key("base"))?.to_owned();
-            self.seen.lock().unwrap().push((
-                id.as_str().to_owned(),
-                arguments.clone(),
-                scope,
-                base,
-            ));
+            let judged = {
+                let mut seen = self.seen.lock().unwrap();
+                seen.push((id.as_str().to_owned(), arguments.clone(), scope, base));
+                seen.len()
+            };
             let judgment = match &self.behaviour {
                 Behaviour::Accept => Judgment::Accept,
                 Behaviour::Refuse(reason) => Judgment::Refuse {
@@ -124,6 +130,16 @@ impl Hook for TestHook {
                     }
                     self.gauge.leave();
                     return Err(PolicyDown(name).into());
+                }
+                Behaviour::SlowFailOnce { yields, name } => {
+                    for _ in 0..*yields {
+                        tokio::task::yield_now().await;
+                    }
+                    if judged == 1 {
+                        self.gauge.leave();
+                        return Err(PolicyDown(name).into());
+                    }
+                    Judgment::Accept
                 }
                 Behaviour::Slow { yields } => {
                     for _ in 0..*yields {
