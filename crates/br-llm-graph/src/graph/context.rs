@@ -180,6 +180,14 @@ impl Context {
         context
     }
 
+    /// This context with an empty recorder of its own, recording off: a run
+    /// that records nothing and reuses nothing.
+    pub(crate) fn unrecorded(&self) -> Context {
+        let mut context = self.clone().with_pending(PendingWrites::default());
+        context.recording = false;
+        context
+    }
+
     fn store(&self) -> MutexGuard<'_, PendingWrites> {
         self.pending.lock().unwrap_or_else(PoisonError::into_inner)
     }

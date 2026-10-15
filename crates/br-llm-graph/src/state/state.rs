@@ -90,6 +90,28 @@ impl State {
         &self.schema
     }
 
+    /// This state over `schema`, which declares every key of this state's
+    /// schema and maybe more: each key it adds takes its start value.
+    pub(crate) fn extended(mut self, schema: &Schema) -> State {
+        for key in schema.state.keys() {
+            if !self.values.contains_key(key)
+                && let Some(value) = schema.default_value(key)
+            {
+                self.values.insert(key.clone(), value);
+            }
+        }
+        self.schema = schema.clone();
+        self
+    }
+
+    /// This state over `schema`, whose keys are some of this state's: the
+    /// keys it does not declare are dropped.
+    pub(crate) fn restricted(mut self, schema: &Schema) -> State {
+        self.values.retain(|key, _| schema.state.contains_key(key));
+        self.schema = schema.clone();
+        self
+    }
+
     pub(crate) fn kind_of(&self, key: &Key) -> Option<&Kind> {
         self.schema.state.get(key)
     }

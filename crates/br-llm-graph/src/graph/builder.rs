@@ -7,11 +7,12 @@ use crate::graph::map::Map;
 use crate::graph::node::{CheckSite, Node};
 use crate::graph::signature::Signature;
 use crate::graph::subgraph::SubGraph;
-use crate::state::Schema;
+use crate::state::{Kind, Schema};
 use crate::value::{Key, NodeId};
 
 pub struct GraphBuilder {
     schema: Schema,
+    private: BTreeMap<Key, Kind>,
     entry: Option<NodeId>,
     nodes: Vec<(NodeId, NodeEntry)>,
     edges: Vec<(NodeId, Box<dyn Edge>)>,
@@ -23,6 +24,7 @@ impl GraphBuilder {
     pub fn new(schema: Schema) -> Self {
         Self {
             schema,
+            private: BTreeMap::new(),
             entry: None,
             nodes: Vec::new(),
             edges: Vec::new(),
@@ -87,6 +89,17 @@ impl GraphBuilder {
         &self.schema
     }
 
+    /// Declares the private state key `key`, of kind `kind`: a key of the
+    /// state the graph's runs work on, never part of a state or a checkpoint
+    /// a run takes or gives back (see `private.rs`). A key the schema
+    /// already declares is refused at build (`KeyCollision`).
+    // Until the agents declare their `conversation` through it.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn private(mut self, key: Key, kind: Kind) -> Self {
+        self.private.insert(key, kind);
+        self
+    }
+
     pub fn edge(mut self, from: NodeId, edge: impl Edge + 'static) -> Self {
         self.edges.push((from, Box::new(edge)));
         self
@@ -95,6 +108,7 @@ impl GraphBuilder {
     pub fn build(self) -> Result<Graph, GraphError> {
         let GraphBuilder {
             schema,
+            private,
             entry,
             nodes: raw_nodes,
             edges: raw_edges,
@@ -104,6 +118,12 @@ impl GraphBuilder {
 
         schema.check_defaults()?;
         let signature = Signature::resolve(&schema, inputs, outputs)?;
+        let mut run_schema = schema.clone();
+        for (key, kind) in &private {
+            if run_schema.state.insert(key.clone(), kind.clone()).is_some() {
+                return Err(GraphError::KeyCollision { key: key.clone() });
+            }
+        }
 
         let mut order = Vec::with_capacity(raw_nodes.len());
         let mut nodes = BTreeMap::new();
@@ -141,7 +161,7 @@ impl GraphBuilder {
             if let Some(entry) = nodes.get(id) {
                 entry
                     .node
-                    .check(&schema, CheckSite::Graph)
+                    .check(&run_schema, CheckSite::Graph)
                     .map_err(|source| GraphError::InvalidNode {
                         node: id.clone(),
                         source: Box::new(source),
@@ -151,6 +171,8 @@ impl GraphBuilder {
 
         Ok(Graph::assemble(Parts {
             schema,
+            private,
+            run_schema,
             signature,
             entry,
             order,
