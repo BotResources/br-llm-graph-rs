@@ -1,161 +1,21 @@
-use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use br_llm_clients_core::OutputMode;
-use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
-    AssistantBlock, Conversation, Entry, StopReason, Text, ToolResultBlock, Turn, TurnId, TurnItem,
-    TurnState, UserBlock, UserInput, UserSource,
+    AssistantBlock, Conversation, StopReason, Text, ToolResultBlock, Turn, TurnId, TurnItem,
+    TurnState,
 };
 use serde_json::json;
 
 use crate::error::GraphError;
-use crate::graph::{Context, Graph, GraphBuilder, Limit, Target};
-use crate::observe::NoopObserver;
+use crate::graph::{GraphBuilder, Limit, Target};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
+use crate::react::react_round_limit_support::*;
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::source::Source;
-use crate::react::test_support::{
-    EchoTool, author, key, mock, requests, text_step, tool_call_step, tool_names,
-};
-use crate::run::{Outcome, RunFailure, channel, run};
-use crate::state::{Config, Kind, Schema, State, Value};
-use crate::testkit::SeqIds;
-use crate::value::{EndLabel, NodeId};
-
-pub(crate) fn nid(name: &str) -> NodeId {
-    NodeId::new(name).unwrap()
-}
-
-pub(crate) fn schema() -> Schema {
-    Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("log"), Kind::list(Kind::Str))
-        .state(key("limited"), Kind::Bool)
-        .config(key("base"), Kind::Str)
-        .config(key("max_rounds"), Kind::Int)
-        .build()
-}
-
-pub(crate) fn config(max_rounds: i64) -> Config {
-    let mut values = BTreeMap::new();
-    values.insert(key("base"), Value::str("You are a helpful agent."));
-    values.insert(key("max_rounds"), Value::int(max_rounds));
-    Config::new(&schema(), values).unwrap()
-}
-
-pub(crate) fn human(body: &str) -> UserInput {
-    UserInput::new(
-        UserSource::Human,
-        None,
-        vec![UserBlock::text(Text::new(body).unwrap())],
-    )
-    .unwrap()
-}
-
-pub(crate) fn state_with(chat: Conversation) -> State {
-    let mut values = BTreeMap::new();
-    values.insert(key("chat"), Value::conversation(chat));
-    values.insert(key("log"), Value::list(Vec::new()));
-    values.insert(key("limited"), Value::bool(false));
-    State::new(schema(), values).unwrap()
-}
-
-fn fresh_state() -> State {
-    let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
-    state_with(chat)
-}
-
-/// The tools each call of `client` declared, in call order.
-fn declared(client: &MockClient) -> Vec<Vec<String>> {
-    requests(client).iter().map(tool_names).collect()
-}
-
-pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -> Graph {
-    let llm = LlmNode {
-        key: key("chat"),
-        author: author(),
-        client: Arc::new(client.clone()),
-        system: vec![Source::Config(key("base"))],
-        tools: vec![Arc::new(EchoTool)],
-        enabled: None,
-        output_mode: OutputMode::Plain,
-    };
-    let react = ReactLoop {
-        llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
-        after: Target::End(EndLabel::new("done").unwrap()),
-        tool_concurrency: None,
-        round_limit: Some(RoundLimit {
-            max_rounds,
-            on_limit,
-        }),
-    };
-    react
-        .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
-        .unwrap()
-        .build()
-        .unwrap()
-}
-
-pub(crate) async fn run_graph(
-    graph: &Graph,
-    config: Config,
-    state: State,
-) -> Result<Outcome, RunFailure> {
-    let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx, &mut inbox).await
-}
-
-pub(crate) fn finished(result: Result<Outcome, RunFailure>) -> State {
-    match result.map_err(|f| f.error).unwrap() {
-        Outcome::Finished { state, .. } => state,
-        Outcome::Paused { .. } | Outcome::Cancelled { .. } => panic!("expected finished"),
-    }
-}
-
-pub(crate) fn own_turn(state: &State) -> Turn {
-    match state.conversation(&key("chat")).unwrap().entries().last() {
-        Some(Entry::Turn(turn)) => turn.clone(),
-        Some(Entry::UserInput(_)) | None => panic!("expected the agent's turn last"),
-    }
-}
-
-pub(crate) fn result_texts(turn: &Turn) -> Vec<(String, bool)> {
-    let mut texts = Vec::new();
-    for item in turn.items() {
-        if let TurnItem::ToolResults(results) = item {
-            for result in results.results() {
-                for block in &result.content {
-                    let ToolResultBlock::Text { text } = block else {
-                        continue;
-                    };
-                    texts.push((text.as_str().to_owned(), result.is_error));
-                }
-            }
-        }
-    }
-    texts
-}
-
-/// The error result each call gets once a limit of 1 is reached.
-pub(crate) const CONTINUE_REFUSAL: &str =
-    "Tool round limit reached (1): this call was not executed. Reply without calling tools.";
-
-pub(crate) fn continue_limit() -> OnLimit {
-    OnLimit::Continue {
-        node: nid("limit"),
-        flag: key("limited"),
-    }
-}
-
-fn two() -> Limit {
-    Limit::Fixed(NonZeroUsize::new(2).unwrap())
-}
+use crate::react::test_support::{EchoTool, author, key, mock, text_step, tool_call_step};
+use crate::value::EndLabel;
 
 #[tokio::test]
 async fn given_error_limit_when_model_keeps_calling_then_run_fails_after_the_allowed_rounds() {

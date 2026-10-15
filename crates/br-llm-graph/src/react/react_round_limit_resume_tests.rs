@@ -10,7 +10,7 @@ use serde_json::json;
 
 use crate::error::GraphError;
 use crate::graph::Limit;
-use crate::react::react_round_limit_tests::{
+use crate::react::react_round_limit_support::{
     CONTINUE_REFUSAL, config, continue_limit, finished, graph, human, nid, own_turn, result_texts,
     run_graph, state_with,
 };
