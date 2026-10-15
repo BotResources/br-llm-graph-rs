@@ -16,8 +16,8 @@ dependencies = [
 
 [[package]]
 name = "br-llm-messages"
-version = "0.2.0"
-source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=v0.2.0#53ad03633c1e8b90d62070c5f7ec67a1526e1b0c"
+version = "0.4.0"
+source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv0.4.0#4ee316aaa1f4b560cbb728829db46745847d45bf"
 dependencies = [
  "serde",
  "serde_json",

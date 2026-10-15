@@ -68,7 +68,7 @@ async fn main() {
 
     // Input `history`; configuration `base` (the system prompt).
     let graph = ReactAgent {
-        author: Author::new("agent").expect("author"),
+        author: Author::new("agent", "agent").expect("author"),
         model,
         system: vec![Source::Config(key("base"))],
         output: OutputMode::Text,
@@ -109,7 +109,7 @@ async fn main() {
     let mut relaunch_state = state;
     let supervisor = UserInput::new(
         UserSource::Human,
-        Some(Author::new("supervisor").expect("author")),
+        Some(Author::new("supervisor", "supervisor").expect("author")),
         vec![UserBlock::text(
             Text::new("Now summarize for the board.").expect("text"),
         )],

@@ -35,7 +35,7 @@ async fn main() {
     // Inputs `history` and `pending_tasks` (written by the tool);
     // configuration `base`.
     let agent = ReactAgent {
-        author: Author::new("agent").expect("author"),
+        author: Author::new("agent", "agent").expect("author"),
         model,
         system: vec![Source::Config(key("base"))],
         output: OutputMode::Text,

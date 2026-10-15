@@ -28,7 +28,7 @@ async fn main() {
     // Inputs `history`; outputs `history`, `answer` and `reply`;
     // configuration `base` (the system prompt) and `thinking`.
     let agent = ReactAgent {
-        author: Author::new("agent").expect("author"),
+        author: Author::new("agent", "agent").expect("author"),
         model,
         system: vec![Source::Config(key("base"))],
         output: OutputMode::Text,

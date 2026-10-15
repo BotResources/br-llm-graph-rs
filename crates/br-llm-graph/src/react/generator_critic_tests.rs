@@ -30,11 +30,11 @@ fn nid(name: &str) -> NodeId {
 }
 
 pub(crate) fn writer() -> Author {
-    Author::new("writer").unwrap()
+    Author::new("writer", "writer").unwrap()
 }
 
 pub(crate) fn reviewer() -> Author {
-    Author::new("reviewer").unwrap()
+    Author::new("reviewer", "reviewer").unwrap()
 }
 
 fn limit(value: usize) -> Limit {
@@ -1023,7 +1023,7 @@ async fn given_histories_ending_on_the_last_allowed_rejection_without_a_final_ge
 #[tokio::test]
 async fn given_histories_ending_on_a_turn_that_is_not_the_critics_when_called_again_then_the_generator_answers()
  {
-    let third = Author::new("observer").unwrap();
+    let third = Author::new("observer", "observer").unwrap();
     for last in [Some(third), None] {
         let mut conversation = question("explain");
         for (id, author, text) in [

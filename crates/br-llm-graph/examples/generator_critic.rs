@@ -58,7 +58,7 @@ impl Node for OpenQuestion {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let generator = GeneratorSeat {
-        author: Author::new("writer").expect("author"),
+        author: Author::new("writer", "writer").expect("author"),
         system: Source::Fn(Arc::new(|state, _config| {
             Ok(format!(
                 "Answer question {} precisely.",
@@ -83,7 +83,7 @@ async fn main() {
         thinking: Some(Switch::Config(key("critic_thinking"))),
         review_request: Some(Source::Config(key("review_request"))),
         ..CriticSeat::new(
-            Author::new("reviewer").expect("author"),
+            Author::new("reviewer", "reviewer").expect("author"),
             Arc::new(ScriptedModel::new(vec![
                 structured_step(json!({
                     "thinking": "It does not say when updates are applied.",

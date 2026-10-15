@@ -15,7 +15,7 @@ use crate::update::Update;
 use crate::value::Key;
 
 pub(crate) fn author() -> Author {
-    Author::new("agent").unwrap()
+    Author::new("agent", "agent").unwrap()
 }
 
 pub(crate) fn key(name: &str) -> Key {

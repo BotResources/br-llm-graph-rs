@@ -134,7 +134,7 @@ async fn main() {
     // Inputs `history`, `skill_prompt` (a string read into the system text)
     // and `enabled` (the tools offered); configuration `base`.
     let graph = ReactAgent {
-        author: Author::new("agent").expect("author"),
+        author: Author::new("agent", "agent").expect("author"),
         model,
         system: vec![
             Source::Config(key("base")),

@@ -46,7 +46,7 @@ async fn main() {
     // Input `history`; configuration `base`. No tools: each call is one
     // model reply.
     let agent = ReactAgent {
-        author: Author::new("agent").expect("author"),
+        author: Author::new("agent", "agent").expect("author"),
         model: agent_model,
         system: vec![Source::Config(key("base"))],
         output: OutputMode::Text,
@@ -98,7 +98,7 @@ async fn main() {
 }
 
 fn goal_node(model: Arc<dyn Model>) -> impl br_llm_graph::Node {
-    let author = Author::new("agent").expect("author");
+    let author = Author::new("agent", "agent").expect("author");
     FnNode::new(
         move |state: &State, _config: &Config, ctx: &Context| -> NodeFuture<'_> {
             let model = model.clone();
