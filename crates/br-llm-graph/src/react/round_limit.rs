@@ -173,14 +173,16 @@ fn refusal(max: usize) -> String {
 }
 
 /// Whether `result` is the limit node's answer to a call: an error result
-/// whose one text is the limit's refusal, whatever limit it names.
+/// whose one text is the limit's refusal, whatever limit it names, written
+/// as the node writes it (no sign, no leading zero).
 fn is_refusal(result: &ToolResult) -> bool {
     result.is_error
         && matches!(result.content.as_slice(), [ToolResultBlock::Text { text }] if text
             .as_str()
             .strip_prefix(REFUSAL_HEAD)
             .and_then(|rest| rest.strip_suffix(REFUSAL_TAIL))
-            .is_some_and(|max| max.parse::<usize>().is_ok()))
+            .and_then(|max| max.parse::<usize>().ok())
+            .is_some_and(|max| refusal(max) == text.as_str()))
 }
 
 struct LimitNode {

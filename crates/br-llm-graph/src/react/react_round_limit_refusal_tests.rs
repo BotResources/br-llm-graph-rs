@@ -115,10 +115,15 @@ async fn given_rounds_past_the_limit_that_are_not_all_exact_refusals_when_the_re
     let one = refusal(1);
     let prefix = "Tool round limit reached (1): this call was not executed.";
     let not_a_number = refusal_naming("one");
+    // Numbers the node never writes: it writes a limit as `Display` does.
+    let signed = refusal_naming("+1");
+    let padded = refusal_naming("01");
     for round in [
         vec![(one.as_str(), false)],
         vec![(prefix, true)],
         vec![(not_a_number.as_str(), true)],
+        vec![(signed.as_str(), true)],
+        vec![(padded.as_str(), true)],
         vec![(one.as_str(), true), ("echoed", false)],
         vec![("echoed", false)],
     ] {
