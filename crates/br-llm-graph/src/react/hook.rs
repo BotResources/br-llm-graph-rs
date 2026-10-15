@@ -45,8 +45,10 @@ pub enum Judgment {
 ///   fails the node and the run, and a resumed run judges the call again.
 /// - A judgment under way is dropped when the run is cancelled: a hook that
 ///   does I/O must be cancel-safe.
-/// - A pending judgment holds its call's concurrency slot: a slow hook slows
-///   the other calls of its node down.
+/// - A pending judgment holds its call's concurrency slot, and the tool
+///   nodes of one ReAct loop share one limit per superstep: a slow hook slows
+///   down every call of the superstep waiting for a slot, in any of those
+///   tool nodes.
 /// - A call may be judged more than once, under the same `ToolCallId`, after
 ///   a cancel or a failed node (a failed node records nothing, so a resumed
 ///   run judges and runs its calls again): an approval hook memoises its

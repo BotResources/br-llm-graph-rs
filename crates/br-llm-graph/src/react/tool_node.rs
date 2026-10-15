@@ -134,6 +134,8 @@ impl ToolNode {
             let Some(tool) = tool else {
                 return Answer::NotEnabled;
             };
+            // Checked before the slot too, not to wait for a slot only to
+            // give it back.
             if failed.load(Ordering::SeqCst) {
                 return Answer::NotStarted;
             }
@@ -144,7 +146,7 @@ impl ToolNode {
             if failed.load(Ordering::SeqCst) {
                 return Answer::NotStarted;
             }
-            let answer = answer(tool.as_ref(), call, state, config).await;
+            let answer = judge_and_run(tool.as_ref(), call, state, config).await;
             if matches!(answer, Answer::HookFailed(_)) {
                 failed.store(true, Ordering::SeqCst);
             }
@@ -161,7 +163,7 @@ impl ToolNode {
                         "Tool {} is not enabled for this run: this call was not executed.",
                         call.name
                     );
-                    updates.push(error_result(&self.key, &turn_id, call, &text, ""));
+                    updates.push(error_result(&self.key, &turn_id, call, text_block(&text)));
                 }
                 // Only after a hook failed, whose error this loop returns.
                 Answer::NotStarted => {}
@@ -183,15 +185,13 @@ impl ToolNode {
                     &self.key,
                     &turn_id,
                     call,
-                    &error.to_string(),
-                    "tool call failed",
+                    text_or(&error.to_string(), "tool call failed"),
                 )),
                 Answer::Refused(reason) => updates.push(error_result(
                     &self.key,
                     &turn_id,
                     call,
-                    &reason,
-                    "tool call refused",
+                    text_or(&reason, "tool call refused"),
                 )),
                 Answer::HookFailed(error) => return Err(error),
             }
@@ -202,7 +202,7 @@ impl ToolNode {
 
 /// Judges `call` by the tool's hook, when there is one, then runs it when it
 /// is accepted.
-async fn answer(tool: &dyn Tool, call: &ToolCall, state: &State, config: &Config) -> Answer {
+async fn judge_and_run(tool: &dyn Tool, call: &ToolCall, state: &State, config: &Config) -> Answer {
     if let Some(hook) = tool.hook() {
         match hook.judge(&call.id, &call.arguments, state, config).await {
             Ok(Judgment::Accept) => {}
@@ -213,13 +213,28 @@ async fn answer(tool: &dyn Tool, call: &ToolCall, state: &State, config: &Config
     Answer::Ran(tool.call(call.arguments.clone(), state, config).await)
 }
 
-/// The error result of `call`, holding `text`, or `fallback` when `text` is
-/// blank.
-fn error_result(key: &Key, turn: &TurnId, call: &ToolCall, text: &str, fallback: &str) -> Update {
-    let content = match Text::new(text).or_else(|_| Text::new(fallback)) {
+/// One text block holding `text`; none when it is blank.
+fn text_block(text: &str) -> Vec<ToolResultBlock> {
+    Text::new(text)
+        .map(|text| vec![ToolResultBlock::text(text)])
+        .unwrap_or_default()
+}
+
+/// One text block holding `text`, or `fallback` when `text` is blank.
+fn text_or(text: &str, fallback: &str) -> Vec<ToolResultBlock> {
+    match Text::new(text) {
         Ok(text) => vec![ToolResultBlock::text(text)],
-        Err(_) => Vec::new(),
-    };
+        Err(_) => text_block(fallback),
+    }
+}
+
+/// The error result of `call`, holding `content`.
+fn error_result(
+    key: &Key,
+    turn: &TurnId,
+    call: &ToolCall,
+    content: Vec<ToolResultBlock>,
+) -> Update {
     Update::PushResult {
         key: key.clone(),
         turn: turn.clone(),
