@@ -1,3 +1,4 @@
+mod agent_build;
 mod critique;
 mod generator_critic;
 mod generator_critic_nodes;

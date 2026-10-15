@@ -4,14 +4,14 @@ use br_llm_clients_core::ReasoningLevel;
 
 use crate::error::GraphError;
 use crate::graph::{Always, Count, FnEdge, Graph, GraphBuilder, Node, Target};
+use crate::react::agent_build::{
+    declare_count, declare_input, declare_limit, declare_sources, round_limit_flag,
+    tools_node_clash,
+};
 use crate::react::critique::{CritiqueNode, EMPTY_ANSWER_CRITIQUE, REVIEW_REQUEST};
 use crate::react::generator_critic_nodes::{FinishNode, Prepare, PublishNode, RouteNode};
 use crate::react::generator_critic_routing::Router;
 use crate::react::llm_node::LlmNode;
-use crate::react::react_agent::{
-    declare_count, declare_input, declare_limit, declare_sources, round_limit_flag,
-    tools_node_clash,
-};
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::OnLimit;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
