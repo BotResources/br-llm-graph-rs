@@ -8,7 +8,7 @@ use crate::graph::context::Context;
 use crate::graph::limit::Limit;
 use crate::graph::node::{CheckSite, Node, NodeError, NodeFuture};
 use crate::graph::subgraph::{CaptureUpdate, captured, check_captures};
-use crate::state::{Config, Kind, Schema, State, Value};
+use crate::state::{Config, Kind, Schema, State, StateKey, Value, ValueType};
 use crate::update::Update;
 use crate::value::Key;
 
@@ -35,6 +35,10 @@ use crate::value::Key;
 /// At build, `check` refuses a list key that is not a list whose element kind
 /// is the item key's kind, checks the limit and the capture updates, then
 /// checks the body against the same schema.
+///
+/// `Map::new` takes typed keys, a list and an item of its element type: a
+/// wrong kind does not compile. A map described as data is written with its
+/// fields, keys by name.
 pub struct Map {
     pub list: Key,
     pub item: Key,
@@ -116,6 +120,34 @@ impl Node for Map {
 }
 
 impl Map {
+    /// A map of `body` over the items of the list `list`, each set into
+    /// `item`, every item at once, `ItemFailure::Finish` on an item error.
+    pub fn new<T: ValueType>(
+        list: &StateKey<Vec<T>>,
+        item: &StateKey<T>,
+        body: impl Node + 'static,
+    ) -> Self {
+        Map {
+            list: list.key().clone(),
+            item: item.key().clone(),
+            body: Box::new(body),
+            max_concurrency: None,
+            on_item_failure: ItemFailure::Finish,
+        }
+    }
+
+    /// This map with at most `limit` bodies running at once.
+    pub fn max_concurrency(mut self, limit: Limit) -> Self {
+        self.max_concurrency = Some(limit);
+        self
+    }
+
+    /// This map with `policy` on an item error.
+    pub fn on_item_failure(mut self, policy: ItemFailure) -> Self {
+        self.on_item_failure = policy;
+        self
+    }
+
     async fn run_item(
         &self,
         index: usize,

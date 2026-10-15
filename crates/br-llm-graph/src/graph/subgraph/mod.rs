@@ -2,6 +2,7 @@
 
 mod check;
 mod run;
+mod typed;
 
 use std::sync::Arc;
 
@@ -136,6 +137,12 @@ pub(crate) fn captured(
 /// occurrence are removed, and nothing inside the child is recorded or reused.
 /// Only the call's own result can be recorded, by the run or the map that
 /// holds it.
+///
+/// A runner maps typed keys (`input_from`, `config_from`, `output_set`,
+/// `CaptureUpdate::set_reason`, ...): each mapping takes keys of one kind, so
+/// a wrong kind does not compile. A call described as data maps keys by name
+/// (`input`, `config`, `output`, `output_end_label`). Either way the build
+/// checks every mapping against the two graphs.
 pub struct SubGraph {
     pub(crate) graph: Arc<Graph>,
     pub(crate) inputs: Vec<(Key, Input)>,
@@ -157,25 +164,25 @@ impl SubGraph {
         }
     }
 
-    /// Maps a declared input of the child.
+    /// Maps a declared input of the child, by name.
     pub fn input(mut self, child_key: Key, source: Input) -> Self {
         self.inputs.push((child_key, source));
         self
     }
 
-    /// Maps a configuration key of the child.
+    /// Maps a configuration key of the child, by name.
     pub fn config(mut self, child_key: Key, source: Input) -> Self {
         self.config.push((child_key, source));
         self
     }
 
-    /// Maps a declared output of the child into the parent state.
+    /// Maps a declared output of the child into the parent state, by name.
     pub fn output(mut self, child_key: Key, target: Output) -> Self {
         self.outputs.push((child_key, target));
         self
     }
 
-    /// Writes the label the child ended with, as a string.
+    /// Writes the label the child ended with, as a string, by name.
     pub fn output_end_label(mut self, target: Output) -> Self {
         self.end_label = Some(target);
         self

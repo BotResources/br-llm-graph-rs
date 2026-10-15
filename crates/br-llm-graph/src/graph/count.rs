@@ -1,5 +1,5 @@
 use crate::error::GraphError;
-use crate::state::{Config, Kind, Schema};
+use crate::state::{Config, ConfigKey, Kind, Schema};
 use crate::value::Key;
 
 /// A bound that may be zero, given as a fixed number or read from an int
@@ -12,6 +12,11 @@ pub enum Count {
 }
 
 impl Count {
+    /// A count read at run time from the int configuration key `key`.
+    pub fn config(key: &ConfigKey<i64>) -> Self {
+        Count::Config(key.key().clone())
+    }
+
     /// Checks the count against the schema of a graph: a `Config` key must be
     /// an int configuration key (`CountKeyMismatch`); a fixed number always
     /// passes. A node of the caller that holds a `Count` calls it from its own

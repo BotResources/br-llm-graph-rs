@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use crate::error::GraphError;
-use crate::state::{Config, Kind, Schema};
+use crate::state::{Config, ConfigKey, Kind, Schema};
 use crate::value::Key;
 
 /// A positive bound, given as a fixed number or read from an int
@@ -14,6 +14,11 @@ pub enum Limit {
 }
 
 impl Limit {
+    /// A limit read at run time from the int configuration key `key`.
+    pub fn config(key: &ConfigKey<i64>) -> Self {
+        Limit::Config(key.key().clone())
+    }
+
     /// Checks the limit against the schema of a graph: a `Config` key must be
     /// an int configuration key (`LimitKeyMismatch`); a fixed number always
     /// passes. A node of the caller that holds a `Limit` calls it from its own
