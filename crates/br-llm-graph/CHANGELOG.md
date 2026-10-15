@@ -113,6 +113,13 @@ instead, and `LlmCall` makes one model call whose answer is data.
   (`MalformedResponse`) and fails the critique with `Model`. The graph's
   empty-answer and `Structured` rules are unchanged and apply to the steps a
   client gives.
+- The examples run offline on the scripted mock of br-llm-clients-mock, the
+  stand-in for a provider library's client: `react_agent` and
+  `generator_critic` lose their thinking switches (the critic's client
+  reasons at `Off`, so its verdict carries `thinking`), `external_message`
+  decorates a client, `skills` reads the requests back from the mock's log,
+  and `react_goal_loop` builds its judge's `ClientRequest` with a structured
+  shape.
 - The crate description names br-llm-clients-core.
 
 ### Removed
