@@ -118,9 +118,9 @@ instead, and `LlmCall` makes one model call whose answer is data.
   accepts, are refused at build before the rules on tool nodes: an
   `InvalidNode` naming the model-call step (`llm` of a `ReactAgent`,
   `generate` of a generator seat), its reason `Request` carrying
-  `DuplicateToolName`. Before, they gave `ToolCoveredTwice`, or, with a split
-  whose tool nodes cover them by name, built and failed at the first model
-  call.
+  `DuplicateToolName`. In 0.3.0 they gave `ToolCoveredTwice`, or, with a
+  split whose tool nodes cover them by name, built and sent both tools to the
+  model.
 - A system text that resolves blank (empty or whitespace only) is sent as no
   system text by the model-call step of the ReAct loop (a `ReactAgent`, the
   generator seat) and by `LlmCall`: a core system prompt is a `Text`, which

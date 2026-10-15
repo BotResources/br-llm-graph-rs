@@ -38,11 +38,11 @@ fn llm_node(client: Arc<dyn br_llm_clients_core::Client>, tools: Vec<Arc<dyn Too
 
 #[tokio::test]
 async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items() {
-    let model = Arc::new(mock(vec![
+    let client = Arc::new(mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("all done"),
     ]));
-    let llm = llm_node(model, vec![Arc::new(EchoTool)]);
+    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
@@ -79,8 +79,8 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
 
 #[tokio::test]
 async fn given_two_tool_nodes_with_parallel_calls_when_run_then_both_run() {
-    let model = Arc::new(mock(vec![two_call_step(), text_step("done both")]));
-    let llm = llm_node(model, vec![Arc::new(EchoTool), Arc::new(TallyTool)]);
+    let client = Arc::new(mock(vec![two_call_step(), text_step("done both")]));
+    let llm = llm_node(client, vec![Arc::new(EchoTool), Arc::new(TallyTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
         tool_nodes: vec![

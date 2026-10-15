@@ -3,6 +3,7 @@
 //! descriptions, and how a reply is read as a verdict.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use br_llm_clients_core::{
     ClientError, ClientRequest, OutputMode, ParameterKind, ReasoningLevel, StructuredShape,
@@ -231,7 +232,7 @@ async fn given_a_critic_step_without_a_structured_block_when_the_critic_judges_t
  {
     // A conforming client refuses such a reply itself (next test): the step
     // comes from a client that serves it as it is.
-    let critic_client = std::sync::Arc::new(LaxClient::new(vec![text_step("looks fine to me")]));
+    let critic_client = Arc::new(LaxClient::new(vec![text_step("looks fine to me")]));
     let graph = GeneratorCritic::new(
         generator(&mock(vec![text_step("draft")])),
         CriticSeat {

@@ -40,9 +40,11 @@ pub enum LlmRequest {
 ///
 /// The stream events of the call reach the observer with the conversation
 /// key of an `LlmRequest::Conversation`, or the key of `output` for an
-/// `LlmRequest::Text`, which has no conversation key. A refusal to build the
-/// request fails the node with `Request`, an error of the client with
-/// `Model`.
+/// `LlmRequest::Text`, which has no conversation key. An error of the client
+/// fails the node with `Model`. A refusal to build the request would fail it
+/// with `Request`; none of the call's inputs can give one (it declares no
+/// tools, and an empty conversation is refused by the render first), so the
+/// mapping is kept as a defence only.
 ///
 /// As the body of a `Map`, an `Append` output makes one model call per item,
 /// at most the map's concurrency limit at once, the answers appended in item
