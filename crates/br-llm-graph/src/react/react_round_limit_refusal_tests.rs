@@ -30,10 +30,18 @@ fn refusal(max: usize) -> String {
     )
 }
 
-/// A resumed history: the agent's open turn holds `rounds`, each a reply
-/// calling `echo` once per result and the results `(text, is_error)`, and
-/// awaits its next step.
+/// A resumed history: the agent's open turn holds `rounds` (see
+/// `rounds_turn`) and awaits its next step.
 fn turn_of(rounds: &[&[(&str, bool)]]) -> State {
+    let mut chat = Conversation::new();
+    chat.push_input(human("hi"));
+    chat.push_turn(rounds_turn(rounds)).unwrap();
+    state_with(chat)
+}
+
+/// A turn of the agent holding `rounds`, each a reply calling `echo` once
+/// per result and the results `(text, is_error)`, awaiting its next step.
+fn rounds_turn(rounds: &[&[(&str, bool)]]) -> Turn {
     let mut turn: Option<Turn> = None;
     for (round, results) in rounds.iter().enumerate() {
         let calls: Vec<AssistantBlock> = (0..results.len())
@@ -60,10 +68,7 @@ fn turn_of(rounds: &[&[(&str, bool)]]) -> State {
             turn.as_mut().unwrap().push_result(result).unwrap();
         }
     }
-    let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
-    chat.push_turn(turn.unwrap()).unwrap();
-    state_with(chat)
+    turn.unwrap()
 }
 
 /// Runs the `Continue` loop with a limit of `max` on `state`, the model
@@ -209,4 +214,36 @@ async fn given_a_tool_whose_error_is_the_refusal_text_when_the_limit_is_reached_
 #[test]
 fn given_the_refusal_this_file_writes_when_compared_then_it_is_the_nodes() {
     assert_eq!(refusal(1), CONTINUE_REFUSAL);
+}
+
+#[tokio::test]
+async fn given_a_refusal_in_a_finished_turn_when_a_new_turn_reaches_the_limit_then_the_node_answers()
+ {
+    // The node's answer counts in the agent's open turn only: an earlier,
+    // finished turn holding it is another turn.
+    let mut earlier = rounds_turn(&[&[("echoed", false)], &[(&refusal(1), true)]]);
+    earlier.push_step(text_step("earlier answer")).unwrap();
+    let mut chat = Conversation::new();
+    chat.push_input(human("hi"));
+    chat.push_turn(earlier).unwrap();
+    chat.push_input(human("again"));
+    let client = mock(vec![
+        tool_call_step("c1", "echo", json!({})),
+        tool_call_step("c2", "echo", json!({})),
+        text_step("done"),
+    ]);
+    let graph = graph(&client, Limit::Config(key("max_rounds")), continue_limit());
+
+    let state = finished(run_graph(&graph, config(1), state_with(chat)).await);
+
+    assert_eq!(
+        client.calls(),
+        3,
+        "a tool round, the node's answer, then the reply"
+    );
+    assert!(state.bool(&key("limited")).unwrap());
+    assert_eq!(
+        result_texts(&own_turn(&state)),
+        [("echoed".to_owned(), false), (refusal(1), true)]
+    );
 }
