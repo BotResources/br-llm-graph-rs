@@ -70,6 +70,8 @@ use crate::value::{EndLabel, Key, NodeId};
 /// the default verdict (without a reader) or a rejection with a blank
 /// `message` (empty or whitespace only) fails the run with `Structured`; an
 /// error of a `VerdictReader` reaches the caller as the reader returned it.
+/// A conforming client refuses a reply without a structured block itself
+/// (`MalformedResponse`): the critique then fails with `Model`.
 ///
 /// With `prepare`, the graph enters through it, once, then the routing.
 /// The entry is routed on how `conversation` ends: a generator answer goes
@@ -90,7 +92,9 @@ use crate::value::{EndLabel, Key, NodeId};
 /// block) is rejected without calling the critic: where the critic would
 /// judge it, a critique of the critic holding `empty_answer_critique` is
 /// appended to both histories, and the run goes on as after a rejection. The
-/// empty answer counts as a generation.
+/// empty answer counts as a generation. A conforming client refuses a reply
+/// that holds nothing but thinking (`ReplyUnusable`): the generation then
+/// fails with `Model`.
 ///
 /// With tools, the generation is the ReAct loop of `ReactAgent` inline in
 /// this graph; each generation opens a new generator turn, so the round limit
@@ -98,8 +102,8 @@ use crate::value::{EndLabel, Key, NodeId};
 /// is the limit's closing step) is an empty answer: rejected without the
 /// critic where the critic would judge it, left out of what the critic reads
 /// in later rounds (the user messages around it merged), and, as the last
-/// generation, an empty `answer`. The limit's flag output is true when the round limit was
-/// reached in at least one generation of this call.
+/// generation, an empty `answer`. The limit's flag output is true when the
+/// round limit was reached in at least one generation of this call.
 pub struct GeneratorCritic {
     pub generator: GeneratorSeat,
     pub critic: CriticSeat,
