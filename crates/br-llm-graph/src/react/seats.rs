@@ -44,8 +44,10 @@ pub struct GeneratorSeat {
 pub struct CriticSeat {
     pub author: Author,
     pub client: Arc<dyn Client>,
-    /// The critic's system text, always sent: one that resolves to a blank
-    /// text fails the critique node with `Message`, before the critic's call.
+    /// The critic's system text, always sent when the critic is called: one
+    /// that resolves to a blank text then fails the critique node with
+    /// `Message`, before the call. An empty answer, rejected without calling
+    /// the critic, does not read it.
     pub system: Source,
     /// The request that follows the wrapped answer in the critic's last
     /// message. `None`: `Please evaluate the generator's response above.` A

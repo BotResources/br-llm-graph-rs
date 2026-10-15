@@ -18,7 +18,8 @@ use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
-use crate::react::seats::GeneratorSeat;
+use crate::react::seats::{CriticSeat, GeneratorSeat};
+use crate::react::source::Source;
 use crate::react::test_support::*;
 
 /// The generator seat on a `LaxClient` serving `steps`, and that client.
@@ -207,4 +208,38 @@ async fn given_histories_ending_on_an_answer_holding_only_thinking_when_called_a
         "the critic judges only the full answer"
     );
     assert_eq!(requests(&generator_client).len(), 1);
+}
+
+#[tokio::test]
+async fn given_a_blank_critic_system_text_when_an_empty_answer_is_rejected_without_the_critic_then_the_run_ends_exhausted()
+ {
+    // The critic's system text is checked only when the critic is called:
+    // an empty answer is rejected without it.
+    let generator_client = mock(vec![
+        tool_call_step("c1", "echo", json!({})),
+        tool_call_step("c2", "echo", json!({})),
+    ]);
+    let critic_client = mock(vec![verdict(true, "")]);
+    let graph = GeneratorCritic {
+        final_generation: false,
+        ..GeneratorCritic::new(
+            cut_generator(&generator_client),
+            CriticSeat::new(
+                reviewer(),
+                Arc::new(critic_client.clone()),
+                Source::Const(" ".to_owned()),
+            ),
+            Count::Fixed(1),
+        )
+    }
+    .graph()
+    .unwrap();
+
+    let state = ended(call(&graph, question("explain")).await, "exhausted");
+
+    assert_eq!(
+        shape_of(&state, "conversation"),
+        ["user".to_owned(), format!("writer:{CUT}"), empty_critique()]
+    );
+    assert_eq!(critic_client.calls(), 0);
 }
