@@ -71,6 +71,8 @@ pub(crate) enum Behaviour {
         yields: usize,
         name: &'static str,
     },
+    /// Panics while it judges.
+    Panic,
 }
 
 /// What a hook was called with: the call's id, its arguments, the length of
@@ -131,6 +133,7 @@ impl Hook for TestHook {
                     self.gauge.leave();
                     return Err(PolicyDown(name).into());
                 }
+                Behaviour::Panic => panic!("the policy hook broke"),
                 Behaviour::SlowFailOnce { yields, name } => {
                     for _ in 0..*yields {
                         tokio::task::yield_now().await;

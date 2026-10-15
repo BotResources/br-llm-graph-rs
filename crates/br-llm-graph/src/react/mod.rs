@@ -73,6 +73,8 @@ mod react_hook_failure_tests;
 #[cfg(test)]
 mod react_hook_slot_tests;
 #[cfg(test)]
+mod react_hook_stop_tests;
+#[cfg(test)]
 mod react_hook_support;
 #[cfg(test)]
 mod react_hook_tests;
