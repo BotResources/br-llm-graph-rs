@@ -27,6 +27,14 @@ pub(crate) struct Gate {
     inner: Mutex<GateState>,
 }
 
+/// The places and waiters of a gate. Every change is made under the gate's
+/// lock and keeps these invariants:
+/// - `free > 0` implies an empty `queue`: a freed place goes to the first
+///   waiter, so a place taken at once by a new arrival never jumps a queue;
+/// - an id is in at most one of `queue` and `handed`, and in one exactly
+///   while its `Enter` waits under it;
+/// - every place is free, held by a `Pass`, or handed to an id in `handed`:
+///   `free`, the live passes and `handed.len()` add up to the width.
 struct GateState {
     /// Places neither held nor handed to a waiter.
     free: usize,
@@ -114,6 +122,9 @@ impl<'a> Future for Enter<'a> {
                 Poll::Ready(Pass { gate })
             }
             Some(id) => {
+                // The last poll's waker is replaced by this one's. Keeping it
+                // when it wakes the same task is an optimisation that saves a
+                // clone and a drop: replacing it every time behaves the same.
                 let mut replaced = None;
                 if let Some((_, waker)) = state.queue.iter_mut().find(|(queued, _)| *queued == id)
                     && !waker.will_wake(cx.waker())
