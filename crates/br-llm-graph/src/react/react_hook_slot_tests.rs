@@ -96,6 +96,7 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
         enabled: None,
         // The hook reads it through the state it receives.
         inputs: vec![(key("log"), Kind::list(Kind::Str))],
+        thread_store: None,
     }
     .graph()
     .unwrap();
@@ -113,7 +114,7 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
         .unwrap();
     let state = graph
         .start_state([
-            (key("history"), Value::conversation(history)),
+            (key("opening"), Value::conversation(history)),
             (key("log"), Value::list(Vec::new())),
         ])
         .unwrap();

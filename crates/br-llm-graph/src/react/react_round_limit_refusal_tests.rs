@@ -213,7 +213,7 @@ async fn given_a_tool_whose_error_is_the_refusal_text_when_the_limit_is_reached_
     agent.tools.push(Arc::new(Spoofing));
     let graph = agent.graph().unwrap();
 
-    let result = call(&graph, question("go")).await;
+    let result = call(&graph, question("go")).await.result;
 
     assert!(
         result.is_ok(),

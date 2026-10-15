@@ -17,20 +17,17 @@ use crate::react::test_support::*;
 use crate::state::Kind;
 
 #[test]
-fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_limit_flag() {
+fn given_an_agent_when_built_then_its_signature_names_opening_answer_and_the_limit_flag() {
     let client = mock(Vec::new());
     let plain = agent(&client).graph().unwrap();
     let signature = plain.signature();
     assert_eq!(
         signature.inputs,
-        BTreeMap::from([(key("history"), Kind::Conversation)])
+        BTreeMap::from([(key("opening"), Kind::Conversation)])
     );
     assert_eq!(
         signature.outputs,
-        BTreeMap::from([
-            (key("history"), Kind::Conversation),
-            (key("answer"), Kind::Str),
-        ])
+        BTreeMap::from([(key("answer"), Kind::Str)])
     );
     assert_eq!(
         plain.schema().config,
@@ -54,7 +51,7 @@ fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_lim
     assert_eq!(
         flagged.signature().inputs,
         BTreeMap::from([
-            (key("history"), Kind::Conversation),
+            (key("opening"), Kind::Conversation),
             (key("persona"), Kind::Str),
         ])
     );
@@ -110,7 +107,7 @@ fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_co
 fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_then_duplicate_node()
 {
     let client = mock(Vec::new());
-    for reserved in ["llm", "answer"] {
+    for reserved in ["enter", "llm", "answer"] {
         let split = ReactAgent {
             tool_nodes: vec![(nid(reserved), vec![Arc::new(EchoTool) as _])],
             ..agent(&client)
@@ -146,7 +143,7 @@ fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_t
 
 #[test]
 fn given_an_enabled_key_that_names_a_key_of_the_graph_when_built_then_key_collision() {
-    for name in ["history", "answer"] {
+    for name in ["opening", "answer", "conversation", "turn_rank"] {
         let built = ReactAgent {
             enabled: Some(key(name)),
             ..agent(&mock(Vec::new()))
@@ -176,7 +173,15 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
         }
         .graph()
     };
-    for name in ["history", "answer", "persona", "offered", "limit_reached"] {
+    for name in [
+        "opening",
+        "answer",
+        "conversation",
+        "turn_rank",
+        "persona",
+        "offered",
+        "limit_reached",
+    ] {
         let built = flagged(vec![(key(name), Kind::Str)]);
         assert!(
             matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
@@ -212,7 +217,7 @@ fn given_a_key_read_by_several_functions_when_built_then_it_is_declared_once() {
     assert_eq!(
         graph.signature().inputs,
         BTreeMap::from([
-            (key("history"), Kind::Conversation),
+            (key("opening"), Kind::Conversation),
             (key("persona"), Kind::Str),
         ])
     );
@@ -239,7 +244,13 @@ fn given_a_function_that_reads_a_key_of_the_graph_when_built_then_key_collision(
         }
         .graph()
     };
-    for name in ["history", "answer", "limit_reached"] {
+    for name in [
+        "opening",
+        "answer",
+        "conversation",
+        "turn_rank",
+        "limit_reached",
+    ] {
         let built = flagged(Prompt::from_state(&skey(name)));
         assert!(
             matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),

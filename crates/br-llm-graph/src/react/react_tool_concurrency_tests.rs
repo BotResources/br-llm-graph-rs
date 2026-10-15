@@ -111,6 +111,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
         enabled: None,
         gates: Arc::new(SharedGates::default()),
+        durable: None,
     };
     let graph = GraphBuilder::new(schema())
         .entry(NodeId::new("tools").unwrap())
@@ -183,6 +184,7 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .unwrap()
@@ -202,7 +204,7 @@ async fn run_split_agent(graph: &crate::graph::Graph) {
         )
         .unwrap();
     let state = graph
-        .start_state([(key("history"), Value::conversation(history))])
+        .start_state([(key("opening"), Value::conversation(history))])
         .unwrap();
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));

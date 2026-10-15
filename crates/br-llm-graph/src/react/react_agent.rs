@@ -5,12 +5,17 @@ use br_llm_messages::Author;
 
 use crate::error::GraphError;
 use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Node, NodeFuture, Target};
-use crate::react::agent_build::{declare_input, declare_limit, round_limit_flag, tools_node_clash};
+use crate::react::agent_build::{
+    AgentKeys, declare_input, declare_limit, round_limit_flag, tools_node_clash,
+};
+use crate::react::agent_call::{AgentCall, ThreadBinding};
+use crate::react::enter::{EnterNode, enter_edge};
 use crate::react::given::{History, Model, Prompt, declare_reads};
 use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
+use crate::react::thread_store::ThreadStore;
 use crate::react::tool::Tool;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
@@ -18,36 +23,50 @@ use crate::value::{EndLabel, Key, NodeId};
 
 /// A ReAct agent as a graph, to call with `SubGraph` or run on its own.
 ///
-/// The graph is the ReAct loop on the key `history`: the model call, then,
-/// while the reply calls tools, the tool nodes that run the calls and the
-/// model call again; when a reply calls no tool, a node reads the answer and
-/// the graph ends with `done`.
+/// The graph enters through `enter`, then runs the ReAct loop on its private
+/// key `conversation`: the model call, then, while the reply calls tools, the
+/// tool nodes that run the calls and the model call again; when a reply
+/// calls no tool, a node reads the answer and the graph ends with `done`.
+///
+/// Built with a `thread_store`, the agent is durable: it works in a thread
+/// and resumes from it (see `ThreadStore`). `enter` rehydrates
+/// `conversation` from the thread; a call whose turn the thread holds
+/// completed goes to the answer without calling the model. Every step, tool
+/// results item and turn end is written to the thread first, then applied to
+/// `conversation`; the turn stays open across its rounds. Without one, the
+/// agent works in memory: `conversation` starts as `opening` and lives for
+/// the current call. Both run the same loop, read the same functions and
+/// give the same outputs and errors.
 ///
 /// The model call is built from what the runner gives it (see `Given`), each
 /// subject a value or a function of the agent's context, which holds the
 /// state, the configuration, the agent's conversation and the round (the
-/// rounds already answered in the agent's open turn): `model` gives the
-/// client called for that round, `system` the system text (one that resolves
-/// blank gives none), `history` the messages, by default the conversation
-/// rendered for `author`. A function shapes the request only: the reply is
-/// added to the conversation whatever the history sent. A change of client
-/// never changes the author.
+/// rounds already answered in the agent's turn): `model` gives the client
+/// called for that round, `system` the system text (one that resolves blank
+/// gives none), `history` the messages, by default the conversation rendered
+/// for `author`. A function shapes the request only: the reply is added to
+/// the conversation whatever the history sent. A change of client never
+/// changes the author.
 ///
-/// - Inputs: `history` (conversation), the agent's chat history: a new call is
-///   a history holding one user input, a resumed call the history the host
-///   saved. The loop always enters through the model call, so a history
-///   saved while the agent's turn awaits tool results cannot start a call
-///   (the render refuses it, `Message`): resume that run from its checkpoint
-///   instead. Each state key the functions declare is an input of its kind,
-///   and so is the `enabled` key, a list of strings, when set. Each key of
-///   `inputs` is an input of its kind, for the tools to read through the
-///   state they receive.
-/// - Outputs: `history` (the conversation after the run), `answer` (string,
-///   the final step of the agent's last turn: the JSON text of its structured
-///   block when it has one, else its text blocks joined verbatim; empty when
-///   there is no final step) and, when the round limit's `OnLimit` is
-///   `Continue` or `End`, its `flag` (bool, true when the limit was reached).
-///   With `End`, the final step may be the limit's closing step.
+/// - Inputs: `opening` (conversation), what the caller adds before the agent
+///   answers; durable, user inputs ending with the trigger, the user input
+///   the call answers (`OpeningNotInputs` otherwise), each stored in the
+///   thread unless it holds its id. Durable, `thread` (string): the id of a
+///   thread the store holds (`ThreadNotFound` otherwise; any text that is not
+///   a UUIDv7 is refused, `ThreadId`), or the empty string to have the store
+///   create one under an id from the id source. Each state key the functions
+///   declare is an input of its kind, and so is the `enabled` key, a list of
+///   strings, when set. Each key of `inputs` is an input of its kind, for the
+///   tools to read through the state they receive.
+/// - Outputs: `answer` (string, the final step of the agent's last turn: the
+///   JSON text of its structured block when it has one, else its text blocks
+///   joined verbatim; empty when there is no final step); when the round
+///   limit's `OnLimit` is `Continue` or `End`, its `flag` (bool, true when the
+///   limit was reached), with `End` the final step may be the limit's closing
+///   step; durable, `thread` (string), the id of the agent's thread.
+///   `conversation` is private: neither an input nor an output, never part
+///   of a checkpoint of the agent's graph, so a run of that graph resumed
+///   from a checkpoint enters again through `enter`.
 /// - Configuration: each configuration key the functions declare, of its
 ///   kind, the tool concurrency and the round limit when they read a
 ///   configuration key.
@@ -56,10 +75,12 @@ use crate::value::{EndLabel, Key, NodeId};
 /// a call naming another tool is answered with an error result, never
 /// executed. A key read by several functions, with one kind, is declared
 /// once; a key the functions declare, `enabled` or a key of `inputs` that the
-/// graph already has, `history`, `answer`, the limit keys and the round
-/// limit's flag included, is refused (`KeyCollision`), and so is a key two
-/// functions declare with two kinds. A flag that names `history` or `answer`
-/// is refused (`FlagKeyMismatch`), before the rules of the ReAct loop below.
+/// graph already has is refused (`KeyCollision`): `opening`, `answer`,
+/// `conversation`, `turn_rank` (the private key where the call stands among
+/// its turns), `thread` when durable, the limit keys and the round limit's
+/// flag included; and so is a key two functions declare with two kinds. A
+/// flag that names `answer`, `opening`, `thread` or `conversation` is
+/// refused (`FlagKeyMismatch`), before the rules of the ReAct loop below.
 ///
 /// `output_mode` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
@@ -73,10 +94,11 @@ use crate::value::{EndLabel, Key, NodeId};
 /// Then each tool of `tool_nodes` must be one of `tools` (`ToolNotDeclared`),
 /// and each of `tools` run by exactly one tool node (`ToolNotCovered`,
 /// `ToolCoveredTwice`). A pending call no tool node runs fails the run
-/// (`PendingToolUnsatisfiable`).
+/// (`PendingToolUnsatisfiable`). The graph's own nodes are `enter`, `llm`,
+/// `answer` and, without a split, `tools`: a tool node or a round-limit node
+/// of one of these ids collides with it (`DuplicateNode`).
 ///
-/// The round limit counts the rounds of the agent's open turn (see
-/// `RoundLimit`).
+/// The round limit counts the rounds of the agent's turn (see `RoundLimit`).
 pub struct ReactAgent {
     pub author: Author,
     /// The client called for each round.
@@ -100,28 +122,37 @@ pub struct ReactAgent {
     pub enabled: Option<Key>,
     /// Extra state keys the caller maps per run, read by the tools.
     pub inputs: Vec<(Key, Kind)>,
+    /// The store of the agent's threads. `None`: the agent works in memory.
+    pub thread_store: Option<Arc<dyn ThreadStore>>,
 }
 
 impl ReactAgent {
     pub fn graph(self) -> Result<Arc<Graph>, GraphError> {
-        let history = Key::new("history")?;
-        let answer = Key::new("answer")?;
+        let keys = AgentKeys::new(self.thread_store.is_some())?;
         let llm = NodeId::new("llm")?;
+        let enter = NodeId::new("enter")?;
         let answer_node = NodeId::new("answer")?;
 
         let mut schema = Schema::builder()
-            .state_by_name(history.clone(), Kind::Conversation)
-            .state_by_name(answer.clone(), Kind::Str);
+            .state_by_name(keys.opening.clone(), Kind::Conversation)
+            .state_by_name(keys.answer.clone(), Kind::Str);
+        if let Some(thread) = &keys.thread {
+            schema = schema.state_by_name(thread.clone(), Kind::Str);
+        }
         schema = declare_limit(schema, self.tool_concurrency.as_ref());
         let flag = self.round_limit.as_ref().and_then(round_limit_flag);
         if let Some(round_limit) = &self.round_limit {
             schema = declare_limit(schema, Some(&round_limit.max_rounds));
         }
         let mut schema = schema.build();
+        // The private keys are declared while the other keys are, so a key
+        // that takes their name collides with them.
+        keys.reserve(&mut schema);
         if let Some(flag) = &flag {
             schema.state.entry(flag.clone()).or_insert(Kind::Bool);
         }
-        let mut inputs = vec![history.clone()];
+        let mut inputs = vec![keys.opening.clone()];
+        inputs.extend(keys.thread.clone());
         let reads = [self.model.reads(), self.system.reads()]
             .into_iter()
             .chain(self.history.as_ref().map(History::reads));
@@ -135,11 +166,23 @@ impl ReactAgent {
             inputs.push(key);
         }
         if let Some(flag) = &flag
-            && (*flag == history || *flag == answer)
+            && keys.names_flag(flag)
         {
             return Err(GraphError::FlagKeyMismatch { key: flag.clone() });
         }
+        keys.release(&mut schema);
 
+        let call = AgentCall {
+            opening: keys.opening.clone(),
+            position: keys.position.clone(),
+            thread: match (&keys.thread, self.thread_store) {
+                (Some(key), Some(store)) => Some(ThreadBinding {
+                    store,
+                    key: key.clone(),
+                }),
+                _ => None,
+            },
+        };
         let tools_node = NodeId::new("tools")?;
         let clash = tools_node_clash(&self.tool_nodes, self.round_limit.as_ref(), &tools_node);
         let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {
@@ -153,9 +196,10 @@ impl ReactAgent {
             after: Target::Node(answer_node.clone()),
             tool_concurrency: self.tool_concurrency,
             round_limit: self.round_limit,
+            thread: call.thread.clone(),
         };
         let llm_node = LlmNode {
-            key: history.clone(),
+            key: keys.conversation.clone(),
             author: self.author.clone(),
             model: self.model,
             system: self.system,
@@ -163,15 +207,29 @@ impl ReactAgent {
             tools: self.tools,
             enabled: self.enabled,
             output_mode: self.output_mode,
+            call: Some(call.clone()),
         };
 
-        let mut builder = GraphBuilder::new(schema).entry(llm);
+        let mut builder = keys
+            .declare_private(GraphBuilder::new(schema))
+            .entry(enter.clone())
+            .node(
+                enter.clone(),
+                EnterNode {
+                    conversation: keys.conversation.clone(),
+                    call: call.clone(),
+                },
+            )
+            .edge(enter, enter_edge(call, llm.clone(), answer_node.clone()));
         for key in inputs {
             builder = builder.input(key);
         }
-        builder = builder.output(history.clone()).output(answer.clone());
+        builder = builder.output(keys.answer.clone());
         if let Some(flag) = flag {
             builder = builder.output(flag);
+        }
+        if let Some(thread) = &keys.thread {
+            builder = builder.output(thread.clone());
         }
         let builder = react.add(builder, llm_node)?;
         if let Some(clash) = clash {
@@ -181,8 +239,8 @@ impl ReactAgent {
             .node(
                 answer_node.clone(),
                 AnswerNode {
-                    history,
-                    answer,
+                    conversation: keys.conversation,
+                    answer: keys.answer,
                     author: self.author,
                 },
             )
@@ -195,7 +253,7 @@ impl ReactAgent {
 /// Sets `answer` to the text of the final step of the agent's last turn,
 /// empty when there is none.
 struct AnswerNode {
-    history: Key,
+    conversation: Key,
     answer: Key,
     author: Author,
 }
@@ -208,7 +266,7 @@ impl Node for AnswerNode {
         _ctx: &'a Context,
     ) -> NodeFuture<'a> {
         Box::pin(async move {
-            let conversation = state.conversation(&self.history)?;
+            let conversation = state.conversation(&self.conversation)?;
             let answer = last_turn_by_author(conversation, &self.author)
                 .and_then(final_step)
                 .map(answer_text)

@@ -1,5 +1,7 @@
 mod agent_build;
+mod agent_call;
 mod critique;
+mod enter;
 mod generator_critic;
 mod generator_critic_nodes;
 mod generator_critic_routing;
@@ -11,7 +13,9 @@ mod llm_call_check;
 mod llm_node;
 mod react_agent;
 mod react_loop;
+mod rehydrate;
 mod round_limit;
+mod round_writer;
 mod seats;
 mod sink;
 mod thread_store;
@@ -19,6 +23,7 @@ mod tool;
 mod tool_gate;
 mod tool_node;
 mod turn_ids;
+mod turn_writer;
 mod verdict;
 
 #[cfg(test)]

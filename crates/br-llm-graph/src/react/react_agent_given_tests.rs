@@ -20,8 +20,8 @@ use crate::run::{control, run};
 use crate::state::{Config, ConfigKey, Kind, StateKey, Value};
 
 /// The conversation of a finished call, followed by a new question.
-fn and_then(state: &crate::state::State, body: &str) -> br_llm_messages::Conversation {
-    let mut history = state.conversation(&key("history")).unwrap().clone();
+fn and_then(state: &Done, body: &str) -> br_llm_messages::Conversation {
+    let mut history = state.transcript().clone();
     history
         .push_input(
             UserInput::new(
@@ -142,7 +142,7 @@ async fn given_a_history_function_when_the_agent_runs_then_it_shapes_the_request
     assert!(matches!(sent.last(), Some(WireMessage::Relay { .. })));
     assert_eq!(last_turn(&state).author(), Some(&author()));
     assert_eq!(
-        state.conversation(&key("history")).unwrap().entries().len(),
+        state.transcript().entries().len(),
         2,
         "the question and the agent's turn: nothing of the relay is recorded"
     );
@@ -172,7 +172,7 @@ async fn given_keys_its_functions_declare_when_the_agent_is_built_then_inputs_an
     assert_eq!(
         graph.signature().inputs,
         BTreeMap::from([
-            (key("history"), Kind::Conversation),
+            (key("opening"), Kind::Conversation),
             (key("tiers"), Kind::list(Kind::Str)),
         ])
     );
@@ -183,7 +183,7 @@ async fn given_keys_its_functions_declare_when_the_agent_is_built_then_inputs_an
 
     let state = graph
         .start_state([
-            (key("history"), Value::conversation(question("hi"))),
+            (key("opening"), Value::conversation(question("hi"))),
             tiers
                 .given(vec!["small".to_owned(), "large".to_owned()])
                 .unwrap(),

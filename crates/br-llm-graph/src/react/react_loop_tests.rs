@@ -38,6 +38,7 @@ fn llm_node(
         tools,
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: None,
     }
 }
 
@@ -54,6 +55,7 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
@@ -102,6 +104,7 @@ async fn given_two_tool_nodes_with_parallel_calls_when_run_then_both_run() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)

@@ -27,7 +27,7 @@ async fn main() {
         text_step("Here is what I found."),
     ]);
 
-    // Input `history`; outputs `history` and `answer`; configuration `base`
+    // Input `opening`; output `answer`; configuration `base`
     // (the system prompt).
     let agent = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
@@ -41,6 +41,7 @@ async fn main() {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .expect("agent graph");
@@ -51,9 +52,8 @@ async fn main() {
         .config_by_name(key("prompt"), Kind::Str)
         .build();
     let call = SubGraph::call(agent)
-        .input(key("history"), Input::From(key("chat")))
+        .input(key("opening"), Input::From(key("chat")))
         .config(key("base"), Input::Config(key("prompt")))
-        .output(key("history"), Output::Set(key("chat")))
         .output(key("answer"), Output::Set(key("answer")));
     let graph = GraphBuilder::new(schema.clone())
         .entry(NodeId::new("agent").expect("id"))

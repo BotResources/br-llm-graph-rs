@@ -76,7 +76,7 @@ async fn given_an_agent_called_by_a_node_when_it_answers_then_its_ids_are_asked_
         .config_by_name(key("base"), Kind::Str)
         .build();
     let call = SubGraph::call(agent(&client).graph().unwrap())
-        .input(key("history"), Input::From(key("chat")))
+        .input(key("opening"), Input::From(key("chat")))
         .config(key("base"), Input::Config(key("base")));
     let graph = GraphBuilder::new(schema)
         .entry(nid("helper"))

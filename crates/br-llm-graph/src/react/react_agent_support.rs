@@ -17,7 +17,7 @@ use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::test_support::*;
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
-use crate::testkit::SeqIds;
+use crate::testkit::{SeqIds, Transcript};
 use crate::value::NodeId;
 
 pub(crate) fn nid(name: &str) -> NodeId {
@@ -52,6 +52,7 @@ pub(crate) fn agent(client: &MockClient) -> ReactAgent {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
 }
 
@@ -75,52 +76,107 @@ pub(crate) fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-pub(crate) async fn call(graph: &Graph, history: Conversation) -> Result<Outcome, RunFailure> {
-    call_in(graph, history, &ctx()).await
+/// What a call of the agent gave: its result, and its private conversation
+/// as the observer saw it built.
+pub(crate) struct Called {
+    pub(crate) result: Result<Outcome, RunFailure>,
+    transcript: Option<Arc<Transcript>>,
 }
 
-pub(crate) async fn run_agent(graph: &Graph, state: State) -> Result<Outcome, RunFailure> {
+impl Called {
+    pub(crate) fn err(self) -> Option<RunFailure> {
+        self.result.err()
+    }
+}
+
+impl From<Result<Outcome, RunFailure>> for Called {
+    fn from(result: Result<Outcome, RunFailure>) -> Self {
+        Self {
+            result,
+            transcript: None,
+        }
+    }
+}
+
+/// A finished call: its final state and, when seen, its conversation.
+pub(crate) struct Done {
+    pub(crate) state: State,
+    conversation: Option<Conversation>,
+}
+
+impl Done {
+    /// The agent's conversation as the run left it.
+    pub(crate) fn transcript(&self) -> &Conversation {
+        self.conversation
+            .as_ref()
+            .expect("the run built a conversation")
+    }
+}
+
+impl std::ops::Deref for Done {
+    type Target = State;
+
+    fn deref(&self) -> &State {
+        &self.state
+    }
+}
+
+pub(crate) async fn call(graph: &Graph, opening: Conversation) -> Called {
+    call_in(graph, opening, &ctx()).await
+}
+
+/// `ctx` with an observer that also keeps the agent's conversation.
+pub(crate) fn observed(ctx: &Context) -> (Context, Arc<Transcript>) {
+    let transcript = Arc::new(Transcript::new(ctx.observer.clone()));
+    let mut ctx = ctx.clone();
+    ctx.observer = transcript.clone();
+    (ctx, transcript)
+}
+
+pub(crate) async fn run_agent(graph: &Graph, state: State) -> Called {
+    let (ctx, transcript) = observed(&ctx());
     let (_sender, mut channel) = control();
-    run(
-        graph,
-        &agent_config(graph),
-        state,
-        None,
-        &ctx(),
-        &mut channel,
-    )
-    .await
+    let result = run(graph, &agent_config(graph), state, None, &ctx, &mut channel).await;
+    Called {
+        result,
+        transcript: Some(transcript),
+    }
 }
 
-pub(crate) async fn call_in(
-    graph: &Graph,
-    history: Conversation,
-    ctx: &Context,
-) -> Result<Outcome, RunFailure> {
+pub(crate) async fn call_in(graph: &Graph, opening: Conversation, ctx: &Context) -> Called {
     let state = graph
-        .start_state([(key("history"), Value::conversation(history))])
+        .start_state([(key("opening"), Value::conversation(opening))])
         .unwrap();
+    let (ctx, transcript) = observed(ctx);
     let (_sender, mut channel) = control();
-    run(graph, &agent_config(graph), state, None, ctx, &mut channel).await
+    let result = run(graph, &agent_config(graph), state, None, &ctx, &mut channel).await;
+    Called {
+        result,
+        transcript: Some(transcript),
+    }
 }
 
-pub(crate) fn finished(result: Result<Outcome, RunFailure>) -> State {
-    match result.map_err(|f| f.error).unwrap() {
+pub(crate) fn finished(called: impl Into<Called>) -> Done {
+    let called = called.into();
+    let conversation = called
+        .transcript
+        .as_ref()
+        .and_then(|transcript| transcript.conversation());
+    match called.result.map_err(|f| f.error).unwrap() {
         Outcome::Finished { state, end } => {
             assert_eq!(end.as_str(), "done");
-            state
+            Done {
+                state,
+                conversation,
+            }
         }
         Outcome::Paused { .. } | Outcome::Cancelled { .. } => panic!("expected finished"),
     }
 }
 
-pub(crate) fn last_turn(state: &State) -> Turn {
-    match state
-        .conversation(&key("history"))
-        .unwrap()
-        .entries()
-        .last()
-    {
+/// The agent's last turn: the last entry of its conversation.
+pub(crate) fn last_turn(done: &Done) -> Turn {
+    match done.transcript().entries().last() {
         Some(Entry::Turn(turn)) => turn.clone(),
         Some(Entry::UserInput(_)) | None => panic!("expected the agent's turn last"),
     }

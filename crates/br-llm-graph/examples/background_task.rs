@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
-    Config, Edge, EndLabel, FnEdge, GraphBuilder, Input, Kind, Model, NodeId, Outcome, Output,
-    ReactAgent, Schema, Session, State, SubGraph, Target, Value,
+    Config, Edge, EndLabel, FnEdge, GraphBuilder, Input, Kind, Model, NodeId, Outcome, ReactAgent,
+    Schema, Session, State, SubGraph, Target, Value,
 };
 use br_llm_messages::{Author, Conversation, Entry, UserSource};
 
@@ -30,11 +30,11 @@ async fn main() {
 
     let start_task = Arc::new(StartTaskTool::new(
         Arc::new(Mutex::new(None)),
-        key("history"),
+        key("opening"),
         key("pending_tasks"),
     ));
 
-    // Inputs `history` and `pending_tasks` (written by the tool);
+    // Inputs `opening` and `pending_tasks` (written by the tool);
     // configuration `base`.
     let agent = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
@@ -48,6 +48,7 @@ async fn main() {
         round_limit: None,
         enabled: None,
         inputs: vec![(key("pending_tasks"), Kind::list(Kind::Str))],
+        thread_store: None,
     }
     .graph()
     .expect("agent graph");
@@ -58,10 +59,9 @@ async fn main() {
         .config_by_name(key("base"), Kind::Str)
         .build();
     let call = SubGraph::call(agent)
-        .input(key("history"), Input::From(key("chat")))
+        .input(key("opening"), Input::From(key("chat")))
         .input(key("pending_tasks"), Input::From(key("pending_tasks")))
-        .config(key("base"), Input::Config(key("base")))
-        .output(key("history"), Output::Set(key("chat")));
+        .config(key("base"), Input::Config(key("base")));
     let graph = Arc::new(
         GraphBuilder::new(schema.clone())
             .entry(NodeId::new("agent").expect("id"))

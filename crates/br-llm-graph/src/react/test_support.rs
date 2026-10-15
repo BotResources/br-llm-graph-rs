@@ -128,13 +128,41 @@ pub(crate) fn calls_step(names: &[&str]) -> Step {
 
 /// Each tool result of a turn as `(tool, is_error, text)`, in order.
 pub(crate) fn results_of(turn: &br_llm_messages::Turn) -> Vec<(String, bool, String)> {
-    turn.items()
-        .iter()
-        .filter_map(|item| match item {
-            br_llm_messages::TurnItem::ToolResults(results) => Some(results.results()),
-            br_llm_messages::TurnItem::Step(_) => None,
-        })
-        .flatten()
+    described(
+        turn.items()
+            .iter()
+            .filter_map(|item| match item {
+                br_llm_messages::TurnItem::ToolResults(results) => Some(results.results()),
+                br_llm_messages::TurnItem::Step(_) => None,
+            })
+            .flatten(),
+    )
+}
+
+/// Each tool result `request` sends the model, as `(tool, is_error, text)`,
+/// in order.
+pub(crate) fn sent_results(request: &ClientRequest) -> Vec<(String, bool, String)> {
+    described(
+        request
+            .messages()
+            .iter()
+            .filter_map(|message| match message {
+                br_llm_messages::WireMessage::User { content } => Some(content),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|block| match block {
+                br_llm_messages::WireUserBlock::ToolResult(result) => Some(result),
+                _ => None,
+            }),
+    )
+}
+
+/// `results` as `(tool, is_error, text)`.
+fn described<'a>(
+    results: impl Iterator<Item = &'a br_llm_messages::ToolResult>,
+) -> Vec<(String, bool, String)> {
+    results
         .map(|result| {
             let text = result
                 .content

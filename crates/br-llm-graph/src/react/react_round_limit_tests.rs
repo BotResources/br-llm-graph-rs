@@ -214,6 +214,7 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
             tools: vec![Arc::new(EchoTool)],
             enabled: None,
             output_mode: OutputMode::Plain,
+            call: None,
         };
         ReactLoop {
             llm: nid("llm"),
@@ -227,6 +228,7 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
                     flag: key(flag),
                 },
             }),
+            thread: None,
         }
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
         .err()

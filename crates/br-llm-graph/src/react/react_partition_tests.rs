@@ -37,6 +37,7 @@ fn llm_node(
         tools,
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: None,
     }
 }
 
@@ -50,6 +51,7 @@ fn given_tool_not_covered_when_react_loop_added_then_refused() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -68,6 +70,7 @@ fn given_zero_tool_nodes_when_react_loop_added_then_tool_not_covered() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -89,6 +92,7 @@ fn given_tool_covered_twice_when_react_loop_added_then_refused() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -107,6 +111,7 @@ fn given_tool_node_tool_not_declared_when_react_loop_added_then_refused() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -125,6 +130,7 @@ async fn given_model_calls_unowned_tool_when_run_then_pending_unsatisfiable() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
@@ -159,6 +165,7 @@ fn given_one_tool_node_listing_a_tool_twice_when_react_loop_added_then_tool_cove
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let error = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)

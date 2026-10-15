@@ -93,7 +93,7 @@ async fn main() {
     ]);
     let skill = || vec![text_parameter("skill", "the skill to load or unload")];
 
-    // Inputs `history`, `skill_prompt` (a string read into the system text)
+    // Inputs `opening`, `skill_prompt` (a string read into the system text)
     // and `enabled` (the tools offered); configuration `base`. The system
     // text is a function of the agent's context, which reads only the keys
     // declared with it.
@@ -129,6 +129,7 @@ async fn main() {
         round_limit: None,
         enabled: Some(key("enabled")),
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .expect("agent graph");
@@ -142,7 +143,7 @@ async fn main() {
         .expect("an input id unique in the conversation");
     let state = graph
         .start_state([
-            (key("history"), Value::conversation(chat)),
+            (key("opening"), Value::conversation(chat)),
             (key("skill_prompt"), Value::str("")),
             (
                 key("enabled"),

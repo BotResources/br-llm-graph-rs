@@ -4,11 +4,85 @@
 use std::sync::Arc;
 
 use crate::error::GraphError;
+use crate::graph::GraphBuilder;
 use crate::graph::{Count, Limit};
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::tool::Tool;
 use crate::state::{Kind, Schema, SchemaBuilder};
 use crate::value::{Key, NodeId};
+
+/// The keys every agent has: its inputs `opening` and, durable, `thread`
+/// (also an output), its output `answer`, and its private keys
+/// `conversation` and `turn_rank` (where the call stands among its turns,
+/// see `Position`).
+pub(crate) struct AgentKeys {
+    pub(crate) opening: Key,
+    pub(crate) answer: Key,
+    pub(crate) conversation: Key,
+    pub(crate) position: Key,
+    /// `Some` when the agent is durable.
+    pub(crate) thread: Option<Key>,
+    /// `thread`, which no flag may name, durable or not.
+    thread_name: Key,
+}
+
+impl AgentKeys {
+    pub(crate) fn new(durable: bool) -> Result<Self, GraphError> {
+        let thread_name = Key::new("thread")?;
+        Ok(Self {
+            opening: Key::new("opening")?,
+            answer: Key::new("answer")?,
+            conversation: Key::new("conversation")?,
+            position: Key::new("turn_rank")?,
+            thread: durable.then(|| thread_name.clone()),
+            thread_name,
+        })
+    }
+
+    fn private(&self) -> [(&Key, Kind); 2] {
+        [
+            (&self.conversation, Kind::Conversation),
+            (&self.position, Kind::Int),
+        ]
+    }
+
+    /// Declares the private keys in `schema` while the other keys are
+    /// declared, so a key that takes their name collides with them.
+    pub(crate) fn reserve(&self, schema: &mut Schema) {
+        for (key, kind) in self.private() {
+            schema.state.insert(key.clone(), kind);
+        }
+    }
+
+    /// Takes the private keys out of `schema` again, to declare them as
+    /// private keys of the graph.
+    pub(crate) fn release(&self, schema: &mut Schema) {
+        for (key, _) in self.private() {
+            schema.state.remove(key);
+        }
+    }
+
+    /// Declares the private keys of the agent's graph.
+    pub(crate) fn declare_private(&self, builder: GraphBuilder) -> GraphBuilder {
+        self.private()
+            .into_iter()
+            .fold(builder, |builder, (key, kind)| {
+                builder.private(key.clone(), kind)
+            })
+    }
+
+    /// Whether a round limit's flag names a key no flag may name: `answer`,
+    /// `opening`, `thread` or `conversation`.
+    pub(crate) fn names_flag(&self, flag: &Key) -> bool {
+        [
+            &self.answer,
+            &self.opening,
+            &self.thread_name,
+            &self.conversation,
+        ]
+        .contains(&flag)
+    }
+}
 
 /// Declares the configuration key a limit reads, as an int.
 pub(crate) fn declare_limit(schema: SchemaBuilder, limit: Option<&Limit>) -> SchemaBuilder {

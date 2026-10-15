@@ -47,6 +47,7 @@ pub(crate) fn tool_node(
         max_concurrency,
         enabled,
         gates: Arc::new(SharedGates::default()),
+        durable: None,
     }
 }
 
@@ -61,6 +62,7 @@ pub(crate) fn llm_node(client: Arc<dyn Client>, system: Prompt<ReactAgent>) -> L
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: None,
     }
 }
 

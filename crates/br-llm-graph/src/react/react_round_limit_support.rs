@@ -85,6 +85,7 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: None,
     };
     let react = ReactLoop {
         llm: nid("llm"),
@@ -95,6 +96,7 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
             max_rounds,
             on_limit,
         }),
+        thread: None,
     };
     react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)

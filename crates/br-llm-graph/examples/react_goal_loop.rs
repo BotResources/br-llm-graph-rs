@@ -14,8 +14,8 @@ use br_llm_clients_core::{
 };
 use br_llm_graph::{
     Always, Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Input, Kind, Model,
-    NodeFuture, NodeId, Outcome, Output, ReactAgent, Schema, State, SubGraph, Target, Value,
-    complete, control, run, structured, wire,
+    NodeFuture, NodeId, Outcome, ReactAgent, Schema, State, SubGraph, Target, Value, complete,
+    control, run, structured, wire,
 };
 use br_llm_messages::{Author, Conversation};
 use serde::Deserialize;
@@ -43,7 +43,7 @@ async fn main() {
         structured_step(json!({ "achieved": true })),
     ]);
 
-    // Input `history`; configuration `base`. No tools: each call is one
+    // Input `opening`; configuration `base`. No tools: each call is one
     // model reply.
     let agent = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
@@ -57,13 +57,13 @@ async fn main() {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .expect("agent graph");
     let call = SubGraph::call(agent)
-        .input(key("history"), Input::From(key("chat")))
-        .config(key("base"), Input::Config(key("base")))
-        .output(key("history"), Output::Set(key("chat")));
+        .input(key("opening"), Input::From(key("chat")))
+        .config(key("base"), Input::Config(key("base")));
 
     let graph = GraphBuilder::new(schema.clone())
         .entry(NodeId::new("agent").expect("id"))

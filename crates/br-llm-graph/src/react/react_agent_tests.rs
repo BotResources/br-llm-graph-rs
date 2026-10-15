@@ -1,5 +1,5 @@
-//! A ReAct agent run: its answer, its tool rounds, its round limit, a
-//! resumed history and its enabled key.
+//! A ReAct agent run in memory: its answer, its tool rounds, its round
+//! limit, an opening that holds earlier turns and its enabled key.
 
 use std::sync::Arc;
 
@@ -19,15 +19,13 @@ use crate::react::test_support::*;
 use crate::state::{Kind, Value};
 
 #[tokio::test]
-async fn given_a_plain_answer_when_the_agent_runs_then_history_and_answer_come_back() {
+async fn given_a_plain_answer_when_the_agent_runs_then_its_conversation_holds_it_and_answer_comes_back()
+ {
     let client = mock(vec![text_step("hello there")]);
     let graph = agent(&client).graph().unwrap();
     let state = finished(call(&graph, question("hi")).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "hello there");
-    assert_eq!(
-        state.conversation(&key("history")).unwrap().entries().len(),
-        2
-    );
+    assert_eq!(state.transcript().entries().len(), 2);
     let requests = requests(&client);
     assert_eq!(requests.len(), 1);
     assert_eq!(
@@ -148,8 +146,9 @@ async fn given_the_round_limit_errors_when_the_agent_keeps_calling_then_the_run_
 }
 
 #[tokio::test]
-async fn given_a_history_with_a_finished_tool_round_when_called_again_then_the_turn_resumes() {
-    let mut history = question("hi");
+async fn given_an_opening_holding_an_earlier_turn_of_the_agent_when_called_in_memory_then_it_answers_in_a_new_turn()
+ {
+    let mut opening = question("hi");
     let mut turn = Turn::new(
         TurnId::new("t0").unwrap(),
         Some(author()),
@@ -162,19 +161,21 @@ async fn given_a_history_with_a_finished_tool_round_when_called_again_then_the_t
         false,
     ))
     .unwrap();
-    history.push_turn(turn).unwrap();
+    opening.push_turn(turn).unwrap();
 
-    let client = mock(vec![text_step("resumed reply")]);
+    let client = mock(vec![text_step("a new reply")]);
     let graph = agent(&client).graph().unwrap();
-    let state = finished(call(&graph, history).await);
-    assert_eq!(state.str(&key("answer")).unwrap(), "resumed reply");
-    assert_eq!(
-        state.conversation(&key("history")).unwrap().entries().len(),
-        2
-    );
+    let state = finished(call(&graph, opening).await);
+    assert_eq!(state.str(&key("answer")).unwrap(), "a new reply");
+    assert_eq!(state.transcript().entries().len(), 3);
+    let earlier = state
+        .transcript()
+        .turn(&TurnId::new("t0").unwrap())
+        .unwrap();
+    assert_eq!(earlier.items().len(), 2);
     let turn = last_turn(&state);
-    assert_eq!(turn.id().as_str(), "t0");
-    assert_eq!(turn.items().len(), 3);
+    assert_eq!(turn.id().as_str(), "t1");
+    assert_eq!(turn.items().len(), 1);
     assert_eq!(requests(&client).len(), 1);
 }
 
@@ -189,8 +190,8 @@ async fn given_a_new_activation_when_the_round_limit_counts_then_it_starts_from_
     let graph = limited(&client, 1, OnLimit::Error).graph().unwrap();
     let ctx = ctx();
     let state = finished(call_in(&graph, question("hi"), &ctx).await);
-    let mut history = state.conversation(&key("history")).unwrap().clone();
-    history
+    let mut opening = state.transcript().clone();
+    opening
         .push_input(
             UserInput::new(
                 InputId::new("i-again").unwrap(),
@@ -201,7 +202,7 @@ async fn given_a_new_activation_when_the_round_limit_counts_then_it_starts_from_
             .unwrap(),
         )
         .unwrap();
-    let state = finished(call_in(&graph, history, &ctx).await);
+    let state = finished(call_in(&graph, opening, &ctx).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "second");
 }
 
@@ -228,7 +229,7 @@ async fn given_an_enabled_subset_when_the_agent_runs_then_only_it_is_offered_and
     );
     let state = graph
         .start_state([
-            (key("history"), Value::conversation(question("hi"))),
+            (key("opening"), Value::conversation(question("hi"))),
             (key("offered"), Value::list(vec![Value::str("echo")])),
         ])
         .unwrap();

@@ -93,8 +93,6 @@ impl GraphBuilder {
     /// state the graph's runs work on, never part of a state or a checkpoint
     /// a run takes or gives back (see `private.rs`). A key the schema
     /// already declares is refused at build (`KeyCollision`).
-    // Until the agents declare their `conversation` through it.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn private(mut self, key: Key, kind: Kind) -> Self {
         self.private.insert(key, kind);
         self

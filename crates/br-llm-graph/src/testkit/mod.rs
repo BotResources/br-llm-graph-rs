@@ -2,6 +2,7 @@ mod faults;
 mod repair;
 mod store;
 mod store_tests;
+mod transcript;
 
 use std::sync::Mutex;
 
@@ -18,6 +19,7 @@ use crate::value::{EndLabel, NodeId};
 pub use faults::Op;
 pub use repair::{INTERRUPTED, INTERRUPTED_STOP};
 pub use store::{StoreError, TestStore};
+pub use transcript::Transcript;
 
 /// A deterministic id source: the n-th request it has not seen yet gets the
 /// n-th id (`t1`, `t2`... for turns; a UUIDv7 ending with `n` for threads),

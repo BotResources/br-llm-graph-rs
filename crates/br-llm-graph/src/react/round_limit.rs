@@ -5,7 +5,10 @@ use br_llm_messages::{
 
 use crate::error::GraphError;
 use crate::graph::{Always, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
+use crate::react::agent_call::ThreadBinding;
 use crate::react::helpers::{last_turn_by_author, pending_calls};
+use crate::react::thread_store::TurnEnd;
+use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{Key, NodeId};
@@ -87,13 +90,15 @@ impl RoundLimit {
         }
     }
 
+    /// Adds the limit node, when `on_limit` has one, writing to `thread` for
+    /// a durable agent.
     pub(crate) fn add_limit_node(
         &self,
         builder: GraphBuilder,
         key: Key,
         author: Author,
-        llm: &NodeId,
-        after: &Target,
+        (llm, after): (&NodeId, &Target),
+        thread: Option<ThreadBinding>,
     ) -> GraphBuilder {
         let (node, flag, end, next) = match &self.on_limit {
             OnLimit::Error => return builder,
@@ -109,6 +114,7 @@ impl RoundLimit {
                     max_rounds: self.max_rounds.clone(),
                     flag: flag.clone(),
                     end,
+                    thread,
                 },
             )
             .edge(node.clone(), Always(next))
@@ -185,12 +191,18 @@ fn is_refusal(result: &ToolResult) -> bool {
             .is_some_and(|max| refusal(max) == text.as_str()))
 }
 
+/// Answers each pending call of the agent's open turn with the limit's
+/// refusal, sets the flag and, with `End`, closes the turn. For a durable
+/// agent the refusals and the closing step are written to the thread first,
+/// the closing step streamed as a client would stream it, and the turn
+/// completed.
 struct LimitNode {
     key: Key,
     author: Author,
     max_rounds: Limit,
     flag: Key,
     end: bool,
+    thread: Option<ThreadBinding>,
 }
 
 impl Node for LimitNode {
@@ -207,33 +219,55 @@ impl Node for LimitNode {
                 return Ok(Vec::new());
             };
             let refusal = Text::new(refusal(max))?;
-            let mut updates = Vec::new();
-            for call in pending_calls(state, &self.key, &self.author)? {
-                updates.push(Update::PushResult {
-                    key: self.key.clone(),
-                    turn: turn.id().clone(),
-                    result: ToolResult::new(
+            let results: Vec<ToolResult> = pending_calls(state, &self.key, &self.author)?
+                .into_iter()
+                .map(|call| {
+                    ToolResult::new(
                         call.id.clone(),
                         call.name.clone(),
                         vec![ToolResultBlock::text(refusal.clone())],
                         true,
-                    ),
-                });
+                    )
+                })
+                .collect();
+            let closing = if self.end {
+                Some(Text::new(format!(
+                    "Tool round limit reached ({max}): no final reply."
+                ))?)
+            } else {
+                None
+            };
+            let stop_reason = StopReason::Other {
+                reason: LIMIT_REACHED.to_owned(),
+            };
+            if let Some(binding) = &self.thread {
+                let writer = TurnWriter {
+                    store: binding.store.as_ref(),
+                    thread: binding.thread(state)?,
+                    turn: turn.id().clone(),
+                };
+                if !results.is_empty() {
+                    writer.push_results(turn.items().len(), &results).await?;
+                }
+                if let Some(text) = &closing {
+                    writer.push_text_step(text, stop_reason.clone()).await?;
+                    writer.end(TurnEnd::Completed).await?;
+                }
             }
+            let mut updates: Vec<Update> = results
+                .into_iter()
+                .map(|result| Update::PushResult {
+                    key: self.key.clone(),
+                    turn: turn.id().clone(),
+                    result,
+                })
+                .collect();
             updates.push(Update::Set {
                 key: self.flag.clone(),
                 value: Value::bool(true),
             });
-            if self.end {
-                let text = Text::new(format!("Tool round limit reached ({max}): no final reply."))?;
-                let step = Step::new(
-                    vec![AssistantBlock::Text { text }],
-                    StopReason::Other {
-                        reason: LIMIT_REACHED.to_owned(),
-                    },
-                    None,
-                    None,
-                )?;
+            if let Some(text) = closing {
+                let step = Step::new(vec![AssistantBlock::Text { text }], stop_reason, None, None)?;
                 updates.push(Update::PushStep {
                     key: self.key.clone(),
                     turn: turn.id().clone(),

@@ -87,7 +87,7 @@ async fn main() {
         hook: NotesOnly,
     });
 
-    // Input `history`; configuration none: the system text is fixed.
+    // Input `opening`; configuration none: the system text is fixed.
     let graph = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
         model: Model::client(client),
@@ -100,6 +100,7 @@ async fn main() {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .expect("agent graph");
@@ -108,7 +109,7 @@ async fn main() {
     chat.push_input(user("Save a note on tides."))
         .expect("an input id unique in the conversation");
     let state = graph
-        .start_state([(key("history"), Value::conversation(chat))])
+        .start_state([(key("opening"), Value::conversation(chat))])
         .expect("start state");
     let config = Config::new(graph.schema(), Default::default()).expect("config");
 

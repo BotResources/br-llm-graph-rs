@@ -290,6 +290,7 @@ impl GeneratorCritic {
             after: Target::Node(names.publish.clone()),
             tool_concurrency: generator.tool_concurrency,
             round_limit: generator.round_limit,
+            thread: None,
         };
         let llm = LlmNode {
             key: names.generator_history.clone(),
@@ -300,6 +301,7 @@ impl GeneratorCritic {
             tools: generator.tools,
             enabled: generator.enabled,
             output_mode: generator.output_mode,
+            call: None,
         };
         let mut builder = react.add(builder, llm)?;
         if let Some(clash) = clash {

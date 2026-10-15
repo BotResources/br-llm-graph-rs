@@ -66,7 +66,7 @@ async fn main() {
         ),
     });
 
-    // Input `history`; configuration `base` (the system prompt).
+    // Input `opening`; configuration `base` (the system prompt).
     let graph = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
         model: Model::client(client),
@@ -79,6 +79,7 @@ async fn main() {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .expect("agent graph");
@@ -91,14 +92,14 @@ async fn main() {
     chat.push_input(user("Do the task."))
         .expect("an input id unique in the conversation");
     let first_state = graph
-        .start_state([(key("history"), Value::conversation(chat))])
+        .start_state([(key("opening"), Value::conversation(chat))])
         .expect("start state");
 
     let ctx = context();
 
     println!("external_message: first run (a user note arrives while the tool call is open)");
     let (sender, mut channel) = control();
-    sender.send(key("history"), user("Actually, also mention supersteps."));
+    sender.send(key("opening"), user("Actually, also mention supersteps."));
     let outcome = run(&graph, &config, first_state, None, &ctx, &mut channel).await;
     let Ok(Outcome::Finished { state, end }) = outcome else {
         println!("external_message: first run did not finish cleanly");
@@ -119,7 +120,7 @@ async fn main() {
     .expect("input");
     relaunch_state
         .apply_batch(&[Update::Input {
-            key: key("history"),
+            key: key("opening"),
             input: supervisor,
         }])
         .expect("apply");
