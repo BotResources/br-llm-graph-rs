@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use br_llm_messages::AssistantBlock;
 use br_llm_messages::{
-    Author, Conversation, Entry, InputId, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
-    ToolResult, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
+    Author, Conversation, Entry, InputId, MessageError, Step, StopReason, Text, ToolCall,
+    ToolCallId, ToolName, ToolResult, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
 };
 
 use crate::error::GraphError;
@@ -128,6 +128,51 @@ fn given_input_on_non_conversation_when_applied_then_refused() {
             input: input("hi"),
         }]),
         Err(GraphError::NotConversation { .. })
+    ));
+}
+
+#[test]
+fn given_input_whose_id_the_conversation_holds_when_applied_then_message_error_and_unchanged() {
+    let mut state = state();
+    state
+        .apply_batch(&[Update::Input {
+            key: key("chat"),
+            input: input("hi"),
+        }])
+        .unwrap();
+    let before = state.clone();
+    let result = state.apply_batch(&[
+        Update::Append {
+            key: key("items"),
+            value: Value::str("kept only on success"),
+        },
+        Update::Input {
+            key: key("chat"),
+            input: input("hi"),
+        },
+    ]);
+    assert!(matches!(
+        result,
+        Err(GraphError::Message(MessageError::DuplicateEntryId { ref id })) if id == "i-hi"
+    ));
+    assert_eq!(state, before);
+}
+
+#[test]
+fn given_turn_whose_id_is_an_input_id_when_applied_then_message_error() {
+    let mut state = state();
+    state
+        .apply_batch(&[Update::Input {
+            key: key("chat"),
+            input: input("hi"),
+        }])
+        .unwrap();
+    assert!(matches!(
+        state.apply_batch(&[Update::PushTurn {
+            key: key("chat"),
+            turn: turn("i-hi"),
+        }]),
+        Err(GraphError::Message(MessageError::DuplicateEntryId { .. }))
     ));
 }
 
