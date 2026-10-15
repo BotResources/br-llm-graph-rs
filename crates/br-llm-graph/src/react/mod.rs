@@ -69,6 +69,8 @@ mod react_agent_build_tests;
 #[cfg(test)]
 mod react_agent_caller_tests;
 #[cfg(test)]
+mod react_agent_entry_tests;
+#[cfg(test)]
 mod react_agent_given_tests;
 #[cfg(test)]
 mod react_agent_support;
@@ -78,6 +80,14 @@ mod react_agent_tests;
 mod react_background_task_tests;
 #[cfg(test)]
 mod react_duplicate_tool_tests;
+#[cfg(test)]
+mod react_durable_entry_tests;
+#[cfg(test)]
+mod react_durable_resume_tests;
+#[cfg(test)]
+mod react_durable_support;
+#[cfg(test)]
+mod react_durable_write_tests;
 #[cfg(test)]
 mod react_generator_critic_tests;
 #[cfg(test)]

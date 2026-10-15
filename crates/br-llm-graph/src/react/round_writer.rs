@@ -205,3 +205,7 @@ impl Future for RoundEnd<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "round_writer_tests.rs"]
+mod tests;

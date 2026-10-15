@@ -84,6 +84,14 @@ pub(crate) struct Called {
 }
 
 impl Called {
+    /// The result of a run whose conversation `transcript` kept.
+    pub(crate) fn new(result: Result<Outcome, RunFailure>, transcript: Arc<Transcript>) -> Self {
+        Self {
+            result,
+            transcript: Some(transcript),
+        }
+    }
+
     pub(crate) fn err(self) -> Option<RunFailure> {
         self.result.err()
     }
