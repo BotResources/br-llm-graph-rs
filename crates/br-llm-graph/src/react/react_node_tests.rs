@@ -57,7 +57,7 @@ fn llm_node(client: Arc<dyn Client>, system: Vec<Source>) -> LlmNode {
         system,
         tools: Vec::new(),
         enabled: None,
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
     }
 }
 

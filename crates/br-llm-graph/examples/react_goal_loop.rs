@@ -49,7 +49,7 @@ async fn main() {
         author: Author::new("agent", "agent").expect("author"),
         client: agent_client,
         system: vec![Source::Config(key("base"))],
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: Vec::new(),
         tool_nodes: Vec::new(),
         tool_concurrency: None,

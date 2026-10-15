@@ -48,7 +48,7 @@ use crate::value::{EndLabel, Key, NodeId};
 /// flag included, is refused (`KeyCollision`). A flag that names `history` or
 /// `answer` is refused (`FlagKeyMismatch`).
 ///
-/// `output` is sent on every model call; with `OutputMode::Structured`, the
+/// `output_mode` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
 /// JSON text in `answer`. The settings of `client`, its level of reasoning
 /// included, are the host's: an agent that needs another model or another
@@ -65,7 +65,7 @@ pub struct ReactAgent {
     pub author: Author,
     pub client: Arc<dyn Client>,
     pub system: Vec<Source>,
-    pub output: OutputMode,
+    pub output_mode: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
     /// runs them all.
@@ -129,7 +129,7 @@ impl ReactAgent {
             system: self.system,
             tools: self.tools,
             enabled: self.enabled,
-            output: self.output,
+            output_mode: self.output_mode,
         };
 
         let mut builder = GraphBuilder::new(schema).entry(llm);

@@ -39,7 +39,7 @@ pub(crate) fn llm(client: &MockClient, system: Vec<Source>) -> LlmNode {
         system,
         tools: Vec::new(),
         enabled: None,
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
     }
 }
 
@@ -113,7 +113,7 @@ async fn given_a_structured_output_mode_when_the_step_runs_then_the_request_carr
     .unwrap();
     let client = mock(vec![structured_step(serde_json::json!({ "value": "x" }))]);
     let mut node = llm(&client, Vec::new());
-    node.output = OutputMode::Structured(shape.clone());
+    node.output_mode = OutputMode::Structured(shape.clone());
 
     run_on(&single(node), seeded_state(), &ctx()).await.unwrap();
 

@@ -90,7 +90,7 @@ async fn given_a_structured_output_when_the_agent_runs_then_answer_is_the_json_t
         structured_step(json!({ "n": 3 })),
     ]);
     let graph = ReactAgent {
-        output: OutputMode::Structured(shape.clone()),
+        output_mode: OutputMode::Structured(shape.clone()),
         ..agent(&client)
     }
     .graph()

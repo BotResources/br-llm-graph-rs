@@ -21,7 +21,7 @@ use crate::value::Key;
 /// item a text, joined by a blank line (no text, or a blank one, gives no
 /// system text); the conversation rendered for `author`; the declared tools,
 /// filtered by the names `enabled` holds when set (names matching no tool are
-/// ignored); and `output`. The reply is added as a new step of the author's
+/// ignored); and `output_mode`. The reply is added as a new step of the author's
 /// last turn when that turn awaits a step, else as a new turn of the author
 /// with a new id.
 ///
@@ -37,7 +37,7 @@ pub(crate) struct LlmNode {
     /// names are offered to the model. Checked at build
     /// (`EnabledKeyMismatch`).
     pub(crate) enabled: Option<Key>,
-    pub(crate) output: OutputMode,
+    pub(crate) output_mode: OutputMode,
 }
 
 impl Node for LlmNode {
@@ -48,7 +48,7 @@ impl Node for LlmNode {
                 self.system_prompt(state, config)?,
                 messages,
                 self.declared_tools(state)?,
-                self.output.clone(),
+                self.output_mode.clone(),
             )
             .map_err(GraphError::Request)?;
             let step = complete(self.client.as_ref(), &request, ctx, &self.key).await?;

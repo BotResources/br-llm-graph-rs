@@ -20,7 +20,7 @@ pub struct GeneratorSeat {
     pub client: Arc<dyn Client>,
     /// The generator's system text.
     pub system: Source,
-    pub output: OutputMode,
+    pub output_mode: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
     /// runs them all.

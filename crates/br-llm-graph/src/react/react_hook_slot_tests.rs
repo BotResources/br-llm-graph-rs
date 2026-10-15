@@ -87,7 +87,7 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
         author: author(),
         client: Arc::new(client.clone()),
         system: vec![Source::Config(key("base"))],
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: vec![tool.clone()],
         tool_nodes: Vec::new(),
         tool_concurrency: None,

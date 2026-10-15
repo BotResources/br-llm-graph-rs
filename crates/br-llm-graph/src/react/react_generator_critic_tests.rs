@@ -62,7 +62,7 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
         system: vec![Source::Config(k("base"))],
         tools: Vec::new(),
         enabled: None,
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
     };
 
     let critic_client: Arc<dyn Client> = Arc::new(mock(vec![

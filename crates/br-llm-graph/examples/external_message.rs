@@ -68,7 +68,7 @@ async fn main() {
         author: Author::new("agent", "agent").expect("author"),
         client,
         system: vec![Source::Config(key("base"))],
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: vec![Arc::new(EchoTool::new())],
         tool_nodes: Vec::new(),
         tool_concurrency: None,

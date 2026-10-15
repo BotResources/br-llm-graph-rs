@@ -164,7 +164,7 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
         author: author(),
         client: Arc::new(mock(steps)),
         system: vec![Source::Const("Measure.".to_owned())],
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: vec![left.clone(), right.clone()],
         tool_nodes: vec![
             (

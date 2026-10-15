@@ -66,7 +66,7 @@ pub(crate) fn generator(client: &MockClient) -> GeneratorSeat {
         author: writer(),
         client: Arc::new(client.clone()),
         system: Source::Const("Answer the question.".to_owned()),
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: Vec::new(),
         tool_nodes: Vec::new(),
         tool_concurrency: None,

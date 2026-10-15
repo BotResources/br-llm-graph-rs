@@ -92,7 +92,7 @@ async fn main() {
         author: Author::new("agent", "agent").expect("author"),
         client,
         system: vec![Source::Const("Save what the user asks for.".to_owned())],
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: vec![write.clone()],
         tool_nodes: Vec::new(),
         tool_concurrency: None,

@@ -32,7 +32,7 @@ fn llm_node(client: Arc<dyn br_llm_clients_core::Client>, tools: Vec<Arc<dyn Too
         system: vec![Source::Config(key("base"))],
         tools,
         enabled: None,
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
     }
 }
 

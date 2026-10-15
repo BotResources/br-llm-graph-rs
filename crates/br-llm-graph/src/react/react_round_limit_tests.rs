@@ -82,7 +82,7 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
         system: vec![Source::Config(key("base"))],
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
     };
     let react = ReactLoop {
         llm: nid("llm"),
@@ -350,7 +350,7 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
             system: Vec::new(),
             tools: vec![Arc::new(EchoTool)],
             enabled: None,
-            output: OutputMode::Plain,
+            output_mode: OutputMode::Plain,
         };
         ReactLoop {
             llm: nid("llm"),

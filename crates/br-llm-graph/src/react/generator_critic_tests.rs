@@ -79,7 +79,7 @@ async fn given_an_answer_of_several_text_blocks_or_a_structured_one_when_run_the
         .unwrap(),
     )
     .unwrap();
-    for (step, output, expected) in [
+    for (step, output_mode, expected) in [
         (several, OutputMode::Plain, "one two"),
         (
             structured,
@@ -91,7 +91,7 @@ async fn given_an_answer_of_several_text_blocks_or_a_structured_one_when_run_the
         let critic_client = mock(vec![verdict(true, "")]);
         let graph = GeneratorCritic::new(
             GeneratorSeat {
-                output,
+                output_mode,
                 ..generator(&generator_client)
             },
             critic(&critic_client),

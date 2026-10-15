@@ -42,7 +42,7 @@ pub(crate) fn agent(client: &MockClient) -> ReactAgent {
         author: author(),
         client: Arc::new(client.clone()),
         system: vec![Source::Config(key("base"))],
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: vec![Arc::new(EchoTool)],
         tool_nodes: Vec::new(),
         tool_concurrency: None,

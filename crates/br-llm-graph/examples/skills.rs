@@ -102,7 +102,7 @@ async fn main() {
             Source::Config(key("base")),
             Source::State(key("skill_prompt")),
         ],
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: vec![
             Arc::new(LoadSkill {
                 spec: tool_spec("load_skill", "load a skill", skill()),

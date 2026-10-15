@@ -87,7 +87,8 @@ instead, and `LlmCall` makes one model call whose answer is data.
   (`Model(ClientError)`, formerly `Model { message }`), its source.
 - **Breaking:** `Tool::spec` gives a `&br_llm_clients_core::ToolSpec` (the
   typed tool vocabulary of core: a name, a description and parameters).
-- **Breaking:** `ReactAgent::output` and `GeneratorSeat::output` are a core
+- **Breaking:** `ReactAgent::output_mode` and `GeneratorSeat::output_mode`
+  (formerly `output`, named like `LlmCall::output_mode`) are a core
   `OutputMode` (`Plain`, `Structured(StructuredShape)`), formerly the graph's
   `OutputMode::Text` / `Structured { schema }`.
 - **Breaking:** `OnLimit::Continue` calls the model once more with its tools

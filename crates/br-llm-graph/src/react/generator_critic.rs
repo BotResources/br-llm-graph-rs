@@ -281,7 +281,7 @@ impl GeneratorCritic {
             system: vec![generator.system],
             tools: generator.tools,
             enabled: generator.enabled,
-            output: generator.output,
+            output_mode: generator.output_mode,
         };
         let mut builder = react.add(builder, llm)?;
 

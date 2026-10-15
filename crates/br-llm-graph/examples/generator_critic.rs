@@ -72,7 +72,7 @@ async fn main() {
                 "Supersteps run the active nodes in parallel rounds, then apply every update at once.",
             ),
         ]),
-        output: OutputMode::Plain,
+        output_mode: OutputMode::Plain,
         tools: Vec::new(),
         tool_nodes: Vec::new(),
         tool_concurrency: None,
