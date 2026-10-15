@@ -18,6 +18,11 @@ use crate::state::State;
 /// freed place is handed to the first waiter in arrival order, which alone
 /// is woken; a waiter handed a place it no longer wants passes it on. A
 /// waiter queues and a place is freed under one lock: no wakeup is lost.
+///
+/// A waker is woken and dropped out of the lock: the last reference to a
+/// task may own its future, whose drop can give back a place of this very
+/// gate and so take its lock. A waker is cloned under the lock, as tokio's
+/// semaphore does too: a clone only takes a reference.
 pub(crate) struct Gate {
     inner: Mutex<GateState>,
 }
@@ -109,11 +114,14 @@ impl<'a> Future for Enter<'a> {
                 Poll::Ready(Pass { gate })
             }
             Some(id) => {
+                let mut replaced = None;
                 if let Some((_, waker)) = state.queue.iter_mut().find(|(queued, _)| *queued == id)
                     && !waker.will_wake(cx.waker())
                 {
-                    waker.clone_from(cx.waker());
+                    replaced = Some(std::mem::replace(waker, cx.waker().clone()));
                 }
+                drop(state);
+                drop(replaced);
                 Poll::Pending
             }
         }
@@ -127,16 +135,17 @@ impl Drop for Enter<'_> {
         let Some(id) = self.queued else {
             return;
         };
-        let waker = {
+        let (removed, handed) = {
             let mut state = lock(&self.gate.inner);
             if state.handed.remove(&id) {
-                state.release()
+                (None, state.release())
             } else {
-                state.queue.retain(|(queued, _)| *queued != id);
-                None
+                let at = state.queue.iter().position(|(queued, _)| *queued == id);
+                (at.and_then(|at| state.queue.remove(at)), None)
             }
         };
-        if let Some(waker) = waker {
+        drop(removed);
+        if let Some(waker) = handed {
             waker.wake();
         }
     }

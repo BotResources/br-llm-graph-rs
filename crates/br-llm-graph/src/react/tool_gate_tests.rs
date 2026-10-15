@@ -4,8 +4,8 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll, Wake, Waker};
 
 use super::Gate;
@@ -30,6 +30,36 @@ fn counting() -> (Arc<Counting>, Waker) {
     let counter = Arc::new(Counting::default());
     let waker = Waker::from(counter.clone());
     (counter, waker)
+}
+
+/// A waker that notes, when its last clone goes, whether the lock of its
+/// gate was free: the drop of a task's last waker may run code that gives a
+/// place back to that gate.
+struct DropProbe {
+    gate: Arc<Gate>,
+    lock_free_at_drop: Arc<OnceLock<bool>>,
+}
+
+impl Wake for DropProbe {
+    fn wake(self: Arc<Self>) {
+        unreachable!("the probed waiter is not let through");
+    }
+}
+
+impl Drop for DropProbe {
+    fn drop(&mut self) {
+        let free = self.gate.inner.try_lock().is_ok();
+        let _ = self.lock_free_at_drop.set(free);
+    }
+}
+
+fn drop_probe(gate: &Arc<Gate>) -> (Arc<OnceLock<bool>>, Waker) {
+    let lock_free_at_drop = Arc::new(OnceLock::new());
+    let waker = Waker::from(Arc::new(DropProbe {
+        gate: gate.clone(),
+        lock_free_at_drop: lock_free_at_drop.clone(),
+    }));
+    (lock_free_at_drop, waker)
 }
 
 fn poll<F: Future + Unpin>(future: &mut F, waker: &Waker) -> Poll<F::Output> {
@@ -136,4 +166,52 @@ fn given_a_waiter_let_through_then_dropped_before_its_poll_when_it_goes_then_its
 
     assert_eq!(second.wakes.load(Ordering::SeqCst), 1);
     assert!(poll(&mut next, &second_waker).is_ready());
+}
+
+#[test]
+fn given_a_waiting_call_polled_by_another_task_when_its_waker_is_replaced_then_the_old_one_goes_out_of_the_lock()
+ {
+    let gate = Arc::new(Gate::new(1));
+    let (_, holder_waker) = counting();
+    let mut holder = Box::pin(gate.enter());
+    let Poll::Ready(pass) = poll(&mut holder, &holder_waker) else {
+        panic!("a free place is taken at once");
+    };
+    let (lock_free_at_drop, first) = drop_probe(&gate);
+    let mut waiting = Box::pin(gate.enter());
+    assert!(poll(&mut waiting, &first).is_pending());
+    drop(first);
+    let (_, second) = counting();
+
+    assert!(poll(&mut waiting, &second).is_pending());
+
+    assert_eq!(
+        lock_free_at_drop.get(),
+        Some(&true),
+        "the replaced waker, the last clone of the first task's, is dropped out of the lock"
+    );
+    drop(pass);
+    assert!(poll(&mut waiting, &second).is_ready());
+}
+
+#[test]
+fn given_a_waiting_call_dropped_when_it_leaves_the_queue_then_its_waker_goes_out_of_the_lock() {
+    let gate = Arc::new(Gate::new(1));
+    let (_, holder_waker) = counting();
+    let mut holder = Box::pin(gate.enter());
+    let Poll::Ready(_pass) = poll(&mut holder, &holder_waker) else {
+        panic!("a free place is taken at once");
+    };
+    let (lock_free_at_drop, waker) = drop_probe(&gate);
+    let mut waiting = Box::pin(gate.enter());
+    assert!(poll(&mut waiting, &waker).is_pending());
+    drop(waker);
+
+    drop(waiting);
+
+    assert_eq!(
+        lock_free_at_drop.get(),
+        Some(&true),
+        "the waker of a waiter leaving the queue, its last clone, is dropped out of the lock"
+    );
 }
