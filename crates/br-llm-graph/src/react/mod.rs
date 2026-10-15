@@ -13,6 +13,7 @@ mod react_agent;
 mod react_loop;
 mod round_limit;
 mod seats;
+mod sink;
 mod tool;
 mod tool_gate;
 mod tool_node;
@@ -125,11 +126,12 @@ pub use generator_critic::GeneratorCritic;
 pub use given::{
     AgentNode, Budgeted, Given, History, Model, ModelNode, Prompt, Reads, RequestContext, Scheduled,
 };
-pub use helpers::{complete, pending_calls, structured, wire};
+pub use helpers::{pending_calls, structured, wire};
 pub use hook::{Hook, HookError, HookFuture, Judgment};
 pub use llm_call::{LlmCall, LlmOutput, LlmRequest};
 pub use react_agent::ReactAgent;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use seats::{CriticSeat, GeneratorSeat};
+pub use sink::complete;
 pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
 pub use verdict::{Verdict, VerdictOverride, VerdictReader};

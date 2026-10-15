@@ -32,7 +32,8 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
     use br_llm_messages::{Conversation, InputId, Text, UserBlock, UserInput, UserSource};
 
     use crate::graph::{Always, FnEdge, FnNode, NodeFuture};
-    use crate::react::helpers::{complete, structured, wire};
+    use crate::react::helpers::{structured, wire};
+    use crate::react::sink::complete;
     use crate::state::{Config, Kind, Schema, State, Value};
     use crate::update::Update;
     use crate::value::Key;

@@ -6,10 +6,9 @@ use br_llm_messages::{Author, Turn, TurnState};
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture};
 use crate::react::given::{AgentFacts, AgentNode, History, Model, Prompt};
-use crate::react::helpers::{
-    check_enabled, complete, enabled_names, last_turn_by_author, system_text, wire,
-};
+use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, system_text, wire};
 use crate::react::round_limit::completed_rounds;
+use crate::react::sink::complete;
 use crate::react::tool::Tool;
 use crate::state::{Config, Schema, State};
 use crate::update::Update;
