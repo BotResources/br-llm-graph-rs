@@ -97,3 +97,7 @@ impl<'de> serde::Deserialize<'de> for ThreadId {
         Self::new(raw).map_err(serde::de::Error::custom)
     }
 }
+
+#[cfg(test)]
+#[path = "thread_id_tests.rs"]
+mod tests;
