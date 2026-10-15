@@ -145,3 +145,19 @@ fn given_a_limit_node_named_like_an_own_node_and_two_tools_of_one_name_when_buil
         );
     }
 }
+
+#[test]
+fn given_a_split_when_a_limit_node_is_named_tools_then_it_builds() {
+    // With a split, `tools` is not the graph's own node.
+    let split = || vec![(nid("a"), vec![Arc::new(EchoTool) as _])];
+    let agent = ReactAgent {
+        tools: vec![Arc::new(EchoTool)],
+        tool_nodes: split(),
+        ..limited(&mock(Vec::new()), 1, end_on("tools"))
+    };
+    assert!(agent.graph().is_ok(), "agent");
+    assert!(
+        seat_ending_on("tools", vec![Arc::new(EchoTool)], split()).is_ok(),
+        "generator seat"
+    );
+}
