@@ -16,7 +16,8 @@ use br_llm_graph::{
 use br_llm_messages::{Author, Conversation, Text, ToolResultBlock};
 use serde_json::{Value as Json, json};
 
-use common::{context, key, scripted, text_parameter, text_step, tool_call_step, tool_spec, user};
+use common::tools::{text_parameter, tool_spec};
+use common::{context, key, scripted, text_step, tool_call_step, user};
 
 fn result(text: &str) -> ToolOutput {
     ToolOutput::text(vec![ToolResultBlock::text(

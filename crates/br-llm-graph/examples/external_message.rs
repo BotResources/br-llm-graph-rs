@@ -16,7 +16,8 @@ use br_llm_graph::{Config, Outcome, ReactAgent, Source, Update, Value, channel, 
 use br_llm_messages::{Author, Conversation, Text, UserBlock, UserInput, UserSource, WireMessage};
 use serde_json::json;
 
-use common::{EchoTool, context, key, scripted_at, text_step, tool_call_step, user};
+use common::tools::EchoTool;
+use common::{context, key, scripted_at, text_step, tool_call_step, user};
 
 /// A client that prints the roles of each request it receives, then hands
 /// the request to the client it wraps: a host decorates its clients so.

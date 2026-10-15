@@ -17,7 +17,8 @@ use br_llm_graph::{
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
 
-use common::{SearchTool, context, key, scripted, text_step, tool_call_step, user};
+use common::tools::SearchTool;
+use common::{context, key, scripted, text_step, tool_call_step, user};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {

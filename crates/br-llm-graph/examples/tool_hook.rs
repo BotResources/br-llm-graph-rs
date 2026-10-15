@@ -18,7 +18,8 @@ use br_llm_graph::{
 use br_llm_messages::{Author, Conversation, ToolCallId};
 use serde_json::{Value as Json, json};
 
-use common::{WriteFileTool, context, key, scripted, text_step, tool_call_step, user};
+use common::tools::WriteFileTool;
+use common::{context, key, scripted, text_step, tool_call_step, user};
 
 /// Accepts a write under `notes/`, refuses any other.
 struct NotesOnly;
