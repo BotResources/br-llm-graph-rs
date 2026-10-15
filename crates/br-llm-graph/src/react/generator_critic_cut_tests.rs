@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use br_llm_messages::{AssistantBlock, ModelId, Step, StopReason, Text};
+use br_llm_messages::{AssistantBlock, ModelId, Step, StopReason, Text, Usage};
 
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
@@ -16,6 +16,10 @@ use crate::react::test_support::*;
 /// A complete answer whose stop reason is the one the limit's closing step
 /// carries, with or without a model.
 fn lookalike(model: Option<&str>) -> Step {
+    lookalike_with(None, model)
+}
+
+fn lookalike_with(usage: Option<Usage>, model: Option<&str>) -> Step {
     Step::new(
         vec![AssistantBlock::Text {
             text: Text::new("A real, complete answer.").unwrap(),
@@ -23,7 +27,7 @@ fn lookalike(model: Option<&str>) -> Step {
         StopReason::Other {
             reason: "tool_round_limit".to_owned(),
         },
-        None,
+        usage,
         model.map(|model| ModelId::new(model).unwrap()),
     )
     .unwrap()
@@ -94,6 +98,39 @@ async fn given_a_step_without_model_and_the_limits_stop_reason_from_a_generator_
         state.str(&key("answer")).unwrap(),
         "A real, complete answer."
     );
+    assert_eq!(requests(&critic_client).len(), 1);
+}
+
+#[tokio::test]
+async fn given_a_step_without_model_but_with_a_usage_and_the_limits_stop_reason_under_an_end_limit_when_run_then_it_is_judged()
+ {
+    // The limit node writes no usage: a step a client counted tokens for is
+    // not its closing step, even from a client that serves steps without a
+    // model.
+    let usage = Usage {
+        input_tokens: 12,
+        output_tokens: 5,
+        ..Usage::default()
+    };
+    let critic_client = mock(vec![verdict(true, "")]);
+    let graph = GeneratorCritic::new(
+        GeneratorSeat {
+            client: Arc::new(LaxClient::new(vec![lookalike_with(Some(usage), None)])),
+            ..cut_generator(&mock(Vec::new()))
+        },
+        critic(&critic_client),
+        Count::Fixed(2),
+    )
+    .graph()
+    .unwrap();
+
+    let state = ended(start(&graph, Vec::new()).await, "validated");
+
+    assert_eq!(
+        state.str(&key("answer")).unwrap(),
+        "A real, complete answer."
+    );
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
     assert_eq!(requests(&critic_client).len(), 1);
 }
 
