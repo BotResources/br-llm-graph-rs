@@ -5,10 +5,13 @@
 
 use std::sync::Arc;
 
+use br_llm_clients_core::BuildError;
+
 use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::{critic, generator, limit};
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::{limited, nid};
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::seats::GeneratorSeat;
@@ -85,6 +88,60 @@ fn given_an_agent_flag_naming_the_answer_when_built_then_flag_key_mismatch_befor
                 Err(GraphError::FlagKeyMismatch { ref key }) if *key == self::key(flag)
             ),
             "{flag}"
+        );
+    }
+}
+
+/// A generator seat whose round limit ends on `node`, with `tools` split as
+/// `tool_nodes` says.
+fn seat_ending_on(
+    node: &str,
+    tools: Vec<Arc<dyn crate::react::tool::Tool>>,
+    tool_nodes: Vec<(crate::value::NodeId, Vec<Arc<dyn crate::react::tool::Tool>>)>,
+) -> Result<Arc<crate::graph::Graph>, GraphError> {
+    GeneratorCritic::new(
+        GeneratorSeat {
+            tools,
+            tool_nodes,
+            round_limit: Some(RoundLimit {
+                max_rounds: limit(1),
+                on_limit: end_on(node),
+            }),
+            ..generator(&mock(Vec::new()))
+        },
+        critic(&mock(Vec::new())),
+        Count::Fixed(1),
+    )
+    .graph()
+}
+
+/// The build refused the model-call step `node` for two tools named `echo`.
+fn duplicate_refused(built: Result<Arc<crate::graph::Graph>, GraphError>, node: &str) -> bool {
+    matches!(
+        built,
+        Err(GraphError::InvalidNode { node: ref found, ref source })
+            if *found == nid(node)
+                && matches!(**source, GraphError::Request(BuildError::DuplicateToolName { .. }))
+    )
+}
+
+#[test]
+fn given_a_limit_node_named_like_an_own_node_and_two_tools_of_one_name_when_built_then_the_react_loop_rule_comes_first()
+ {
+    // `tools`, like `llm` and `answer`, collides at the graph's build, after
+    // the rules of the ReAct loop.
+    let echoes = || vec![Arc::new(EchoTool) as _, Arc::new(EchoTool) as _];
+    for reserved in ["tools", "llm", "answer"] {
+        let agent = ReactAgent {
+            tools: echoes(),
+            ..limited(&mock(Vec::new()), 1, end_on(reserved))
+        };
+        assert!(duplicate_refused(agent.graph(), "llm"), "agent, {reserved}");
+    }
+    for reserved in ["tools", "generate", "critique"] {
+        assert!(
+            duplicate_refused(seat_ending_on(reserved, echoes(), Vec::new()), "generate"),
+            "generator seat, {reserved}"
         );
     }
 }

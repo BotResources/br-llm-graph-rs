@@ -121,7 +121,7 @@ impl ReactAgent {
         }
 
         let tools_node = NodeId::new("tools")?;
-        reserve_tools_node(&self.tool_nodes, self.round_limit.as_ref(), &tools_node)?;
+        let clash = tools_node_clash(&self.tool_nodes, self.round_limit.as_ref(), &tools_node);
         let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {
             vec![(tools_node, self.tools.clone())]
         } else {
@@ -153,6 +153,9 @@ impl ReactAgent {
             builder = builder.output(flag);
         }
         let builder = react.add(builder, llm_node)?;
+        if let Some(clash) = clash {
+            return Err(clash);
+        }
         let graph = builder
             .node(
                 answer_node.clone(),
@@ -224,22 +227,24 @@ pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuild
 }
 
 /// Without a split, `tools` is a node of the graph, whether tools are
-/// declared or not: a round-limit node of that id collides with it
-/// (`DuplicateNode`).
-pub(crate) fn reserve_tools_node(
+/// declared or not: the refusal of a round-limit node of that id
+/// (`DuplicateNode`), to return where the graph's build would refuse a
+/// round-limit node named like its other own nodes, after the rules of the
+/// ReAct loop.
+pub(crate) fn tools_node_clash(
     tool_nodes: &[(NodeId, Vec<Arc<dyn Tool>>)],
     round_limit: Option<&RoundLimit>,
     tools: &NodeId,
-) -> Result<(), GraphError> {
+) -> Option<GraphError> {
     let limit_node = round_limit.and_then(|limit| match &limit.on_limit {
         OnLimit::Continue { node, .. } | OnLimit::End { node, .. } => Some(node),
         OnLimit::Error => None,
     });
     match limit_node {
         Some(node) if tool_nodes.is_empty() && node == tools => {
-            Err(GraphError::DuplicateNode { id: node.clone() })
+            Some(GraphError::DuplicateNode { id: node.clone() })
         }
-        Some(_) | None => Ok(()),
+        Some(_) | None => None,
     }
 }
 
