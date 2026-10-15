@@ -14,9 +14,9 @@ use crate::react::given::{History, Model, Prompt, Reads};
 use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::llm_call_support::*;
 use crate::react::test_support::{
-    StreamRecorder, key, mock, requests, returned, skey, system_of, text_step,
+    StreamRecorder, ckey, key, mock, requests, returned, skey, system_of, text_step,
 };
-use crate::state::StateKey;
+use crate::state::{ConfigKey, StateKey};
 use crate::testkit::SeqIds;
 
 /// The error a runner's function returns.
@@ -100,6 +100,31 @@ async fn given_a_function_reading_a_key_it_did_not_declare_when_the_call_runs_th
         ),
         "the state holds `doc`, the function did not declare it"
     );
+    assert_eq!(client.calls(), 0);
+}
+
+#[tokio::test]
+async fn given_a_function_reading_a_configuration_key_it_did_not_declare_when_the_call_runs_then_unknown_key()
+ {
+    let client = mock(vec![text_step("unused")]);
+    let style: ConfigKey<String> = ckey("style");
+    // It declares the state key `doc`, not the configuration key `style`.
+    let mut reads = Reads::new();
+    reads.read_state(&skey::<String>("doc"));
+    let call = LlmCall {
+        system: Prompt::from_fn(reads, move |ctx| Ok(ctx.config(&style)?.to_owned())),
+        ..summarize(&client, set_summary())
+    };
+
+    let failure = run_in(&single(call), state_with("doc", &[]), &ctx())
+        .await
+        .err()
+        .unwrap();
+
+    assert!(matches!(
+        returned(&failure.error),
+        GraphError::UnknownKey { key } if key.as_str() == "style"
+    ));
     assert_eq!(client.calls(), 0);
 }
 
