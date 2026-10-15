@@ -49,6 +49,8 @@ mod llm_call_check_tests;
 #[cfg(test)]
 mod llm_call_conversation_tests;
 #[cfg(test)]
+mod llm_call_given_tests;
+#[cfg(test)]
 mod llm_call_map_tests;
 #[cfg(test)]
 mod llm_call_support;
@@ -58,6 +60,8 @@ mod llm_call_tests;
 mod react_agent_build_tests;
 #[cfg(test)]
 mod react_agent_caller_tests;
+#[cfg(test)]
+mod react_agent_given_tests;
 #[cfg(test)]
 mod react_agent_support;
 #[cfg(test)]

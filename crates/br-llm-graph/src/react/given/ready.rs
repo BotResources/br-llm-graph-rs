@@ -107,3 +107,7 @@ pub(crate) fn with_tail<'c, C>(
         None => primary,
     }
 }
+
+#[cfg(test)]
+#[path = "ready_tests.rs"]
+mod tests;

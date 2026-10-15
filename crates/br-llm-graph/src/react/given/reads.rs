@@ -173,3 +173,7 @@ fn declare_once(
     seen.insert(key.clone(), kind.clone());
     Ok(true)
 }
+
+#[cfg(test)]
+#[path = "reads_tests.rs"]
+mod tests;
