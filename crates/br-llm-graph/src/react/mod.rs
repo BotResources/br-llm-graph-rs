@@ -53,6 +53,8 @@ mod react_hook_support;
 #[cfg(test)]
 mod react_hook_tests;
 #[cfg(test)]
+mod react_llm_system_tests;
+#[cfg(test)]
 mod react_llm_tests;
 #[cfg(test)]
 mod react_loop_tests;

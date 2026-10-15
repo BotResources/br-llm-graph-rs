@@ -23,15 +23,15 @@ use crate::testkit::SeqIds;
 use crate::update::Update;
 use crate::value::{EndLabel, NodeId};
 
-fn nid(name: &str) -> NodeId {
+pub(crate) fn nid(name: &str) -> NodeId {
     NodeId::new(name).unwrap()
 }
 
-fn ctx() -> Context {
+pub(crate) fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-fn llm(client: &MockClient, system: Vec<Source>) -> LlmNode {
+pub(crate) fn llm(client: &MockClient, system: Vec<Source>) -> LlmNode {
     LlmNode {
         key: key("chat"),
         author: author(),
@@ -44,7 +44,7 @@ fn llm(client: &MockClient, system: Vec<Source>) -> LlmNode {
 }
 
 /// A graph of the one model-call step `llm`, ending `done`.
-fn single(llm: LlmNode) -> Graph {
+pub(crate) fn single(llm: LlmNode) -> Graph {
     GraphBuilder::new(schema())
         .entry(nid("llm"))
         .node(nid("llm"), llm)
@@ -56,7 +56,11 @@ fn single(llm: LlmNode) -> Graph {
         .unwrap()
 }
 
-async fn run_on(graph: &Graph, state: State, ctx: &Context) -> Result<Outcome, RunFailure> {
+pub(crate) async fn run_on(
+    graph: &Graph,
+    state: State,
+    ctx: &Context,
+) -> Result<Outcome, RunFailure> {
     let (_sender, mut inbox) = channel();
     run(graph, &config(), state, None, ctx, &mut inbox).await
 }
@@ -235,58 +239,6 @@ async fn given_failing_model_in_react_loop_when_run_then_node_failed_not_looping
 }
 
 #[tokio::test]
-async fn given_multiple_system_sources_when_llm_runs_then_joined_by_blank_line() {
-    let client = mock(vec![text_step("done")]);
-    let node = llm(
-        &client,
-        vec![Source::Config(key("base")), Source::State(key("enabled"))],
-    );
-
-    run_on(&single(node), seeded_state(), &ctx()).await.unwrap();
-
-    assert_eq!(
-        system_of(&requests(&client)[0]).unwrap(),
-        "You are a helpful agent.\n\necho\n\ntally"
-    );
-}
-
-#[tokio::test]
-async fn given_a_constant_and_a_computed_source_when_llm_runs_then_both_are_in_the_system_text() {
-    let client = mock(vec![text_step("done")]);
-    let computed = Source::Fn(Arc::new(|state, config| {
-        let tools = state.list(&key("enabled"))?.len();
-        Ok(format!("{} Tools: {tools}.", config.str(&key("base"))?))
-    }));
-    let node = llm(
-        &client,
-        vec![Source::Const("Be brief.".to_owned()), computed],
-    );
-
-    run_on(&single(node), seeded_state(), &ctx()).await.unwrap();
-
-    assert_eq!(
-        system_of(&requests(&client)[0]).unwrap(),
-        "Be brief.\n\nYou are a helpful agent. Tools: 2."
-    );
-}
-
-#[tokio::test]
-async fn given_no_system_source_or_only_blank_texts_when_llm_runs_then_no_system_text() {
-    for system in [
-        Vec::new(),
-        vec![Source::Const(String::new()), Source::Const("  ".to_owned())],
-    ] {
-        let client = mock(vec![text_step("done")]);
-
-        run_on(&single(llm(&client, system)), seeded_state(), &ctx())
-            .await
-            .unwrap();
-
-        assert_eq!(system_of(&requests(&client)[0]), None);
-    }
-}
-
-#[tokio::test]
 async fn given_a_streamed_reply_when_llm_runs_then_the_observer_gets_each_event_with_the_conversation_key()
  {
     let client = mock(vec![text_step("hello")]);
@@ -319,30 +271,5 @@ async fn given_a_streamed_reply_when_llm_runs_then_the_observer_gets_each_event_
     assert!(matches!(
         events.last(),
         Some((_, _, StreamEvent::Finish { .. }))
-    ));
-}
-
-#[test]
-fn given_each_kind_of_source_when_resolved_then_one_text() {
-    let (state, config) = (seeded_state(), config());
-    let resolved = |source: Source| source.resolve(&state, &config).unwrap();
-    assert_eq!(
-        resolved(Source::Config(key("base"))),
-        "You are a helpful agent."
-    );
-    assert_eq!(resolved(Source::State(key("enabled"))), "echo\n\ntally");
-    assert_eq!(resolved(Source::Const("fixed".to_owned())), "fixed");
-    assert_eq!(
-        resolved(Source::Fn(Arc::new(|state, _config| {
-            Ok(state.list(&key("log"))?.len().to_string())
-        }))),
-        "0"
-    );
-    let failing = Source::Fn(Arc::new(|state, _config| {
-        Ok(state.str(&key("missing"))?.to_owned())
-    }));
-    assert!(matches!(
-        failing.resolve(&state, &config),
-        Err(GraphError::UnknownKey { .. })
     ));
 }
