@@ -91,12 +91,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: stable
+          components: llvm-tools-preview
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: release
       - uses: taiki-e/install-action@fd2f5e3d644b484055ebf4268f474c565f148f25 # v2.81.9
         with:
-          tool: cargo-public-api
+          tool: cargo-public-api,cargo-llvm-cov
 
       - name: Verify the changelog entry
         run: bash .github/scripts/check-changelog.sh "$CRATE" "$COMMIT"
@@ -122,3 +123,9 @@ jobs:
         env:
           BASELINE_TAG: ${{ steps.gate.outputs.baseline_tag }}
         run: bash .github/scripts/registry-record.sh "$CRATE" "$VERSION" "$CRATE/v$VERSION" "$COMMIT" "$BASELINE_TAG"
+
+      # Runs on an idempotent re-run too (the gate found the version implemented),
+      # so dispatching the workflow for an already released version attaches the
+      # coverage it lacks.
+      - name: Attach the coverage to the GitHub release
+        run: bash .github/scripts/coverage.sh release "$CRATE" "$VERSION" "$COMMIT"

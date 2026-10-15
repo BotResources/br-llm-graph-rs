@@ -134,6 +134,52 @@ jobs:
         run: bash .github/scripts/test-release-order.sh
       - name: a second library joins
         run: bash .github/scripts/test-second-library.sh
+      - name: coverage summary, report and release versions
+        run: bash .github/scripts/test-coverage.sh
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # read the coverage artifact of the base branch's latest run
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: coverage
+      - uses: taiki-e/install-action@fd2f5e3d644b484055ebf4268f474c565f148f25 # v2.81.9
+        with:
+          tool: cargo-llvm-cov
+      - name: measure the workspace tests
+        run: bash .github/scripts/coverage.sh measure "$RUNNER_TEMP/coverage"
+      - name: fetch the coverage of the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+        run: bash .github/scripts/coverage.sh reference "$BASE_REF" "$RUNNER_TEMP/coverage-reference"
+      - name: report
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/coverage/coverage-summary.json"
+          reference="$RUNNER_TEMP/coverage-reference/coverage-summary.json"
+          if [[ -f "$reference" ]]; then
+            bash .github/scripts/coverage.sh render "$report" "$reference" "$BASE_REF" >>"$GITHUB_STEP_SUMMARY"
+          else
+            bash .github/scripts/coverage.sh render "$report" >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/coverage
+          if-no-files-found: error
 
   registry-gate:
     name: registry gate
