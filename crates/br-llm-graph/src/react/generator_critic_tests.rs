@@ -385,3 +385,52 @@ async fn given_a_text_reply_to_the_verdict_request_from_a_conforming_client_then
     );
     assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
 }
+
+#[tokio::test]
+async fn given_a_generator_critic_when_both_seats_stream_then_the_generator_carries_generator_history_and_the_critic_conversation()
+ {
+    let recorder = std::sync::Arc::new(StreamRecorder::default());
+    let observer: std::sync::Arc<dyn crate::observe::Observer> = recorder.clone();
+    let ctx =
+        crate::graph::Context::new(observer, std::sync::Arc::new(crate::testkit::SeqIds::new()));
+    let graph = duo(
+        &mock(vec![text_step("draft")]),
+        &mock(vec![verdict(true, "")]),
+    )
+    .graph()
+    .unwrap();
+    let state = graph
+        .start_state([
+            (
+                key("conversation"),
+                Value::conversation(question("explain")),
+            ),
+            (
+                key("generator_history"),
+                Value::conversation(Conversation::new()),
+            ),
+        ])
+        .unwrap();
+    let config = crate::state::Config::new(graph.schema(), BTreeMap::new()).unwrap();
+    let (_sender, mut inbox) = crate::run::channel();
+
+    ended(
+        crate::run::run(&graph, &config, state, None, &ctx, &mut inbox).await,
+        "validated",
+    );
+
+    let keys: Vec<(String, String)> = recorder
+        .events()
+        .into_iter()
+        .map(|(occurrence, key, _)| (occurrence, key))
+        .collect();
+    assert!(keys.contains(&("generate".to_owned(), "generator_history".to_owned())));
+    assert!(keys.contains(&("critique".to_owned(), "conversation".to_owned())));
+    assert!(
+        keys.iter().all(
+            |pair| *pair == ("generate".to_owned(), "generator_history".to_owned())
+                || *pair == ("critique".to_owned(), "conversation".to_owned())
+        ),
+        "{keys:?}"
+    );
+}
