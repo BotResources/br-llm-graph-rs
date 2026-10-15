@@ -104,6 +104,13 @@ instead, and `LlmCall` makes one model call whose answer is data.
   description, when the shape has no `thinking`, is not in use: a state or
   configuration key it reads is not declared. `VerdictOverride { shape,
   reader }` sends the caller's `StructuredShape` (formerly a JSON `schema`).
+- **Breaking:** two declared tools with one name, a request no client
+  accepts, are refused at build before the rules on tool nodes: an
+  `InvalidNode` naming the model-call step (`llm` of a `ReactAgent`,
+  `generate` of a generator seat), its reason `Request` carrying
+  `DuplicateToolName`. Before, they gave `ToolCoveredTwice`, or, with a split
+  whose tool nodes cover them by name, built and failed at the first model
+  call.
 - A system text that resolves blank (empty or whitespace only) is sent as no
   system text, by the model-call step of the ReAct loop, by the critic and by
   `LlmCall`: a core system prompt is a `Text`, which refuses a blank text.

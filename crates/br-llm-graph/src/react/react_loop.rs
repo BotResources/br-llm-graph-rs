@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use br_llm_clients_core::BuildError;
 use br_llm_messages::{Author, ToolName, TurnState};
 
 use crate::error::GraphError;
@@ -33,6 +34,7 @@ impl ReactLoop {
         builder: GraphBuilder,
         llm_node: LlmNode,
     ) -> Result<GraphBuilder, GraphError> {
+        self.check_names(&llm_node)?;
         self.check_partition(&llm_node)?;
         if let Some(limit) = &self.tool_concurrency {
             limit.check(builder.schema())?;
@@ -70,6 +72,26 @@ impl ReactLoop {
             builder = round_limit.add_limit_node(builder, key, author, &self.llm, &self.after);
         }
         Ok(builder)
+    }
+
+    /// Two declared tools with one name make a request no client accepts:
+    /// the model-call step is refused (`InvalidNode`, its reason `Request`
+    /// carrying `DuplicateToolName`), before the rules on tool nodes, which
+    /// go by name.
+    fn check_names(&self, llm_node: &LlmNode) -> Result<(), GraphError> {
+        let mut seen: HashSet<&ToolName> = HashSet::new();
+        for tool in &llm_node.tools {
+            let name = tool.spec().name();
+            if !seen.insert(name) {
+                return Err(GraphError::InvalidNode {
+                    node: self.llm.clone(),
+                    source: Box::new(GraphError::Request(BuildError::DuplicateToolName {
+                        name: name.clone(),
+                    })),
+                });
+            }
+        }
+        Ok(())
     }
 
     fn check_partition(&self, llm_node: &LlmNode) -> Result<(), GraphError> {

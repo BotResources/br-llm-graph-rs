@@ -54,8 +54,11 @@ use crate::value::{EndLabel, Key, NodeId};
 /// included, are the host's: an agent that needs another model or another
 /// level is given another client.
 ///
-/// Each tool of `tool_nodes` must be one of `tools` (`ToolNotDeclared`), and
-/// each of `tools` run by exactly one tool node (`ToolNotCovered`,
+/// Two of `tools` with one name are refused first, as a request no client
+/// accepts (`InvalidNode` naming `llm`, its reason `Request` carrying
+/// `DuplicateToolName`), the same for a generator seat (naming `generate`).
+/// Then each tool of `tool_nodes` must be one of `tools` (`ToolNotDeclared`),
+/// and each of `tools` run by exactly one tool node (`ToolNotCovered`,
 /// `ToolCoveredTwice`). A pending call no tool node runs fails the run
 /// (`PendingToolUnsatisfiable`).
 ///

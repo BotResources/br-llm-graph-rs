@@ -186,7 +186,8 @@ async fn given_failing_client_when_llm_runs_then_model_error_carrying_the_client
 async fn given_a_request_core_refuses_to_build_when_llm_runs_then_request_carrying_the_build_error()
 {
     // Two tools of one name: br-llm-clients-core refuses the request. The
-    // ReAct loop refuses such tools at build; the step alone does not.
+    // ReAct loop refuses them at build (`InvalidNode` with this `Request`,
+    // see `react_duplicate_tool_tests`); the step, built here alone, does not.
     let client = mock(vec![text_step("unused")]);
     let mut node = llm(&client, Vec::new());
     node.tools = vec![Arc::new(EchoTool), Arc::new(EchoTool)];
