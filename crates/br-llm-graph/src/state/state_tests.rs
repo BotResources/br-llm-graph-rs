@@ -119,7 +119,7 @@ fn given_an_undeclared_key_when_read_then_unknown_key_for_every_typed_read() {
         state.bool(&stray).err(),
         state.list(&stray).err(),
         state.conversation(&stray).err(),
-        state.get(&stray).err(),
+        state.value(&stray).err(),
     ];
     for error in reads {
         assert!(

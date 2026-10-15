@@ -51,8 +51,8 @@ impl Source {
     pub(crate) fn texts(&self, state: &State, config: &Config) -> Result<Vec<String>, GraphError> {
         let mut parts = Vec::new();
         match self {
-            Source::Config(key) => append_strings(key, config.get(key)?, &mut parts)?,
-            Source::State(key) => append_strings(key, state.get(key)?, &mut parts)?,
+            Source::Config(key) => append_strings(key, config.value(key)?, &mut parts)?,
+            Source::State(key) => append_strings(key, state.value(key)?, &mut parts)?,
             Source::Const(text) => parts.push(text.clone()),
             Source::Fn(text) => parts.push(text(state, config)?),
         }

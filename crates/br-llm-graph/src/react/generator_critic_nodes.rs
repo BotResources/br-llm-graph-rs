@@ -49,7 +49,7 @@ impl Node for RouteNode {
             }
             Ok(vec![Update::Set {
                 key: self.generator_history.clone(),
-                value: state.get(&self.conversation)?.clone(),
+                value: state.value(&self.conversation)?.clone(),
             }])
         })
     }

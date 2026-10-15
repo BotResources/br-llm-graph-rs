@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::error::GraphError;
 use crate::state::kind::Kind;
+use crate::state::typed_key::{ConfigKey, StateKey};
 use crate::state::value::Value;
+use crate::state::value_type::ValueType;
 use crate::value::Key;
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -64,6 +66,77 @@ pub struct SchemaBuilder {
 }
 
 impl SchemaBuilder {
+    /// Declares the state key named `name`, of the kind of `T`, and gives its
+    /// typed key. Its start value is the neutral value of its kind. A name
+    /// that is not an identifier is refused (`Identifier`).
+    ///
+    /// ```
+    /// use br_llm_graph::{Schema, StateKey};
+    /// use br_llm_messages::Conversation;
+    ///
+    /// let mut schema = Schema::builder();
+    /// let attempts: StateKey<i64> = schema.state("attempts").unwrap();
+    /// let notes = schema.state::<Vec<String>>("notes").unwrap();
+    /// let chat = schema.state::<Conversation>("chat").unwrap();
+    /// let schema = schema.build();
+    /// assert_eq!(schema.state.len(), 3);
+    /// ```
+    ///
+    /// Only the Rust types of the kinds can be declared (`ValueType`):
+    ///
+    /// ```compile_fail
+    /// let mut schema = br_llm_graph::Schema::builder();
+    /// let attempts = schema.state::<u32>("attempts");
+    /// ```
+    ///
+    /// Declaring a name again replaces its kind, as `state_by_name` does: a
+    /// typed key given before for that name then reads as `KindMismatch`.
+    pub fn state<T: ValueType>(
+        &mut self,
+        name: impl Into<String>,
+    ) -> Result<StateKey<T>, GraphError> {
+        let key = Key::new(name)?;
+        self.state.insert(key.clone(), T::kind());
+        Ok(StateKey::declared(key))
+    }
+
+    /// Declares the state key named `name`, of the kind of `T`, with the start
+    /// value `default`, and gives its typed key. A name that is not an
+    /// identifier is refused (`Identifier`), a float default that is not
+    /// finite too (`FloatNotFinite`).
+    ///
+    /// ```
+    /// use br_llm_graph::{Schema, StateKey, Value};
+    ///
+    /// let mut schema = Schema::builder();
+    /// let tone: StateKey<String> = schema.state_with_default("tone", "plain".to_owned()).unwrap();
+    /// let schema = schema.build();
+    /// assert_eq!(schema.default_value(tone.key()), Some(Value::str("plain")));
+    /// ```
+    pub fn state_with_default<T: ValueType>(
+        &mut self,
+        name: impl Into<String>,
+        default: T,
+    ) -> Result<StateKey<T>, GraphError> {
+        let key = Key::new(name)?;
+        let default = default.into_value()?;
+        self.state.insert(key.clone(), T::kind());
+        self.defaults.insert(key.clone(), default);
+        Ok(StateKey::declared(key))
+    }
+
+    /// Declares the configuration key named `name`, of the kind of `T`, and
+    /// gives its typed key. A name that is not an identifier is refused
+    /// (`Identifier`). A state key and a configuration key may share a name.
+    pub fn config<T: ValueType>(
+        &mut self,
+        name: impl Into<String>,
+    ) -> Result<ConfigKey<T>, GraphError> {
+        let key = Key::new(name)?;
+        self.config.insert(key.clone(), T::kind());
+        Ok(ConfigKey::declared(key))
+    }
+
     /// Declares the state key `key` of kind `kind`, known only at run time (a
     /// graph described as data). A key declared again takes the last kind.
     pub fn state_by_name(mut self, key: Key, kind: Kind) -> Self {
@@ -86,6 +159,7 @@ impl SchemaBuilder {
         self
     }
 
+    /// The schema of every key declared so far.
     pub fn build(self) -> Schema {
         Schema {
             state: self.state,

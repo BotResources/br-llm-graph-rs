@@ -117,7 +117,7 @@ pub(crate) fn captured(
     for capture in captures {
         let value = match capture.source() {
             CaptureSource::Const(value) => value.clone(),
-            CaptureSource::From(key) => state.get(key)?.clone(),
+            CaptureSource::From(key) => state.value(key)?.clone(),
             CaptureSource::Reason => Value::str(reason),
         };
         updates.push(capture.target().update(value));

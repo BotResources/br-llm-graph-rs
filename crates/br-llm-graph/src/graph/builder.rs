@@ -32,15 +32,17 @@ impl GraphBuilder {
     }
 
     /// Declares a state key as an input of the graph: a run started with
-    /// `Graph::start_state` must be given its value.
-    pub fn input(mut self, key: Key) -> Self {
-        self.inputs.push(key);
+    /// `Graph::start_state` must be given its value. It takes a typed key
+    /// (`&StateKey<T>`) or a key by name.
+    pub fn input(mut self, key: impl Into<Key>) -> Self {
+        self.inputs.push(key.into());
         self
     }
 
-    /// Declares a state key as an output of the graph.
-    pub fn output(mut self, key: Key) -> Self {
-        self.outputs.push(key);
+    /// Declares a state key as an output of the graph. It takes a typed key
+    /// (`&StateKey<T>`) or a key by name.
+    pub fn output(mut self, key: impl Into<Key>) -> Self {
+        self.outputs.push(key.into());
         self
     }
 

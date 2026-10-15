@@ -69,8 +69,8 @@ impl SubGraph {
         let mut values = Vec::with_capacity(mappings.len());
         for (child_key, source) in mappings {
             let value = match source {
-                Input::From(key) => state.get(key)?.clone(),
-                Input::Config(key) => config.get(key)?.clone(),
+                Input::From(key) => state.value(key)?.clone(),
+                Input::Config(key) => config.value(key)?.clone(),
                 Input::Const(value) => value.clone(),
             };
             values.push((child_key.clone(), value));
@@ -81,7 +81,7 @@ impl SubGraph {
     fn outputs_of(&self, state: &State, end: &EndLabel) -> Result<Vec<Update>, GraphError> {
         let mut updates = Vec::with_capacity(self.outputs.len() + 1);
         for (child_key, target) in &self.outputs {
-            updates.push(target.update(state.get(child_key)?.clone()));
+            updates.push(target.update(state.value(child_key)?.clone()));
         }
         if let Some(target) = &self.end_label {
             updates.push(target.update(Value::str(end.as_str())));
