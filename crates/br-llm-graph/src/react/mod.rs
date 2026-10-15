@@ -43,6 +43,8 @@ mod generator_critic_view_tests;
 #[cfg(test)]
 mod llm_call_check_tests;
 #[cfg(test)]
+mod llm_call_conversation_tests;
+#[cfg(test)]
 mod llm_call_map_tests;
 #[cfg(test)]
 mod llm_call_support;
