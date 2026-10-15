@@ -1,6 +1,7 @@
 //! The tool concurrency gate: one entry per waiting call whatever the number
-//! of polls, one waiter let through per freed place in arrival order, and a
-//! cancelled waiter that holds no place.
+//! of polls, at the gate and through a tool node; one waiter let through per
+//! freed place in arrival order; a cancelled waiter that holds no place; and
+//! a waker replaced or removed that is dropped out of the gate's lock.
 
 use std::future::Future;
 use std::pin::Pin;
