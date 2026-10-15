@@ -60,9 +60,9 @@ pub(crate) async fn judged_with(
     inputs.extend(extra);
     let state = graph.start_state(inputs).unwrap();
     let config = Config::new(graph.schema(), config).unwrap();
-    let (_sender, mut inbox) = crate::run::channel();
+    let (_sender, mut channel) = crate::run::control();
     let state = ended(
-        crate::run::run(&graph, &config, state, None, &ctx(), &mut inbox).await,
+        crate::run::run(&graph, &config, state, None, &ctx(), &mut channel).await,
         "validated",
     );
     (requests(critic_client).remove(0), state)

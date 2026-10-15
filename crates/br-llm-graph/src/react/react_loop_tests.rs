@@ -10,7 +10,7 @@ use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::run::Outcome;
-use crate::run::channel;
+use crate::run::control;
 use crate::run::run;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -56,11 +56,18 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
         .build()
         .unwrap();
 
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), seeded_state(), None, &ctx(), &mut inbox)
-        .await
-        .map_err(|f| f.error)
-        .unwrap();
+    let (_sender, mut channel) = control();
+    let outcome = run(
+        &graph,
+        &config(),
+        seeded_state(),
+        None,
+        &ctx(),
+        &mut channel,
+    )
+    .await
+    .map_err(|f| f.error)
+    .unwrap();
     let Outcome::Finished { state, end } = outcome else {
         panic!("expected finished");
     };
@@ -96,11 +103,18 @@ async fn given_two_tool_nodes_with_parallel_calls_when_run_then_both_run() {
         .unwrap()
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), seeded_state(), None, &ctx(), &mut inbox)
-        .await
-        .map_err(|f| f.error)
-        .unwrap();
+    let (_sender, mut channel) = control();
+    let outcome = run(
+        &graph,
+        &config(),
+        seeded_state(),
+        None,
+        &ctx(),
+        &mut channel,
+    )
+    .await
+    .map_err(|f| f.error)
+    .unwrap();
     let Outcome::Finished { state, .. } = outcome else {
         panic!("expected finished");
     };

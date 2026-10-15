@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use br_llm_graph::{
     Always, Config, Context, EndLabel, FnNode, Graph, GraphBuilder, Input, ItemFailure, Kind, Map,
-    NodeFuture, NodeId, Outcome, Output, Schema, State, SubGraph, Target, Update, Value, channel,
+    NodeFuture, NodeId, Outcome, Output, Schema, State, SubGraph, Target, Update, Value, control,
     run,
 };
 
@@ -96,8 +96,8 @@ async fn main() {
     let config = Config::new(graph.schema(), BTreeMap::new()).expect("config");
     let ctx = quiet_context();
 
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config, state, None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config, state, None, &ctx, &mut channel)
         .await
         .err()
         .expect("the first attempt fails");
@@ -108,14 +108,14 @@ async fn main() {
 
     let checkpoint = failure.checkpoint;
     let resumed = ctx.with_pending(checkpoint.pending);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let outcome = run(
         &graph,
         &config,
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

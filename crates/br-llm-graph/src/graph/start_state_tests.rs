@@ -6,7 +6,7 @@ use crate::error::GraphError;
 use crate::graph::{Context, FnNode, Graph, GraphBuilder, NodeFuture};
 use crate::observe::NoopObserver;
 use crate::run::test_support::{config, edge, end, key, nid, noop_node, schema};
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
@@ -142,9 +142,9 @@ async fn given_state_from_start_state_when_run_then_nodes_read_the_inputs() {
         Arc::new(NoopObserver),
         Arc::new(crate::testkit::SeqIds::new()),
     );
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let Ok(Outcome::Finished { state, .. }) =
-        run(&graph, &config(), state, None, &ctx, &mut inbox).await
+        run(&graph, &config(), state, None, &ctx, &mut channel).await
     else {
         panic!("expected finished");
     };

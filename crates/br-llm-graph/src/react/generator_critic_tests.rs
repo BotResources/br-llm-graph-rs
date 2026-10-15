@@ -15,7 +15,7 @@ use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
-use crate::run::{channel, run};
+use crate::run::{control, run};
 use crate::state::{Config, Kind, Value};
 use crate::testkit::SeqIds;
 
@@ -291,10 +291,10 @@ async fn given_a_generator_critic_when_both_seats_stream_then_the_generator_carr
         ])
         .unwrap();
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
 
     ended(
-        run(&graph, &config, state, None, &ctx, &mut inbox).await,
+        run(&graph, &config, state, None, &ctx, &mut channel).await,
         "validated",
     );
 

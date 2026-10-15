@@ -1,6 +1,7 @@
 //! Messages that reach a ReAct agent from outside its run: a user note sent
-//! through the inbox while a tool call is open, then a message of an upper
-//! agent added to the history the host saved before running the agent again.
+//! through the control channel while a tool call is open, then a message of
+//! an upper agent added to the history the host saved before running the
+//! agent again.
 
 #[allow(dead_code)]
 mod common;
@@ -12,7 +13,7 @@ use br_llm_clients_core::{
     BoxFuture, CallOutcome, Client, ClientRequest, ClientSettings, OutputMode, ReasoningLevel,
     StreamSink,
 };
-use br_llm_graph::{Config, Outcome, ReactAgent, Source, Update, Value, channel, run};
+use br_llm_graph::{Config, Outcome, ReactAgent, Source, Update, Value, control, run};
 use br_llm_messages::{
     Author, Conversation, InputId, Text, UserBlock, UserInput, UserSource, WireMessage,
 };
@@ -95,9 +96,9 @@ async fn main() {
     let ctx = context();
 
     println!("external_message: first run (a user note arrives while the tool call is open)");
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.send(key("history"), user("Actually, also mention supersteps."));
-    let outcome = run(&graph, &config, first_state, None, &ctx, &mut inbox).await;
+    let outcome = run(&graph, &config, first_state, None, &ctx, &mut channel).await;
     let Ok(Outcome::Finished { state, end }) = outcome else {
         println!("external_message: first run did not finish cleanly");
         return;
@@ -121,8 +122,8 @@ async fn main() {
             input: supervisor,
         }])
         .expect("apply");
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config, relaunch_state, None, &ctx, &mut inbox).await;
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config, relaunch_state, None, &ctx, &mut channel).await;
     match outcome {
         Ok(Outcome::Finished { end, .. }) => {
             println!("external_message: second run ended on End({end})")

@@ -15,7 +15,7 @@ use crate::react::react_agent::ReactAgent;
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::NodeId;
@@ -79,8 +79,16 @@ pub(crate) async fn call(graph: &Graph, history: Conversation) -> Result<Outcome
 }
 
 pub(crate) async fn run_agent(graph: &Graph, state: State) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
-    run(graph, &agent_config(graph), state, None, &ctx(), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(
+        graph,
+        &agent_config(graph),
+        state,
+        None,
+        &ctx(),
+        &mut channel,
+    )
+    .await
 }
 
 pub(crate) async fn call_in(
@@ -91,8 +99,8 @@ pub(crate) async fn call_in(
     let state = graph
         .start_state([(key("history"), Value::conversation(history))])
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    run(graph, &agent_config(graph), state, None, ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &agent_config(graph), state, None, ctx, &mut channel).await
 }
 
 pub(crate) fn finished(result: Result<Outcome, RunFailure>) -> State {

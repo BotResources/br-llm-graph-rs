@@ -17,7 +17,7 @@ use crate::observe::NoopObserver;
 use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -129,8 +129,8 @@ pub(crate) async fn run_in(
     state: State,
     ctx: &Context,
 ) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
-    run(graph, &config(), state, None, ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config(), state, None, ctx, &mut channel).await
 }
 
 pub(crate) fn ctx() -> Context {

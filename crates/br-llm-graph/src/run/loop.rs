@@ -6,7 +6,7 @@ use br_llm_messages::UserInput;
 use crate::error::GraphError;
 use crate::graph::{Context, Graph};
 use crate::run::checkpoint::Checkpoint;
-use crate::run::control::{Inbox, Message};
+use crate::run::control::{Command, Control};
 use crate::run::cursor::Cursor;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::settle::settle;
@@ -48,14 +48,14 @@ pub async fn run(
     state: State,
     cursor: Option<Cursor>,
     ctx: &Context,
-    inbox: &mut Inbox,
+    control: &mut Control,
 ) -> Result<Outcome, RunFailure> {
     let ctx = ctx.isolated();
     if let Err(error) = graph.check_schemas(&state, config) {
         let cursor = cursor.unwrap_or_default();
         return Err(fail(state, &ctx, &cursor.active, &cursor.deferred, error));
     }
-    run_nested(graph, config, state, cursor, &ctx, inbox).await
+    run_nested(graph, config, state, cursor, &ctx, control).await
 }
 
 /// Runs `graph` on the recorder of `ctx`, shared with the caller: a nested
@@ -66,7 +66,7 @@ pub(crate) async fn run_nested(
     mut state: State,
     cursor: Option<Cursor>,
     ctx: &Context,
-    inbox: &mut Inbox,
+    control: &mut Control,
 ) -> Result<Outcome, RunFailure> {
     let (mut active, mut deferred) = match cursor {
         Some(cursor) if cursor.is_empty() => {
@@ -83,7 +83,7 @@ pub(crate) async fn run_nested(
         for id in &active {
             ctx.observer.node_started(ctx.origin(), id);
         }
-        let step = drive_superstep(graph, &state, config, ctx, &active, inbox).await;
+        let step = drive_superstep(graph, &state, config, ctx, &active, control).await;
         let mut held_inputs: Vec<(_, UserInput)> = step.held_inputs;
         let mut pause = step.pause;
         let results = match step.result {
@@ -96,7 +96,7 @@ pub(crate) async fn run_nested(
             ctx.observer.node_finished(ctx.origin(), id);
         }
 
-        if drain_after_step(inbox, &mut held_inputs, &mut pause) {
+        if drain_after_step(control, &mut held_inputs, &mut pause) {
             return cancelled(state, ctx, held_inputs, &active, &deferred);
         }
 
@@ -141,16 +141,16 @@ pub(crate) async fn run_nested(
 }
 
 fn drain_after_step(
-    inbox: &mut Inbox,
+    control: &mut Control,
     held_inputs: &mut Vec<(crate::value::Key, UserInput)>,
     pause: &mut bool,
 ) -> bool {
-    while let Some(message) = inbox.try_next() {
+    while let Some(message) = control.try_next() {
         match message {
-            Message::Input { key, input } => held_inputs.push((key, input)),
-            Message::Pause => *pause = true,
-            Message::Resume => {}
-            Message::Cancel => return true,
+            Command::Input { key, input } => held_inputs.push((key, input)),
+            Command::Pause => *pause = true,
+            Command::Resume => {}
+            Command::Cancel => return true,
         }
     }
     false

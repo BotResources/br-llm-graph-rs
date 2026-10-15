@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering;
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
     Config, Hook, HookFuture, Judgment, Outcome, ReactAgent, Source, State, Tool, ToolFuture,
-    Value, channel, run,
+    Value, control, run,
 };
 use br_llm_messages::{Author, Conversation, ToolCallId};
 use serde_json::{Value as Json, json};
@@ -111,8 +111,8 @@ async fn main() {
         .expect("start state");
     let config = Config::new(graph.schema(), Default::default()).expect("config");
 
-    let (_sender, mut inbox) = channel();
-    match run(&graph, &config, state, None, &context(), &mut inbox).await {
+    let (_sender, mut channel) = control();
+    match run(&graph, &config, state, None, &context(), &mut channel).await {
         Ok(Outcome::Finished { state, .. }) => {
             println!(
                 "tool_hook: {} (the tool ran {} time)",

@@ -19,7 +19,7 @@ use crate::react::tool::Tool;
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
 use crate::run::Outcome;
-use crate::run::channel;
+use crate::run::control;
 use crate::run::run;
 use crate::state::{State, Value};
 use crate::testkit::SeqIds;
@@ -93,8 +93,8 @@ pub(crate) async fn run_tool_node(state: State, tools: Vec<Arc<dyn Tool>>) -> St
         )
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config(), state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();

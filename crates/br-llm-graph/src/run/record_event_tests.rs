@@ -8,7 +8,7 @@ use crate::graph::{Context, FnNode, Graph, GraphBuilder, ItemFailure, Map, NodeF
 use crate::observe::Observer;
 use crate::origin::Origin;
 use crate::run::PendingEntry;
-use crate::run::control::{Sender, channel};
+use crate::run::control::{ControlSender, control};
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;
@@ -35,8 +35,8 @@ impl Observer for Records {
 async fn observed(graph: &Graph, state: State) -> (Arc<Records>, Outcome) {
     let records = Arc::new(Records::default());
     let ctx = crate::testkit::context(records.clone());
-    let (_sender, mut inbox) = channel();
-    let outcome = run(graph, &config(), state, None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(graph, &config(), state, None, &ctx, &mut channel)
         .await
         .map_err(|failure| failure.error)
         .unwrap();
@@ -112,8 +112,8 @@ async fn given_a_map_alone_in_its_superstep_when_run_then_its_items_are_observed
 
 #[tokio::test]
 async fn given_a_cancel_right_after_a_lone_node_finished_when_resumed_then_its_result_is_kept() {
-    let (sender, mut inbox) = channel();
-    let cancel: Arc<Mutex<Option<Sender>>> = Arc::new(Mutex::new(Some(sender)));
+    let (sender, mut channel) = control();
+    let cancel: Arc<Mutex<Option<ControlSender>>> = Arc::new(Mutex::new(Some(sender)));
     let trigger = cancel.clone();
     let node = FnNode::new(
         move |_s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
@@ -136,7 +136,7 @@ async fn given_a_cancel_right_after_a_lone_node_finished_when_resumed_then_its_r
         .unwrap();
     let records = Arc::new(Records::default());
     let ctx = crate::testkit::context(records.clone());
-    let outcome = run(&graph, &config(), base_state(), None, &ctx, &mut inbox).await;
+    let outcome = run(&graph, &config(), base_state(), None, &ctx, &mut channel).await;
     let Ok(Outcome::Cancelled { checkpoint }) = outcome else {
         panic!("expected cancelled");
     };
@@ -144,14 +144,14 @@ async fn given_a_cancel_right_after_a_lone_node_finished_when_resumed_then_its_r
     assert!(checkpoint.pending.get(&"a".parse().unwrap()).is_some());
 
     let resumed = crate::testkit::context(records.clone()).with_pending(checkpoint.pending);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let outcome = run(
         &graph,
         &config(),
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

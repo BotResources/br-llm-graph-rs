@@ -12,7 +12,7 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
     Always, Config, EndLabel, GraphBuilder, ItemFailure, Kind, Limit, LlmCall, LlmRequest, Map,
-    NodeId, Outcome, Output, Schema, Source, Target, Value, channel, run,
+    NodeId, Outcome, Output, Schema, Source, Target, Value, control, run,
 };
 
 use common::{context, key, scripted, text_step};
@@ -97,8 +97,8 @@ async fn main() {
     )
     .expect("config");
 
-    let (_sender, mut inbox) = channel();
-    match run(&graph, &config, state, None, &context(), &mut inbox).await {
+    let (_sender, mut channel) = control();
+    match run(&graph, &config, state, None, &context(), &mut channel).await {
         Ok(Outcome::Finished { state, .. }) => {
             println!("llm_call: {}", state.str(&key("title")).expect("title"));
             for summary in state.list(&key("summaries")).expect("summaries") {

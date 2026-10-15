@@ -14,7 +14,7 @@ use crate::graph::{
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::*;
 use crate::react::test_support::*;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::value::EndLabel;
 
@@ -36,8 +36,8 @@ fn caller_config() -> Config {
 }
 
 async fn run_caller(graph: &Graph, state: State) -> State {
-    let (_sender, mut inbox) = channel();
-    match run(graph, &caller_config(), state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    match run(graph, &caller_config(), state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap()

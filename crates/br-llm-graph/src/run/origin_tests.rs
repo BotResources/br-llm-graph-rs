@@ -4,7 +4,7 @@ use crate::graph::{Context, FnNode, Graph, GraphBuilder, Node, NodeFuture};
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
 use crate::run::Cursor;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;
@@ -75,9 +75,9 @@ impl Node for Nested {
         ctx: &'a Context,
     ) -> NodeFuture<'a> {
         Box::pin(async move {
-            let (_sender, mut inbox) = channel();
+            let (_sender, mut channel) = control();
             let state = self.0.start_state(Vec::new())?;
-            match run(&self.0, config, state, None, ctx, &mut inbox).await {
+            match run(&self.0, config, state, None, ctx, &mut channel).await {
                 Ok(_) => Ok(Vec::new()),
                 Err(failure) => Err(failure.error.into()),
             }
@@ -106,14 +106,14 @@ async fn given_a_top_level_run_when_observed_then_every_event_carries_the_run_id
  {
     let origins = Arc::new(Origins::default());
     let ctx = crate::testkit::context(origins.clone()).with_run_id(RunId::new("r1"));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let outcome = run(
         &two_steps(),
         &config(),
         base_state(),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     assert!(matches!(outcome, Ok(Outcome::Finished { .. })));
@@ -143,8 +143,8 @@ async fn given_a_running_node_when_it_reads_its_context_then_it_sees_its_own_occ
         .build()
         .unwrap();
     let ctx = crate::testkit::context(Arc::new(NoopObserver));
-    let (_sender, mut inbox) = channel();
-    run(&graph, &config(), base_state(), None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    run(&graph, &config(), base_state(), None, &ctx, &mut channel)
         .await
         .unwrap();
     assert_eq!(seen.lock().unwrap().clone(), vec!["probe".to_owned()]);
@@ -163,8 +163,8 @@ async fn given_the_same_node_id_in_a_parent_and_a_nested_run_when_observed_then_
         .unwrap();
     let origins = Arc::new(Origins::default());
     let ctx = crate::testkit::context(origins.clone()).with_run_id(RunId::new("r1"));
-    let (_sender, mut inbox) = channel();
-    run(&parent, &config(), base_state(), None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    run(&parent, &config(), base_state(), None, &ctx, &mut channel)
         .await
         .unwrap();
     assert_eq!(origins.started("step"), vec!["", "outer"]);

@@ -9,7 +9,7 @@ use crate::react::react_loop::ReactLoop;
 use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
-use crate::run::channel;
+use crate::run::control;
 use crate::run::run;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -126,11 +126,18 @@ async fn given_model_calls_unowned_tool_when_run_then_pending_unsatisfiable() {
         .unwrap()
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), seeded_state(), None, &ctx(), &mut inbox)
-        .await
-        .err()
-        .unwrap();
+    let (_sender, mut channel) = control();
+    let failure = run(
+        &graph,
+        &config(),
+        seeded_state(),
+        None,
+        &ctx(),
+        &mut channel,
+    )
+    .await
+    .err()
+    .unwrap();
     assert!(matches!(
         failure.error,
         crate::error::GraphError::PendingToolUnsatisfiable { .. }

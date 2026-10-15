@@ -8,7 +8,7 @@ use crate::graph::{CaptureSource, CaptureUpdate};
 use crate::graph::{Context, Graph, GraphBuilder, ItemFailure, Limit, Map};
 use crate::observe::NoopObserver;
 use crate::run::Checkpoint;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::gates::{Gates, PickyBody};
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
@@ -66,9 +66,9 @@ async fn run_releasing(
     gates: &Gates,
     order: &[&str],
 ) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let (ctx, config) = (ctx(), config());
-    let running = run(graph, &config, seeded(), None, &ctx, &mut inbox);
+    let running = run(graph, &config, seeded(), None, &ctx, &mut channel);
     let driver = async {
         for item in order {
             gates.release(item).await;
@@ -82,7 +82,7 @@ async fn resume_open(graph: &Graph, gates: &Gates, checkpoint: Checkpoint) -> St
     for item in ITEMS {
         gates.open(item);
     }
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = ctx().with_pending(checkpoint.pending);
     let outcome = run(
         graph,
@@ -90,7 +90,7 @@ async fn resume_open(graph: &Graph, gates: &Gates, checkpoint: Checkpoint) -> St
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     match outcome {
@@ -238,9 +238,9 @@ async fn given_capture_when_an_item_panics_then_the_map_fails_and_a_resume_skips
     let panicking = body.panicking.clone();
     *panicking.lock().unwrap() = Some("c".to_owned());
     let graph = mapped(body, capture_item_and_reason()).unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let (ctx, config) = (ctx(), config());
-    let running = run(&graph, &config, seeded(), None, &ctx, &mut inbox);
+    let running = run(&graph, &config, seeded(), None, &ctx, &mut channel);
     let driver = async {
         gates.release("a").await;
         gates.release("b").await;

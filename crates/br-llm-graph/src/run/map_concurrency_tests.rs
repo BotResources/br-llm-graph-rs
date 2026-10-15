@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Context, Graph, GraphBuilder, Limit, Map, Node, NodeFuture};
 use crate::observe::NoopObserver;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;
@@ -98,9 +98,9 @@ fn seeded(items: &[&str]) -> State {
 async fn run_map(limit: Option<Limit>, config: Config) -> (Result<Outcome, RunFailure>, usize) {
     let gauge = Arc::new(Gauge::default());
     let graph = map_graph(&gauge, limit).unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let items = ["a", "b", "c", "d", "e"];
-    let result = run(&graph, &config, seeded(&items), None, &ctx(), &mut inbox).await;
+    let result = run(&graph, &config, seeded(&items), None, &ctx(), &mut channel).await;
     (result, gauge.peak.load(Ordering::SeqCst))
 }
 

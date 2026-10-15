@@ -9,7 +9,7 @@ use super::test_support::*;
 use crate::graph::subgraph::{Output, SubGraph};
 use crate::graph::{Always, Context, FnNode, Graph, GraphBuilder, Map, NodeFuture, Target};
 use crate::observe::NoopObserver;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 
@@ -123,8 +123,8 @@ async fn fail_then_resume(script: &Arc<Script>) -> Vec<Value> {
     let config = Config::new(&schema, BTreeMap::new()).unwrap();
     let ctx = context(Arc::new(NoopObserver));
     let state = caller.start_state(Vec::new()).unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&caller, &config, state, None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&caller, &config, state, None, &ctx, &mut channel)
         .await
         .err()
         .unwrap();
@@ -134,7 +134,7 @@ async fn fail_then_resume(script: &Arc<Script>) -> Vec<Value> {
         "nothing below the call is pending"
     );
     script.attempt.store(1, Ordering::SeqCst);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = ctx.with_pending(checkpoint.pending);
     let outcome = run(
         &caller,
@@ -142,7 +142,7 @@ async fn fail_then_resume(script: &Arc<Script>) -> Vec<Value> {
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

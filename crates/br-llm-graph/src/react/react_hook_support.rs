@@ -20,7 +20,7 @@ use crate::react::test_support::*;
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -299,8 +299,8 @@ pub(crate) fn tool_graph(tools: Vec<Arc<dyn Tool>>, width: Option<usize>, enable
 
 pub(crate) async fn run_tools(graph: &Graph, state: State) -> Result<Outcome, RunFailure> {
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
-    run(graph, &config(), state, None, &ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config(), state, None, &ctx, &mut channel).await
 }
 
 /// The tool results of the agent's turn, as `(tool, is_error, text)`.

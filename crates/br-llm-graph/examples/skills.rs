@@ -11,7 +11,7 @@ use std::sync::Arc;
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
     Config, Outcome, ReactAgent, Source, State, Tool, ToolFuture, ToolOutput, Update, Value,
-    channel, run,
+    control, run,
 };
 use br_llm_messages::{Author, Conversation, Text, ToolResultBlock};
 use serde_json::{Value as Json, json};
@@ -141,8 +141,8 @@ async fn main() {
         ])
         .expect("start state");
 
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config, state, None, &context(), &mut inbox).await;
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config, state, None, &context(), &mut channel).await;
     for call in client.log() {
         let request = call.request();
         let system = request.system().map_or("<none>", Text::as_str);

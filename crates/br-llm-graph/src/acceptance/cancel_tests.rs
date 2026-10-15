@@ -1,13 +1,13 @@
 use std::sync::{Arc, Mutex};
 
 use super::support::*;
-use crate::{NoopObserver, Observer, Origin, Outcome, PendingEntry, Sender, channel, run};
+use crate::{ControlSender, NoopObserver, Observer, Origin, Outcome, PendingEntry, control, run};
 
 /// Cancels the run once `after` items of the map have recorded their result.
 struct CancelAfter {
     after: usize,
     seen: Mutex<usize>,
-    sender: Sender,
+    sender: ControlSender,
 }
 
 impl Observer for CancelAfter {
@@ -28,7 +28,7 @@ async fn given_a_cancel_in_the_middle_of_the_map_when_resumed_then_finished_item
 {
     let probe = Arc::new(Probe::default());
     let graph = caller(per_item(&probe)).unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     let observer = Arc::new(CancelAfter {
         after: 6,
         seen: Mutex::new(0),
@@ -41,7 +41,7 @@ async fn given_a_cancel_in_the_middle_of_the_map_when_resumed_then_finished_item
         start(&graph, 20),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Cancelled { checkpoint }) = outcome else {
@@ -56,7 +56,7 @@ async fn given_a_cancel_in_the_middle_of_the_map_when_resumed_then_finished_item
     assert!(checkpoint.state.list(&key("analyses")).unwrap().is_empty());
     let started_before = probe.prepared();
 
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = context(Arc::new(NoopObserver)).with_pending(checkpoint.pending);
     let outcome = run(
         &graph,
@@ -64,7 +64,7 @@ async fn given_a_cancel_in_the_middle_of_the_map_when_resumed_then_finished_item
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

@@ -5,7 +5,7 @@ use crate::error::GraphError;
 use crate::graph::subgraph::{Input, Output, SubGraph};
 use crate::graph::{Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Target};
 use crate::observe::{NoopObserver, Observer};
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -142,8 +142,8 @@ pub(crate) async fn run_parent(
     config: &Config,
     observer: Arc<dyn Observer>,
 ) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
-    run(graph, config, state, None, &context(observer), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, config, state, None, &context(observer), &mut channel).await
 }
 
 pub(crate) async fn finished(graph: &Graph, question: &str, rounds: i64) -> State {

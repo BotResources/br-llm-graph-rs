@@ -18,7 +18,7 @@ use crate::react::test_support::{author, calls_step, config, key, mock, schema, 
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -122,7 +122,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         .build()
         .unwrap();
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
 
     let outcome = run(
         &graph,
@@ -130,7 +130,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         four_calls_pending(),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await
     .map_err(|f| f.error)
@@ -205,8 +205,8 @@ async fn run_split_agent(graph: &crate::graph::Graph) {
         .unwrap();
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
-    let outcome = run(graph, &config, state, None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(graph, &config, state, None, &ctx, &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();

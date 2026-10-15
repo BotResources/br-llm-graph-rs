@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::graph::{Context, FnNode, Graph, GraphBuilder, ItemFailure, Map, Node, NodeFuture};
 use crate::observe::NoopObserver;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::counted::{Counted, CountedBody};
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
@@ -75,8 +75,8 @@ async fn run_with(
 ) -> Result<Outcome, RunFailure> {
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
     let ctx = crate::testkit::context(Arc::new(NoopObserver)).with_pending(pending);
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config, state, None, &ctx, &mut channel).await
 }
 
 fn finished(outcome: Result<Outcome, RunFailure>) -> State {
@@ -135,7 +135,7 @@ async fn given_a_map_directly_in_a_map_when_resumed_then_finished_inner_items_ar
     *failing.lock().unwrap() = None;
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
     let ctx = crate::testkit::context(Arc::new(NoopObserver)).with_pending(checkpoint.pending);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let state = finished(
         run(
             &graph,
@@ -143,7 +143,7 @@ async fn given_a_map_directly_in_a_map_when_resumed_then_finished_inner_items_ar
             checkpoint.state,
             Some(checkpoint.cursor),
             &ctx,
-            &mut inbox,
+            &mut channel,
         )
         .await,
     );

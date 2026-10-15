@@ -209,7 +209,7 @@ async fn given_run_failure_checkpoint_when_resumed_then_finishes_on_retry() {
 }
 
 #[tokio::test]
-async fn given_inbox_input_on_non_conversation_key_when_served_then_failed() {
+async fn given_control_input_on_non_conversation_key_when_served_then_failed() {
     let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
     let sender = session.sender();
     sender.send(key("count"), input("oops"));

@@ -13,7 +13,7 @@ use crate::react::generator_critic_support::*;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Value};
 use crate::value::Key;
 
@@ -37,8 +37,8 @@ pub(crate) async fn run_with(
     inputs.extend(extra);
     let state = graph.start_state(inputs).unwrap();
     let config = Config::new(graph.schema(), config).unwrap();
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx(), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config, state, None, &ctx(), &mut channel).await
 }
 
 pub(crate) fn wrapped(answer: &str, request: &str) -> WireMessage {

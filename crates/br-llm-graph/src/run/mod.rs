@@ -40,8 +40,8 @@ mod superstep_resume_tests;
 pub(crate) mod test_support;
 
 pub use checkpoint::Checkpoint;
-pub(crate) use control::Message;
-pub use control::{Inbox, Sender, channel};
+pub(crate) use control::Command;
+pub use control::{Control, ControlSender, control};
 pub use cursor::Cursor;
 pub use outcome::{Outcome, RunFailure};
 pub use pending::{PendingEntry, PendingWrites};

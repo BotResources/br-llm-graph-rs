@@ -7,7 +7,7 @@ use crate::graph::{Always, Context, FnNode, Graph, GraphBuilder, Map, NodeFuture
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
 use crate::run::counted::{Counted, CountedBody};
-use crate::run::{Outcome, PendingEntry, channel, run};
+use crate::run::{Outcome, PendingEntry, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 
@@ -156,7 +156,7 @@ async fn given_an_inner_item_failing_inside_a_call_when_resumed_then_finished_ou
 
     calls.heal();
     let checkpoint = failure.checkpoint;
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = context(Arc::new(NoopObserver)).with_pending(checkpoint.pending);
     let outcome = run(
         &graph,
@@ -164,7 +164,7 @@ async fn given_an_inner_item_failing_inside_a_call_when_resumed_then_finished_ou
         checkpoint.state,
         Some(checkpoint.cursor),
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

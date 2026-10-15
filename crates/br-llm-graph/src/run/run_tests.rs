@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::graph::{Always, Context, GraphBuilder};
 use crate::observe::NoopObserver;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;
@@ -30,8 +30,8 @@ async fn given_fan_out_then_join_when_run_then_join_runs_once() {
         .edge(nid("j"), edge(vec![end("done")]))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -67,8 +67,8 @@ async fn given_unequal_branches_when_run_then_join_still_runs_once() {
         .edge(nid("j"), edge(vec![end("done")]))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -96,8 +96,8 @@ async fn given_two_distinct_ends_in_one_superstep_when_run_then_ambiguous() {
         .edge(nid("b"), edge(vec![end("y")]))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -115,14 +115,14 @@ async fn given_an_empty_cursor_when_run_then_empty_cursor_error_and_nothing_runs
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let failure = run(
         &graph,
         &config(),
         base_state(),
         Some(crate::run::Cursor::default()),
         &ctx(),
-        &mut inbox,
+        &mut channel,
     )
     .await
     .err()
@@ -151,8 +151,8 @@ async fn given_a_state_or_a_configuration_of_another_schema_when_run_then_refuse
     ];
     for (state, config, side) in cases {
         let given = state.clone();
-        let (_sender, mut inbox) = channel();
-        let failure = run(&graph, &config, state, None, &ctx(), &mut inbox)
+        let (_sender, mut channel) = control();
+        let failure = run(&graph, &config, state, None, &ctx(), &mut channel)
             .await
             .err()
             .unwrap();
@@ -182,8 +182,8 @@ async fn given_two_nodes_set_same_key_when_run_then_declaration_order_wins() {
         .edge(nid("b"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -207,8 +207,8 @@ async fn given_end_mixed_with_node_target_when_run_then_only_final_end_counts() 
         .edge(nid("c"), edge(vec![end("late")]))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -227,8 +227,8 @@ async fn given_edge_returning_no_target_when_run_then_empty_edge_error_and_the_s
         .edge(nid("a"), edge(Vec::new()))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -250,8 +250,8 @@ async fn given_observer_when_run_then_started_before_finished_before_checkpoint(
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    run(&graph, &config(), base_state(), None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    run(&graph, &config(), base_state(), None, &ctx, &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();

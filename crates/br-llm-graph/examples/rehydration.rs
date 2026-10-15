@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use br_llm_graph::{
     Always, Checkpoint, Config, Context, EndLabel, FnNode, Graph, GraphBuilder, Kind, NodeFuture,
-    NodeId, Outcome, Schema, Session, State, Target, Update, Value, channel, run,
+    NodeId, Outcome, Schema, Session, State, Target, Update, Value, control, run,
 };
 
 use common::{key, quiet_context};
@@ -129,7 +129,7 @@ async fn cancel_then_resume() {
         .build()
         .expect("build");
 
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.cancel();
     let cancelled = run(
         &graph,
@@ -137,7 +137,7 @@ async fn cancel_then_resume() {
         state(),
         None,
         &quiet_context(),
-        &mut inbox,
+        &mut channel,
     )
     .await
     .expect("run");
@@ -150,14 +150,14 @@ async fn cancel_then_resume() {
         checkpoint.state.int(&key("count")).expect("int")
     );
 
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = run(
         &graph,
         &Config::new(&schema(), BTreeMap::new()).expect("config"),
         checkpoint.state,
         Some(checkpoint.cursor),
         &quiet_context(),
-        &mut inbox,
+        &mut channel,
     )
     .await
     .expect("run");

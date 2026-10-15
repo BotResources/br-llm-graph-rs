@@ -12,7 +12,7 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
     Always, Config, EndLabel, GraphBuilder, Input, Kind, NodeId, Outcome, Output, ReactAgent,
-    Schema, Source, SubGraph, Target, Value, channel, run,
+    Schema, Source, SubGraph, Target, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
@@ -75,8 +75,8 @@ async fn main() {
     values.insert(key("prompt"), Value::str("You are a research assistant."));
     let config = Config::new(&schema, values).expect("config");
 
-    let (_sender, mut inbox) = channel();
-    match run(&graph, &config, state, None, &context(), &mut inbox).await {
+    let (_sender, mut channel) = control();
+    match run(&graph, &config, state, None, &context(), &mut channel).await {
         Ok(Outcome::Finished { state, end }) => {
             println!("react_agent finished on End({end})");
             println!("  answer: {}", state.str(&key("answer")).expect("answer"));

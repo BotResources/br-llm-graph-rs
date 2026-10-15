@@ -17,7 +17,7 @@ use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{State, Value};
 use crate::testkit::SeqIds;
 use crate::update::Update;
@@ -61,8 +61,8 @@ pub(crate) async fn run_on(
     state: State,
     ctx: &Context,
 ) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
-    run(graph, &config(), state, None, ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config(), state, None, ctx, &mut channel).await
 }
 
 fn final_state(outcome: Outcome) -> State {

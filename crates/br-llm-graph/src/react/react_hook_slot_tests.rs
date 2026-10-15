@@ -17,7 +17,7 @@ use crate::react::react_agent::ReactAgent;
 use crate::react::react_hook_support::*;
 use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Value};
 use crate::testkit::SeqIds;
 
@@ -117,14 +117,14 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
         ])
         .unwrap();
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let config = Config::new(
         graph.schema(),
         BTreeMap::from([(key("base"), Value::str("Write files."))]),
     )
     .unwrap();
 
-    let outcome = run(&graph, &config, state, None, &ctx, &mut inbox)
+    let outcome = run(&graph, &config, state, None, &ctx, &mut channel)
         .await
         .map_err(|failure| failure.error)
         .unwrap();

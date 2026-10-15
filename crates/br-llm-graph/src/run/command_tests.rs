@@ -6,7 +6,7 @@ use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
 use crate::graph::{Always, Context, GraphBuilder};
 use crate::graph::{FnNode, NodeFuture};
 use crate::observe::NoopObserver;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;
@@ -40,9 +40,9 @@ async fn given_input_queued_when_run_then_drained_at_boundary() {
         .edge(nid("b"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.send(key("chat"), input("hello"));
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -62,9 +62,9 @@ async fn given_pause_when_run_then_paused_at_boundary_without_losing_work() {
         .edge(nid("b"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.pause();
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -91,9 +91,9 @@ async fn given_resume_without_pause_when_run_then_ignored() {
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.resume();
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -125,9 +125,9 @@ async fn given_cancel_mid_superstep_when_run_then_state_untouched_and_reruns_on_
         .build()
         .unwrap();
 
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.cancel();
-    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -151,7 +151,7 @@ async fn given_cancel_mid_superstep_when_run_then_state_untouched_and_reruns_on_
         checkpoint.state,
         Some(checkpoint.cursor),
         &ctx(),
-        &mut inbox,
+        &mut channel,
     )
     .await
     .map_err(|f| f.error)
@@ -171,9 +171,9 @@ async fn given_cancel_racing_a_fast_superstep_when_run_then_state_untouched_and_
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.cancel();
-    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -197,7 +197,7 @@ async fn given_cancel_racing_a_fast_superstep_when_run_then_state_untouched_and_
         checkpoint.state,
         Some(checkpoint.cursor),
         &ctx(),
-        &mut inbox,
+        &mut channel,
     )
     .await
     .map_err(|f| f.error)
@@ -233,10 +233,10 @@ async fn given_input_and_cancel_same_superstep_when_run_then_cancelled_with_inpu
         .edge(nid("work"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.send(key("chat"), input("mid-flight"));
     sender.cancel();
-    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let cancelled = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();
@@ -273,10 +273,10 @@ async fn given_input_and_pause_same_superstep_when_run_then_paused_with_input_ap
         .edge(nid("b"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.send(key("chat"), input("hello"));
     sender.pause();
-    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let outcome = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();

@@ -13,7 +13,7 @@ use crate::graph::{
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, NodeId};
@@ -109,8 +109,8 @@ async fn open(graph: &crate::graph::Graph, document_id: &str) -> Result<Outcome,
         ])
         .unwrap();
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx(), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config, state, None, &ctx(), &mut channel).await
 }
 
 #[tokio::test]
@@ -204,8 +204,8 @@ async fn given_a_failing_prepare_called_with_a_capture_when_run_then_the_caller_
     let state = ended(
         {
             let config = Config::new(caller.schema(), BTreeMap::new()).unwrap();
-            let (_sender, mut inbox) = channel();
-            run(&caller, &config, state, None, &ctx(), &mut inbox).await
+            let (_sender, mut channel) = control();
+            run(&caller, &config, state, None, &ctx(), &mut channel).await
         },
         "done",
     );

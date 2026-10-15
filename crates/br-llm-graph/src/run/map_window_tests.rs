@@ -5,7 +5,7 @@ use futures_util::future::join;
 
 use crate::graph::{Context, Graph, GraphBuilder, Limit, Map};
 use crate::observe::NoopObserver;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::gates::{GatedBody, Gates};
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
@@ -75,9 +75,9 @@ async fn given_bodies_finishing_in_reverse_order_when_mapped_then_results_follow
     let items = ["a", "b", "c", "d"];
     let gates = Gates::new(&items);
     let graph = gated_graph(&gates, &["outs"], None);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let (ctx, config) = (ctx(), config());
-    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut inbox);
+    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut channel);
     let driver = async {
         gates.until(|g| g.started().len() == 4).await;
         for item in ["d", "c", "b", "a"] {
@@ -95,9 +95,9 @@ async fn given_a_slow_first_item_when_mapped_with_width_two_then_later_items_sta
     let items = ["a", "b", "c", "d", "e"];
     let gates = Gates::new(&items);
     let graph = gated_graph(&gates, &["outs"], Some(2));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let (ctx, config) = (ctx(), config());
-    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut inbox);
+    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut channel);
     let driver = async {
         gates.until(|g| g.started().len() == 2).await;
         assert_eq!(gates.started(), strings(&["a", "b"]));
@@ -119,9 +119,9 @@ async fn given_bodies_appending_to_two_lists_out_of_order_when_mapped_then_both_
     let items = ["a", "b", "c"];
     let gates = Gates::new(&items);
     let graph = gated_graph(&gates, &["outs", "log"], Some(3));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let (ctx, config) = (ctx(), config());
-    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut inbox);
+    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut channel);
     let driver = async {
         for item in ["b", "c", "a"] {
             gates.release(item).await;

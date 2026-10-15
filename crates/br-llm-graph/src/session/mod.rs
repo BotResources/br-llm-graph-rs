@@ -6,7 +6,8 @@ use futures_util::StreamExt;
 use crate::error::GraphError;
 use crate::graph::{Context, Graph};
 use crate::run::{
-    Checkpoint, Cursor, Inbox, Message, Outcome, PendingWrites, RunFailure, Sender, channel, run,
+    Checkpoint, Command, Control, ControlSender, Cursor, Outcome, PendingWrites, RunFailure,
+    control, run,
 };
 use crate::state::{Config, State};
 use crate::value::Key;
@@ -34,8 +35,8 @@ pub struct Session {
     context: Context,
     cursor: Option<Cursor>,
     pending: PendingWrites,
-    inbox: Inbox,
-    sender: Sender,
+    control: Control,
+    sender: ControlSender,
     paused: bool,
 }
 
@@ -50,7 +51,7 @@ impl Session {
         context: Context,
     ) -> Result<Self, GraphError> {
         graph.check_schemas(&state, &config)?;
-        let (sender, inbox) = channel();
+        let (sender, control) = control();
         Ok(Self {
             graph,
             config,
@@ -58,7 +59,7 @@ impl Session {
             context,
             cursor: None,
             pending: PendingWrites::default(),
-            inbox,
+            control,
             sender,
             paused: false,
         })
@@ -85,7 +86,7 @@ impl Session {
         } else {
             Some(checkpoint.cursor)
         };
-        let (sender, inbox) = channel();
+        let (sender, control) = control();
         Ok(Self {
             graph,
             config,
@@ -93,13 +94,15 @@ impl Session {
             context,
             cursor,
             pending: checkpoint.pending,
-            inbox,
+            control,
             sender,
             paused: false,
         })
     }
 
-    pub fn sender(&self) -> Sender {
+    /// A sender of the session's control channel: the host sends inputs,
+    /// pause, resume and cancel through it.
+    pub fn sender(&self) -> ControlSender {
         self.sender.clone()
     }
 
@@ -118,7 +121,7 @@ impl Session {
     ///
     /// Not safe to cancel mid-run: dropping the future before it completes
     /// leaves the session without its state, cursor and pending writes. Stop
-    /// a run through the sender (`Sender::cancel`) instead.
+    /// a run through the sender (`ControlSender::cancel`) instead.
     pub async fn run_once(&mut self) -> Result<Outcome, GraphError> {
         let cursor = self.cursor.take();
         let state = std::mem::replace(&mut self.state, State::empty());
@@ -132,7 +135,7 @@ impl Session {
             state,
             cursor,
             &context,
-            &mut self.inbox,
+            &mut self.control,
         )
         .await;
         self.absorb(result)
@@ -176,10 +179,10 @@ impl Session {
 
     /// Serves the session until a cancel or a failure (see `Ended`).
     ///
-    /// The session keeps a sender of its own, so its inbox never closes:
-    /// between runs, serving waits for a message for as long as none comes,
-    /// even after every sender the host holds is dropped. End it with
-    /// `Sender::cancel`.
+    /// The session keeps a sender of its own, so its control channel never
+    /// closes: between runs, serving waits for a message for as long as none
+    /// comes, even after every sender the host holds is dropped. End it with
+    /// `ControlSender::cancel`.
     pub async fn serve(mut self, start: Start) -> Ended {
         if let Start::Now = start
             && let Some(ended) = self.pump().await
@@ -187,13 +190,13 @@ impl Session {
             return ended;
         }
         loop {
-            let Some(message) = self.inbox.receiver.next().await else {
+            let Some(message) = self.control.receiver.next().await else {
                 return Ended::Cancelled {
                     checkpoint: self.checkpoint(),
                 };
             };
             match message {
-                Message::Input { key, input } => {
+                Command::Input { key, input } => {
                     if let Err(error) = self.apply_input(key, input) {
                         return Ended::Failed {
                             checkpoint: self.checkpoint(),
@@ -207,8 +210,8 @@ impl Session {
                         return ended;
                     }
                 }
-                Message::Pause => self.paused = true,
-                Message::Resume => {
+                Command::Pause => self.paused = true,
+                Command::Resume => {
                     if self.paused {
                         self.paused = false;
                         if let Some(ended) = self.pump().await {
@@ -216,7 +219,7 @@ impl Session {
                         }
                     }
                 }
-                Message::Cancel => {
+                Command::Cancel => {
                     return Ended::Cancelled {
                         checkpoint: self.checkpoint(),
                     };

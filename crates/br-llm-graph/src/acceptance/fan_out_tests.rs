@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use super::support::*;
-use crate::{NodeId, Observer, Origin, Outcome, PendingEntry, Value, channel, run};
+use crate::{NodeId, Observer, Origin, Outcome, PendingEntry, Value, control, run};
 
 /// Node starts and records, with the occurrence they come from.
 #[derive(Default)]
@@ -40,7 +40,7 @@ impl Observer for Trace {
 async fn twenty_items(trace: Arc<Trace>) -> (crate::State, Arc<Probe>) {
     let probe = Arc::new(Probe::default());
     let graph = caller(per_item(&probe)).unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = context(trace);
     let outcome = run(
         &graph,
@@ -48,7 +48,7 @@ async fn twenty_items(trace: Arc<Trace>) -> (crate::State, Arc<Probe>) {
         start(&graph, 20),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

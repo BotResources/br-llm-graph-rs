@@ -19,7 +19,7 @@ use br_llm_clients_core::{OutputMode, ReasoningLevel};
 use br_llm_graph::{
     Always, Config, Context, Count, CriticSeat, EndLabel, GeneratorCritic, GeneratorSeat,
     GraphBuilder, Input, Kind, Node, NodeFuture, NodeId, Outcome, Output, Schema, Source, State,
-    SubGraph, Target, Update, Value, channel, run,
+    SubGraph, Target, Update, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
@@ -157,8 +157,8 @@ async fn main() {
     );
     let config = Config::new(&schema, values).expect("config");
 
-    let (_sender, mut inbox) = channel();
-    match run(&graph, &config, state, None, &quiet_context(), &mut inbox).await {
+    let (_sender, mut channel) = control();
+    match run(&graph, &config, state, None, &quiet_context(), &mut channel).await {
         Ok(Outcome::Finished { state, .. }) => {
             println!(
                 "generator_critic ended {} after {} generations (validated: {})",

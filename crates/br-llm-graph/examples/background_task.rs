@@ -1,7 +1,7 @@
 //! A ReAct agent that starts background work and returns at once, called
 //! with `SubGraph`. After the agent, a gate ends the run `waiting` until the
-//! completion arrives through the session's inbox as a runtime input; the
-//! next run gives it to the agent and ends `done`.
+//! completion arrives through the session's control channel as a runtime
+//! input; the next run gives it to the agent and ends `done`.
 
 #[allow(dead_code)]
 mod common;

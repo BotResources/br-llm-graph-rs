@@ -14,8 +14,8 @@ use br_llm_clients_core::{
 };
 use br_llm_graph::{
     Always, Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Input, Kind, NodeFuture,
-    NodeId, Outcome, Output, ReactAgent, Schema, Source, State, SubGraph, Target, Value, channel,
-    complete, run, structured, wire,
+    NodeId, Outcome, Output, ReactAgent, Schema, Source, State, SubGraph, Target, Value, complete,
+    control, run, structured, wire,
 };
 use br_llm_messages::{Author, Conversation};
 use serde::Deserialize;
@@ -76,14 +76,14 @@ async fn main() {
         .build()
         .expect("build");
 
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let outcome = run(
         &graph,
         &config(&schema),
         state(&schema),
         None,
         &context(),
-        &mut inbox,
+        &mut channel,
     )
     .await;
     match outcome {

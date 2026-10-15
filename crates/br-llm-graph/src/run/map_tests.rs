@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Context, FnNode, GraphBuilder, Map, Node, NodeFuture};
 use crate::observe::NoopObserver;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;
@@ -46,8 +46,8 @@ fn seeded(items: Vec<&str>) -> State {
 
 async fn try_map(body: Box<dyn Node>, items: Vec<&str>) -> Result<Outcome, RunFailure> {
     let graph = map_graph(body);
-    let (_sender, mut inbox) = channel();
-    run(&graph, &config(), seeded(items), None, &ctx(), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(&graph, &config(), seeded(items), None, &ctx(), &mut channel).await
 }
 
 async fn run_map(body: Box<dyn Node>, items: Vec<&str>) -> State {

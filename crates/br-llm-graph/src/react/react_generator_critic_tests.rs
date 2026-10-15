@@ -8,7 +8,7 @@ use crate::react::llm_node::LlmNode;
 use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::run::Outcome;
-use crate::run::channel;
+use crate::run::control;
 use crate::run::run;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -156,8 +156,8 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
     values.insert(k("num_iter"), Value::int(0));
     let state = State::new(schema, values).unwrap();
 
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config, state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config, state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();

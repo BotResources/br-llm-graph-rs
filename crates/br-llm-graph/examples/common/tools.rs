@@ -5,7 +5,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use br_llm_clients_core::{Parameter, ParameterKind, Parameters, ToolSpec};
-use br_llm_graph::{Config, Key, Sender, State, Tool, ToolFuture, ToolOutput, Update, Value};
+use br_llm_graph::{
+    Config, ControlSender, Key, State, Tool, ToolFuture, ToolOutput, Update, Value,
+};
 use br_llm_messages::{Text, ToolName, ToolResultBlock};
 use serde_json::Value as Json;
 
@@ -118,13 +120,13 @@ impl Tool for WriteFileTool {
 
 pub struct StartTaskTool {
     spec: ToolSpec,
-    pub sender: Arc<Mutex<Option<Sender>>>,
+    pub sender: Arc<Mutex<Option<ControlSender>>>,
     pub chat: Key,
     pub pending: Key,
 }
 
 impl StartTaskTool {
-    pub fn new(sender: Arc<Mutex<Option<Sender>>>, chat: Key, pending: Key) -> Self {
+    pub fn new(sender: Arc<Mutex<Option<ControlSender>>>, chat: Key, pending: Key) -> Self {
         Self {
             spec: tool_spec(
                 "start_task",

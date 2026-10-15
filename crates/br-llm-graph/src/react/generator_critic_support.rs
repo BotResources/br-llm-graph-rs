@@ -21,7 +21,7 @@ use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{Key, NodeId};
@@ -140,8 +140,8 @@ pub(crate) async fn call_with(
         ])
         .unwrap();
     let config = Config::new(graph.schema(), config).unwrap();
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx(), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config, state, None, &ctx(), &mut channel).await
 }
 
 /// A new call on `question("explain")` with the given extra inputs.
@@ -159,8 +159,8 @@ pub(crate) async fn start(graph: &Graph, extra: Vec<(Key, Value)>) -> Result<Out
     inputs.extend(extra);
     let state = graph.start_state(inputs).unwrap();
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx(), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config, state, None, &ctx(), &mut channel).await
 }
 
 pub(crate) async fn call(graph: &Graph, conversation: Conversation) -> Result<Outcome, RunFailure> {

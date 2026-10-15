@@ -11,7 +11,7 @@ use crate::graph::{
 };
 use crate::react::generator_critic_support::*;
 use crate::react::test_support::*;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::value::EndLabel;
 
@@ -39,8 +39,8 @@ fn duo_call(graph: Arc<Graph>, conversation: &str) -> SubGraph {
 
 async fn run_caller(graph: &Graph, state: State) -> State {
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut inbox) = channel();
-    match run(graph, &config, state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    match run(graph, &config, state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap()

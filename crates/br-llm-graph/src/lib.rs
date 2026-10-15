@@ -47,8 +47,8 @@ pub use react::{
     ToolOutput, Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
 };
 pub use run::{
-    Checkpoint, Cursor, Inbox, Outcome, PendingEntry, PendingWrites, RunFailure, Sender, channel,
-    run,
+    Checkpoint, Control, ControlSender, Cursor, Outcome, PendingEntry, PendingWrites, RunFailure,
+    control, run,
 };
 pub use session::{Ended, Session, Start};
 pub use state::{Config, Finite, Kind, SCHEMA_VERSION, Schema, SchemaBuilder, State, Value};

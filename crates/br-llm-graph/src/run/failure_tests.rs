@@ -5,7 +5,7 @@ use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Always, Context, FnNode, GraphBuilder, NodeFuture};
 use crate::observe::NoopObserver;
-use crate::run::control::channel;
+use crate::run::control::control;
 use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::{Config, State};
@@ -46,8 +46,8 @@ async fn given_node_returns_input_on_non_conversation_key_when_run_then_not_conv
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -73,8 +73,8 @@ async fn given_failing_node_beside_success_when_run_then_nothing_applied_and_the
         .edge(nid("b"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -100,8 +100,8 @@ async fn given_panicking_node_when_run_then_node_failed_with_state_intact() {
         .edge(nid("p"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -130,8 +130,8 @@ async fn given_node_panics_while_its_run_starts_when_run_then_the_panic_is_a_nod
         .edge(nid("p"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -159,8 +159,8 @@ async fn given_panicking_node_beside_success_when_run_then_nothing_applied_and_p
         .edge(nid("b"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -188,9 +188,9 @@ async fn given_input_queued_when_node_fails_then_input_kept_in_failure_checkpoin
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.send(key("chat"), input("late"));
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -211,16 +211,16 @@ async fn given_input_queued_when_node_fails_then_input_kept_in_failure_checkpoin
 }
 
 #[tokio::test]
-async fn given_inbox_input_targets_non_conversation_key_when_run_then_not_conversation() {
+async fn given_control_input_targets_non_conversation_key_when_run_then_not_conversation() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("a"))
         .node(nid("a"), noop_node())
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.send(key("count"), input("oops"));
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -238,8 +238,8 @@ async fn given_edge_targets_unknown_node_alone_when_run_then_unknown_node_error(
         .edge(nid("a"), edge(vec![to("missing")]))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -259,8 +259,8 @@ async fn given_fan_out_edge_targets_one_unknown_node_when_run_then_unknown_node_
         .edge(nid("real"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -300,8 +300,8 @@ async fn given_node_returns_a_typed_error_when_run_fails_then_the_host_reads_it_
         .edge(nid("a"), Always(end("done")))
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), base_state(), None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
