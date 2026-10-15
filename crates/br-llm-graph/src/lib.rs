@@ -23,6 +23,8 @@ mod non_exhaustive;
 mod testkit;
 #[cfg(doctest)]
 mod typed_kinds;
+#[cfg(doctest)]
+mod typed_mappings;
 
 pub mod error;
 pub mod graph;
