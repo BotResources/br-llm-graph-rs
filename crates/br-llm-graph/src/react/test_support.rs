@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{LazyLock, Mutex};
 
 use br_llm_clients_core::{
-    BoxFuture, CacheRequirement, CallOutcome, CallReport, Client, ClientError, ClientRequest,
-    ClientSettings, MaxOutputTokens, Parameters, ReasoningLevel, StreamSink, ToolSpec,
+    CacheRequirement, ClientError, ClientRequest, ClientSettings, MaxOutputTokens, Parameters,
+    ReasoningLevel, ToolSpec,
 };
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_messages::{
@@ -13,6 +13,7 @@ use br_llm_messages::{
 };
 use serde_json::{Value as Json, json};
 
+pub(crate) use crate::react::test_clients::{LaxClient, StreamRecorder};
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
@@ -227,65 +228,6 @@ pub(crate) fn tool_names(request: &ClientRequest) -> Vec<String> {
         .collect()
 }
 
-/// A client that serves its steps as they are, without the checks of a
-/// conforming client: the client a test writes for a reply the mock refuses,
-/// such as a step holding only thinking. It sends no stream event and keeps
-/// every request.
-pub(crate) struct LaxClient {
-    settings: ClientSettings,
-    steps: Mutex<VecDeque<Step>>,
-    requests: Mutex<Vec<ClientRequest>>,
-}
-
-impl LaxClient {
-    pub(crate) fn new(steps: Vec<Step>) -> Self {
-        Self {
-            settings: settings(ReasoningLevel::Medium),
-            steps: Mutex::new(steps.into()),
-            requests: Mutex::new(Vec::new()),
-        }
-    }
-
-    pub(crate) fn requests(&self) -> Vec<ClientRequest> {
-        self.requests.lock().unwrap().clone()
-    }
-}
-
-impl Client for LaxClient {
-    fn call<'a>(
-        &'a self,
-        request: &'a ClientRequest,
-        _sink: &'a mut dyn StreamSink,
-    ) -> BoxFuture<'a, CallOutcome> {
-        self.requests.lock().unwrap().push(request.clone());
-        let step = self.steps.lock().unwrap().pop_front();
-        Box::pin(async move {
-            let report = CallReport::new(std::time::Duration::ZERO);
-            match step {
-                Some(step) => {
-                    let report = match step.usage() {
-                        Some(usage) => report.with_usage(usage.clone()),
-                        None => report,
-                    };
-                    CallOutcome::success(report, step).unwrap()
-                }
-                None => CallOutcome::failure(
-                    report,
-                    ClientError::ProviderRejected {
-                        status: None,
-                        code: None,
-                        body: "the lax client has no step left".to_owned(),
-                    },
-                ),
-            }
-        })
-    }
-
-    fn settings(&self) -> &ClientSettings {
-        &self.settings
-    }
-}
-
 /// The spec of a test tool without parameters.
 pub(crate) fn spec(name: &str) -> ToolSpec {
     ToolSpec::new(
@@ -417,35 +359,6 @@ impl Tool for StrictTool {
 struct StrictArgs {
     #[allow(dead_code)]
     n: i64,
-}
-
-/// Keeps every stream event the observer receives, with the occurrence it
-/// comes from and its conversation key.
-#[derive(Default)]
-pub(crate) struct StreamRecorder {
-    events: Mutex<Vec<(String, String, br_llm_messages::StreamEvent)>>,
-}
-
-impl StreamRecorder {
-    /// The events received, as `(occurrence, key, event)`, in order.
-    pub(crate) fn events(&self) -> Vec<(String, String, br_llm_messages::StreamEvent)> {
-        self.events.lock().unwrap().clone()
-    }
-}
-
-impl crate::observe::Observer for StreamRecorder {
-    fn stream(
-        &self,
-        origin: &crate::origin::Origin,
-        key: &Key,
-        event: &br_llm_messages::StreamEvent,
-    ) {
-        self.events.lock().unwrap().push((
-            origin.occurrence.to_string(),
-            key.as_str().to_owned(),
-            event.clone(),
-        ));
-    }
 }
 
 /// The error a node returned, read back as a `GraphError`.

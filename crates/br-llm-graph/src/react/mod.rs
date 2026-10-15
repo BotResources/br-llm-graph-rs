@@ -69,6 +69,8 @@ mod react_round_limit_tests;
 #[cfg(test)]
 mod react_tool_concurrency_tests;
 #[cfg(test)]
+mod test_clients;
+#[cfg(test)]
 mod test_support;
 
 pub use generator_critic::GeneratorCritic;
