@@ -1,10 +1,18 @@
 # br-llm-graph
 
-LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: a typed key/value state, async nodes, sync edges, supersteps with fan-out and join, a node that makes one model call, a react loop. The model is a `Client` of br-llm-clients-core the host gives; the tools, and the hooks that judge their calls, are the host's. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: a typed key/value state, async nodes, sync edges, supersteps with fan-out and join, a node that makes one model call, a react loop. The model is a `Client` of br-llm-clients-core the host gives; the tools, and the hooks that judge their calls, are the host's. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it. The graph's API is made of br-llm-messages and br-llm-clients-core types (authors, conversations, `Client`, `ToolSpec`, `OutputMode`), so a dependent pins them on the tags the graph builds on, beside it:
 
 ```toml
+[dependencies]
 br-llm-graph = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-llm-graph", tag = "br-llm-graph/v0.4.0", version = "0.4.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.3.0", version = "0.3.0" }
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v0.4.0", version = "0.4.0" }
+
+[dev-dependencies]
+br-llm-clients-mock = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.3.0", version = "0.3.0" }
 ```
+
+Every other crate of br-llm-clients-rs used beside the graph (the mock, a provider library) is pinned on the same tag as br-llm-clients-core, `br-llm-clients-core/v0.3.0`, never on a tag of its own: a git dependency's source is its tag, so a crate pinned on another tag of that repository builds a second br-llm-clients-core, whose `Client` is not the graph's (E0277, "multiple different versions of crate `br_llm_clients_core`"), and `[patch]` does not unify two tags of one repository.
 
 Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The pull request that bumps `crates/br-llm-graph/Cargo.toml` (with a plain `## X.Y.Z` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/br-llm-graph-<major>.<minor>` line) the release workflow asks the registry again, tags `br-llm-graph/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
 
