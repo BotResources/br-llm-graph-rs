@@ -213,6 +213,8 @@ mod subgraph_resume_tests;
 #[cfg(test)]
 mod subgraph_run_tests;
 #[cfg(test)]
+mod subgraph_typed_tests;
+#[cfg(test)]
 mod subgraph_witness_tests;
 #[cfg(test)]
 mod test_support;
