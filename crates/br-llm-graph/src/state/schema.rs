@@ -84,7 +84,7 @@ impl SchemaBuilder {
     ///
     /// Only the Rust types of the kinds can be declared (`ValueType`):
     ///
-    /// ```compile_fail
+    /// ```compile_fail,E0277
     /// let mut schema = br_llm_graph::Schema::builder();
     /// let attempts = schema.state::<u32>("attempts");
     /// ```

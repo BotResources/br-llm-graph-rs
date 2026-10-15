@@ -21,6 +21,8 @@ mod acceptance;
 mod non_exhaustive;
 #[cfg(test)]
 mod testkit;
+#[cfg(doctest)]
+mod typed_kinds;
 
 pub mod error;
 pub mod graph;
