@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use br_llm_clients_core::{Client, ClientRequest};
 use br_llm_messages::{
-    AssistantBlock, Author, Conversation, Entry, Step, StopReason, Text, Turn, WireMessage,
-    WireUserBlock,
+    AssistantBlock, Author, Conversation, Entry, Step, StopReason, Text, Turn, UserInput,
+    WireMessage, WireUserBlock,
 };
 
 use crate::error::GraphError;
@@ -17,6 +17,7 @@ use crate::react::helpers::{answer_text, final_step, wire};
 use crate::react::round_limit::closes_on_limit;
 use crate::react::seats::CriticSeat;
 use crate::react::sink::complete;
+use crate::react::turn_ids::{id_request, next_rank_in_memory, trigger};
 use crate::react::verdict::{Verdict, VerdictForm};
 use crate::state::{Config, State, Value};
 use crate::update::Update;
@@ -75,7 +76,10 @@ impl Node for CritiqueNode {
                 None,
                 None,
             )?;
-            let turn = Turn::new(ctx.ids.turn_id(), Some(self.author.clone()), critique);
+            let trigger = trigger(conversation).map(UserInput::id);
+            let rank = next_rank_in_memory(conversation);
+            let id = ctx.ids.turn_id(&id_request(ctx, trigger, rank));
+            let turn = Turn::new(id, Some(self.author.clone()), critique);
             Ok(vec![
                 Update::Set {
                     key: self.validated.clone(),

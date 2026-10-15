@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use br_llm_clients_core::{ClientRequest, OutputMode, ToolSpec};
-use br_llm_messages::{Author, Turn, TurnState};
+use br_llm_messages::{Author, Turn, TurnState, UserInput};
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture};
@@ -10,6 +10,7 @@ use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, s
 use crate::react::round_limit::completed_rounds;
 use crate::react::sink::complete;
 use crate::react::tool::Tool;
+use crate::react::turn_ids::{id_request, next_rank_in_memory, trigger};
 use crate::state::{Config, Schema, State};
 use crate::update::Update;
 use crate::value::Key;
@@ -73,10 +74,15 @@ impl<N: AgentNode> Node for LlmNode<N> {
                     turn: turn.id().clone(),
                     step,
                 },
-                _ => Update::PushTurn {
-                    key: self.key.clone(),
-                    turn: Turn::new(ctx.ids.turn_id(), Some(self.author.clone()), step),
-                },
+                _ => {
+                    let trigger = trigger(conversation).map(UserInput::id);
+                    let rank = next_rank_in_memory(conversation);
+                    let id = ctx.ids.turn_id(&id_request(ctx, trigger, rank));
+                    Update::PushTurn {
+                        key: self.key.clone(),
+                        turn: Turn::new(id, Some(self.author.clone()), step),
+                    }
+                }
             };
             Ok(vec![update])
         })

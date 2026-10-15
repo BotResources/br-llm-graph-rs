@@ -1,9 +1,8 @@
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use br_llm_messages::TurnId;
 
-use crate::graph::{Context, IdSource};
+use crate::graph::{Context, IdRequest, IdSource};
 use crate::observe::Observer;
 use crate::origin::Origin;
 use crate::run::Cursor;
@@ -11,22 +10,42 @@ use crate::state::State;
 use crate::update::Update;
 use crate::value::{EndLabel, NodeId};
 
+/// A deterministic id source: the n-th request it has not seen yet gets the
+/// n-th id (`t1`, `t2`... for turns; a UUIDv7 ending with `n` for threads),
+/// and a request it has seen gets the id it was given then. Shared by the
+/// runs of a test, it gives a resumed run the ids it had.
 pub struct SeqIds {
-    next: AtomicU64,
+    given: Mutex<Vec<IdRequest>>,
 }
 
 impl SeqIds {
     pub fn new() -> Self {
         Self {
-            next: AtomicU64::new(1),
+            given: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The sequence number of `request`, from 1: a new one when it is new.
+    fn number(&self, request: &IdRequest) -> usize {
+        let mut given = self.given.lock().unwrap();
+        match given.iter().position(|seen| seen == request) {
+            Some(index) => index + 1,
+            None => {
+                given.push(request.clone());
+                given.len()
+            }
         }
     }
 }
 
 impl IdSource for SeqIds {
-    fn turn_id(&self) -> TurnId {
-        let index = self.next.fetch_add(1, Ordering::SeqCst);
-        TurnId::new(format!("t{index}")).unwrap()
+    fn thread_id(&self, request: &IdRequest) -> crate::value::ThreadId {
+        let number = self.number(request);
+        crate::value::ThreadId::new(format!("01900000-0000-7000-8000-{number:012x}")).unwrap()
+    }
+
+    fn turn_id(&self, request: &IdRequest) -> TurnId {
+        TurnId::new(format!("t{}", self.number(request))).unwrap()
     }
 }
 

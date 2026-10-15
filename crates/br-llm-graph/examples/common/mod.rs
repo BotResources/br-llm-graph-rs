@@ -1,13 +1,12 @@
 pub mod tools;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_graph::{
-    Context, Cursor, EndLabel, IdSource, Key, ModelNode, NoopObserver, Observer, Origin, Prompt,
-    Schema, State, Update,
+    Context, Cursor, EndLabel, IdRequest, IdSource, Key, ModelNode, NoopObserver, Observer, Origin,
+    Prompt, Schema, State, ThreadId, Update,
 };
 use br_llm_messages::{
     AssistantBlock, InputId, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId,
@@ -38,22 +37,49 @@ impl Observer for PrintObserver {
     }
 }
 
-pub struct SeqIds {
-    next: AtomicU64,
-}
+/// An id source that writes each id from its request, so the same request
+/// always gives the same id: the turn id names the request, the thread id is
+/// a UUIDv7 made from a hash of it.
+pub struct SeqIds;
 
 impl SeqIds {
     pub fn new() -> Self {
-        Self {
-            next: AtomicU64::new(1),
-        }
+        Self
     }
 }
 
+/// The request written as text: run, occurrence, trigger and rank.
+fn request_text(request: &IdRequest) -> String {
+    let trigger = request.trigger.as_ref().map_or("-", InputId::as_str);
+    format!(
+        "{}/{}/{trigger}/{}",
+        request.origin.run, request.origin.occurrence, request.rank
+    )
+}
+
 impl IdSource for SeqIds {
-    fn turn_id(&self) -> TurnId {
-        let index = self.next.fetch_add(1, Ordering::SeqCst);
-        TurnId::new(format!("turn-{index}")).expect("non-empty turn id")
+    fn thread_id(&self, request: &IdRequest) -> ThreadId {
+        use std::hash::{Hash, Hasher};
+        let text = request_text(request);
+        let mut high = std::collections::hash_map::DefaultHasher::new();
+        text.hash(&mut high);
+        let mut low = std::collections::hash_map::DefaultHasher::new();
+        (&text, 1u8).hash(&mut low);
+        let (high, low) = (high.finish(), low.finish());
+        ThreadId::new(format!(
+            "{:08x}-{:04x}-7{:03x}-{:x}{:03x}-{:012x}",
+            high >> 32,
+            (high >> 16) & 0xffff,
+            high & 0xfff,
+            8 + ((low >> 62) & 0x3),
+            (low >> 48) & 0xfff,
+            low & 0xffff_ffff_ffff
+        ))
+        .expect("a UUIDv7 text")
+    }
+
+    fn turn_id(&self, request: &IdRequest) -> TurnId {
+        TurnId::new(format!("turn/{}", request_text(request))).expect("non-empty turn id")
     }
 }
 

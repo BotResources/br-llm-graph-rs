@@ -69,6 +69,14 @@ impl OccurrenceKey {
         self.0.starts_with(&prefix.0)
     }
 
+    /// This key without its last segment: the occurrence of the run a node
+    /// of this occurrence runs in. The top level is its own parent.
+    pub(crate) fn parent(&self) -> Self {
+        let mut segments = self.0.clone();
+        segments.pop();
+        Self(segments)
+    }
+
     /// The occurrence of item `index` of the node this key ends with: the
     /// last segment takes the index; when it already has one, the same node
     /// is pushed again with the new index. `None` at top level.
