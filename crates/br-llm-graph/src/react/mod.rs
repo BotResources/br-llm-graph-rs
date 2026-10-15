@@ -17,6 +17,8 @@ mod tool_node;
 mod verdict;
 
 #[cfg(test)]
+mod generator_critic_budget_tests;
+#[cfg(test)]
 mod generator_critic_caller_tests;
 #[cfg(test)]
 mod generator_critic_empty_tests;

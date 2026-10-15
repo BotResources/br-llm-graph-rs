@@ -1,16 +1,17 @@
 //! The critic's verdict: the default shape `verdict` and its `thinking`
-//! parameter, which follows the reasoning level of the critic's client, the
-//! descriptions, and a caller's override with or without a reader.
+//! parameter, which follows the reasoning level of the critic's client, its
+//! descriptions, and how a reply is read as a verdict.
 
 use std::collections::BTreeMap;
 
 use br_llm_clients_core::{
-    ClientRequest, OutputMode, ParameterKind, ReasoningLevel, StructuredShape,
+    ClientError, ClientRequest, OutputMode, ParameterKind, ReasoningLevel, StructuredShape,
 };
 use br_llm_clients_mock::MockClient;
 use br_llm_messages::{Conversation, Step};
 use serde_json::json;
 
+use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
@@ -201,4 +202,69 @@ async fn given_custom_descriptions_when_the_critic_judges_then_each_is_resolved_
             ("message", ParameterKind::String, true, "What to change"),
         ]
     );
+}
+
+#[tokio::test]
+async fn given_a_block_that_does_not_read_as_the_default_verdict_when_the_critic_judges_then_structured_and_no_critique()
+ {
+    for malformed in [
+        structured_step(json!({ "thinking": "hm", "is_valid": "yes", "message": "x" })),
+        structured_step(json!({ "thinking": "hm", "is_valid": false, "message": "" })),
+        structured_step(json!({ "thinking": "hm", "is_valid": false, "message": " \n" })),
+        structured_step(json!({ "thinking": "hm", "is_valid": false })),
+    ] {
+        let generator_client = mock(vec![text_step("draft")]);
+        let critic_client = mock(vec![malformed]);
+        let graph = duo(&generator_client, &critic_client).graph().unwrap();
+        let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+        assert!(matches!(error, GraphError::Structured { .. }), "{error}");
+        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+        assert_eq!(
+            shape_of(&state, "generator_history"),
+            ["user", "writer:draft"]
+        );
+    }
+}
+
+#[tokio::test]
+async fn given_a_critic_step_without_a_structured_block_when_the_critic_judges_then_structured_and_no_critique()
+ {
+    // A conforming client refuses such a reply itself (next test): the step
+    // comes from a client that serves it as it is.
+    let critic_client = std::sync::Arc::new(LaxClient::new(vec![text_step("looks fine to me")]));
+    let graph = GeneratorCritic::new(
+        generator(&mock(vec![text_step("draft")])),
+        CriticSeat {
+            client: critic_client.clone(),
+            ..critic(&mock(Vec::new()))
+        },
+        Count::Fixed(3),
+    )
+    .graph()
+    .unwrap();
+    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    assert!(
+        matches!(error, GraphError::Structured { ref message } if message == "the step carries no structured block"),
+        "{error}"
+    );
+    assert_eq!(critic_client.requests().len(), 1);
+    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+}
+
+#[tokio::test]
+async fn given_a_text_reply_to_the_verdict_request_from_a_conforming_client_then_model_and_no_critique()
+ {
+    let critic_client = mock(vec![text_step("looks fine to me")]);
+    let graph = duo(&mock(vec![text_step("draft")]), &critic_client)
+        .graph()
+        .unwrap();
+    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    assert!(
+        matches!(
+            error,
+            GraphError::Model(ClientError::MalformedResponse { .. })
+        ),
+        "{error}"
+    );
+    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
 }

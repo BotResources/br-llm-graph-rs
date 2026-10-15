@@ -1,11 +1,9 @@
-//! The generator-critic graph: routing, budget, what each seat reads, and the
-//! verdict read on a conforming client.
+//! The generator-critic graph: routing, its outputs, what each seat reads and
+//! streams.
 
 use std::collections::BTreeMap;
 
-use br_llm_clients_core::{
-    ClientError, OutputMode, Parameter, ParameterKind, Parameters, StructuredShape,
-};
+use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
 use br_llm_messages::Conversation;
 use serde_json::json;
 
@@ -233,80 +231,6 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
     assert_eq!(requests(&generator_client).len(), 2);
 }
 
-#[tokio::test]
-async fn given_a_critique_budget_of_zero_when_run_then_one_generation_no_critic_and_exhausted() {
-    for final_generation in [true, false] {
-        let generator_client = mock(vec![text_step("draft")]);
-        let critic_client = mock(Vec::new());
-        let graph = with_budget(
-            &generator_client,
-            &critic_client,
-            Count::Fixed(0),
-            final_generation,
-        );
-        let state = ended(call(&graph, question("explain")).await, "exhausted");
-        assert!(!state.bool(&key("is_validated")).unwrap());
-        assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
-        assert_eq!(state.str(&key("answer")).unwrap(), "draft");
-        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
-        assert_eq!(requests(&generator_client).len(), 1);
-        assert!(requests(&critic_client).is_empty());
-    }
-}
-
-#[tokio::test]
-async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_skips_the_critic_and_one_calls_it()
- {
-    let budget = || Count::Config(key("critiques"));
-    let generator_client = mock(vec![text_step("draft")]);
-    let critic_client = mock(Vec::new());
-    let graph = with_budget(&generator_client, &critic_client, budget(), true);
-    assert_eq!(
-        graph.schema().config.get(&key("critiques")),
-        Some(&Kind::Int)
-    );
-    let config = BTreeMap::from([(key("critiques"), Value::int(0))]);
-    let state = ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
-        "exhausted",
-    );
-    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
-    assert!(requests(&critic_client).is_empty());
-
-    let generator_client = mock(vec![text_step("draft")]);
-    let critic_client = mock(vec![verdict(true, "")]);
-    let graph = with_budget(&generator_client, &critic_client, budget(), true);
-    let config = BTreeMap::from([(key("critiques"), Value::int(1))]);
-    ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
-        "validated",
-    );
-    assert_eq!(requests(&critic_client).len(), 1);
-}
-
-#[tokio::test]
-async fn given_a_negative_critique_budget_in_the_configuration_when_run_then_count_negative() {
-    let generator_client = mock(vec![text_step("draft")]);
-    let critic_client = mock(Vec::new());
-    let graph = with_budget(
-        &generator_client,
-        &critic_client,
-        Count::Config(key("critiques")),
-        true,
-    );
-    let config = BTreeMap::from([(key("critiques"), Value::int(-1))]);
-    let failure = call_with(&graph, question("explain"), Conversation::new(), config)
-        .await
-        .err()
-        .unwrap();
-    assert!(
-        matches!(failure.error, GraphError::CountNegative { value: -1, .. }),
-        "{}",
-        failure.error
-    );
-    assert!(requests(&critic_client).is_empty());
-}
-
 #[test]
 fn given_both_seats_with_one_author_when_built_then_same_author() {
     let built = GeneratorCritic::new(
@@ -319,71 +243,6 @@ fn given_both_seats_with_one_author_when_built_then_same_author() {
     )
     .graph();
     assert!(matches!(built, Err(GraphError::SameAuthor { .. })));
-}
-
-#[tokio::test]
-async fn given_a_block_that_does_not_read_as_the_default_verdict_when_the_critic_judges_then_structured_and_no_critique()
- {
-    for malformed in [
-        structured_step(json!({ "thinking": "hm", "is_valid": "yes", "message": "x" })),
-        structured_step(json!({ "thinking": "hm", "is_valid": false, "message": "" })),
-        structured_step(json!({ "thinking": "hm", "is_valid": false, "message": " \n" })),
-        structured_step(json!({ "thinking": "hm", "is_valid": false })),
-    ] {
-        let generator_client = mock(vec![text_step("draft")]);
-        let critic_client = mock(vec![malformed]);
-        let graph = duo(&generator_client, &critic_client).graph().unwrap();
-        let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
-        assert!(matches!(error, GraphError::Structured { .. }), "{error}");
-        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
-        assert_eq!(
-            shape_of(&state, "generator_history"),
-            ["user", "writer:draft"]
-        );
-    }
-}
-
-#[tokio::test]
-async fn given_a_critic_step_without_a_structured_block_when_the_critic_judges_then_structured_and_no_critique()
- {
-    // A conforming client refuses such a reply itself (next test): the step
-    // comes from a client that serves it as it is.
-    let critic_client = std::sync::Arc::new(LaxClient::new(vec![text_step("looks fine to me")]));
-    let graph = GeneratorCritic::new(
-        generator(&mock(vec![text_step("draft")])),
-        CriticSeat {
-            client: critic_client.clone(),
-            ..critic(&mock(Vec::new()))
-        },
-        Count::Fixed(3),
-    )
-    .graph()
-    .unwrap();
-    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
-    assert!(
-        matches!(error, GraphError::Structured { ref message } if message == "the step carries no structured block"),
-        "{error}"
-    );
-    assert_eq!(critic_client.requests().len(), 1);
-    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
-}
-
-#[tokio::test]
-async fn given_a_text_reply_to_the_verdict_request_from_a_conforming_client_then_model_and_no_critique()
- {
-    let critic_client = mock(vec![text_step("looks fine to me")]);
-    let graph = duo(&mock(vec![text_step("draft")]), &critic_client)
-        .graph()
-        .unwrap();
-    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
-    assert!(
-        matches!(
-            error,
-            GraphError::Model(ClientError::MalformedResponse { .. })
-        ),
-        "{error}"
-    );
-    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
 }
 
 #[tokio::test]
