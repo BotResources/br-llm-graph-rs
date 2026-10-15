@@ -65,6 +65,8 @@ mod react_duplicate_tool_tests;
 #[cfg(test)]
 mod react_generator_critic_tests;
 #[cfg(test)]
+mod react_helper_tests;
+#[cfg(test)]
 mod react_hook_failure_tests;
 #[cfg(test)]
 mod react_hook_slot_tests;
@@ -78,6 +80,10 @@ mod react_llm_system_tests;
 mod react_llm_tests;
 #[cfg(test)]
 mod react_loop_tests;
+#[cfg(test)]
+mod react_node_check_tests;
+#[cfg(test)]
+mod react_node_support;
 #[cfg(test)]
 mod react_node_tests;
 #[cfg(test)]
