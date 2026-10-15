@@ -101,9 +101,6 @@ pub enum GraphError {
     EnabledKeyMismatch {
         key: Key,
     },
-    SourceKeyMismatch {
-        key: Key,
-    },
     /// The client refused or failed the call.
     Model(ClientError),
     /// The request of a model call could not be built.

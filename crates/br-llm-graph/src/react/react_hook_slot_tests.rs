@@ -13,9 +13,9 @@ use serde_json::json;
 
 use crate::graph::Context;
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_hook_support::*;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Value};
@@ -85,8 +85,9 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
     ]);
     let graph = ReactAgent {
         author: author(),
-        client: Arc::new(client.clone()),
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(Arc::new(client.clone())),
+        system: base(),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![tool.clone()],
         tool_nodes: Vec::new(),

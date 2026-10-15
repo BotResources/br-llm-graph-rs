@@ -5,8 +5,10 @@ use br_llm_messages::Step;
 use serde_json::Value as Json;
 
 use crate::error::GraphError;
+use crate::graph::NodeError;
+use crate::react::given::{Prompt, Reads};
 use crate::react::helpers::structured;
-use crate::react::source::Source;
+use crate::react::seats::CriticSeat;
 use crate::state::{Config, State};
 
 /// The critic's judgement of one answer. `message` may be blank (empty or
@@ -48,25 +50,25 @@ pub(crate) enum VerdictForm {
     /// `thinking` parameter, `None` when the shape has none (a critic that
     /// reasons natively).
     Default {
-        thinking: Option<Source>,
-        is_valid: Source,
-        message: Source,
+        thinking: Option<Prompt<CriticSeat>>,
+        is_valid: Prompt<CriticSeat>,
+        message: Prompt<CriticSeat>,
     },
     Override(VerdictOverride),
 }
 
 impl VerdictForm {
-    /// The default form, each description a source or its default text. The
+    /// The default form, each description the given text or its default. The
     /// shape has `thinking` exactly when `with_thinking` (the critic's client
     /// does not reason: its `ReasoningLevel` is `Off`).
     pub(crate) fn default_form(
         with_thinking: bool,
-        thinking: Option<Source>,
-        is_valid: Option<Source>,
-        message: Option<Source>,
+        thinking: Option<Prompt<CriticSeat>>,
+        is_valid: Option<Prompt<CriticSeat>>,
+        message: Option<Prompt<CriticSeat>>,
     ) -> Self {
-        let or = |source: Option<Source>, text: &str| {
-            source.unwrap_or_else(|| Source::Const(text.to_owned()))
+        let or = |given: Option<Prompt<CriticSeat>>, text: &str| {
+            given.unwrap_or_else(|| Prompt::text(text))
         };
         VerdictForm::Default {
             thinking: with_thinking.then(|| or(thinking, THINKING)),
@@ -75,14 +77,18 @@ impl VerdictForm {
         }
     }
 
-    /// The sources this form reads: the descriptions in use.
-    pub(crate) fn sources(&self) -> Vec<&Source> {
+    /// The keys the descriptions in use read.
+    pub(crate) fn reads(&self) -> Vec<&Reads> {
         match self {
             VerdictForm::Default {
                 thinking,
                 is_valid,
                 message,
-            } => thinking.iter().chain([is_valid, message]).collect(),
+            } => thinking
+                .iter()
+                .chain([is_valid, message])
+                .map(Prompt::reads)
+                .collect(),
             VerdictForm::Override(_) => Vec::new(),
         }
     }
@@ -105,7 +111,7 @@ impl VerdictForm {
         &self,
         state: &State,
         config: &Config,
-    ) -> Result<OutputMode, GraphError> {
+    ) -> Result<OutputMode, NodeError> {
         let (thinking, is_valid, message) = match self {
             VerdictForm::Override(VerdictOverride { shape, .. }) => {
                 return Ok(OutputMode::Structured(shape.clone()));
@@ -116,9 +122,9 @@ impl VerdictForm {
                 message,
             } => (thinking, is_valid, message),
         };
-        let parameter = |name: &str, source: &Source, kind: ParameterKind| {
-            Parameter::new(name, source.resolve(state, config)?, true, kind)
-                .map_err(GraphError::Request)
+        let parameter = |name: &str, description: &Prompt<CriticSeat>, kind: ParameterKind| {
+            Parameter::new(name, description.give(state, config, ())?, true, kind)
+                .map_err(|error| NodeError::from(GraphError::Request(error)))
         };
         let mut parameters = Vec::new();
         if let Some(thinking) = thinking {

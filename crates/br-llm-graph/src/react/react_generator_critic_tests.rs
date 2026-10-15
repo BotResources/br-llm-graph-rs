@@ -4,8 +4,9 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
-use crate::react::source::Source;
+use crate::react::react_agent::ReactAgent;
 use crate::react::test_support::*;
 use crate::run::Outcome;
 use crate::run::control;
@@ -52,14 +53,15 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
         .config_by_name(k("base"), Kind::Str)
         .build();
 
-    let generator = LlmNode {
+    let generator = LlmNode::<ReactAgent> {
         key: k("chat"),
         author: author(),
-        client: Arc::new(mock(vec![
+        model: Model::client(Arc::new(mock(vec![
             text_step("first attempt"),
             text_step("revised attempt"),
-        ])),
-        system: vec![Source::Config(k("base"))],
+        ]))),
+        system: base(),
+        history: None,
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,

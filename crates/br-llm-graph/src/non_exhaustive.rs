@@ -4,18 +4,20 @@
 //! compile (E0004; rustdoc checks the code itself only on nightly).
 //!
 //! ```
-//! use br_llm_graph::{Judgment, Key, LlmRequest, Source};
+//! use br_llm_graph::{History, Judgment, LlmRequest, Prompt, Schema};
 //!
 //! let judgments = [
 //!     Judgment::Accept,
 //!     Judgment::Refuse { reason: "outside notes/".to_owned() },
 //! ];
+//! let mut schema = Schema::builder();
 //! let requests = [
-//!     LlmRequest::Text(Source::Const("Summarize.".to_owned())),
+//!     LlmRequest::Text(Prompt::text("Summarize.")),
 //!     LlmRequest::Conversation {
-//!         key: Key::new("chat").unwrap(),
+//!         key: schema.state("chat").unwrap(),
 //!         author: br_llm_messages::Author::new("agent", "agent").unwrap(),
 //!     },
+//!     LlmRequest::History(History::value(Vec::new())),
 //! ];
 //! let refused = judgments
 //!     .iter()
@@ -29,7 +31,7 @@
 //!     .iter()
 //!     .filter(|request| match request {
 //!         LlmRequest::Text(_) => true,
-//!         LlmRequest::Conversation { .. } => false,
+//!         LlmRequest::Conversation { .. } | LlmRequest::History(_) => false,
 //!         _ => false,
 //!     })
 //!     .count();
@@ -50,6 +52,7 @@
 //!     match request {
 //!         br_llm_graph::LlmRequest::Text(_) => true,
 //!         br_llm_graph::LlmRequest::Conversation { .. } => false,
+//!         br_llm_graph::LlmRequest::History(_) => false,
 //!     }
 //! }
 //! ```

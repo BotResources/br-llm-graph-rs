@@ -98,10 +98,6 @@ impl std::fmt::Display for GraphError {
             GraphError::EnabledKeyMismatch { key } => {
                 write!(f, "enabled key {key} is not a list of strings state key")
             }
-            GraphError::SourceKeyMismatch { key } => write!(
-                f,
-                "source key {key} is not a declared key holding a string or a list of strings"
-            ),
             GraphError::Model(error) => write!(f, "model call failed: {error}"),
             GraphError::Request(error) => {
                 write!(f, "the request of a model call could not be built: {error}")

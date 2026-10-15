@@ -5,17 +5,16 @@ use br_llm_clients_core::ReasoningLevel;
 use crate::error::GraphError;
 use crate::graph::{Always, Count, FnEdge, Graph, GraphBuilder, Node, Target};
 use crate::react::agent_build::{
-    declare_count, declare_input, declare_limit, declare_sources, round_limit_flag,
-    tools_node_clash,
+    declare_count, declare_input, declare_limit, round_limit_flag, tools_node_clash,
 };
 use crate::react::critique::{CritiqueNode, EMPTY_ANSWER_CRITIQUE, REVIEW_REQUEST};
 use crate::react::generator_critic_nodes::{FinishNode, Prepare, PublishNode, RouteNode};
 use crate::react::generator_critic_routing::Router;
+use crate::react::given::{Model, Prompt, declare_reads};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::OnLimit;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
-use crate::react::source::Source;
 use crate::react::verdict::VerdictForm;
 use crate::state::{Kind, Schema};
 use crate::value::{EndLabel, Key, NodeId};
@@ -33,16 +32,19 @@ use crate::value::{EndLabel, Key, NodeId};
 /// and the review request (the request is left out when blank). That message
 /// stays separate from a user message before it.
 ///
-/// Every text is a `Source`: each `State` key a source reads is a string
-/// input, each `Config` key a string configuration key.
+/// Every text is a `Prompt`, given like a system (see `Given`): each state
+/// key its function declares is an input of its kind, each configuration key
+/// a configuration key of its kind. A key read by several functions, with
+/// one kind, is declared once.
 ///
 /// - Inputs: `conversation` (the shared history the critic reads; a new call
 ///   holds one user input), `generator_history` (the generator's working
 ///   history; when empty at entry it starts as a copy of `conversation`),
-///   the state keys of the text sources, the generator's `enabled` key when
-///   set, and each key of `inputs`, for the generator's tools to read through
-///   the state they receive. A source, `enabled` or `inputs` key the graph
-///   already has is refused (`KeyCollision`).
+///   the state keys the texts' functions declare, the generator's `enabled`
+///   key when set, and each key of `inputs`, for the generator's tools to
+///   read through the state they receive. A key the functions declare,
+///   `enabled` or an `inputs` key that the graph already has is refused
+///   (`KeyCollision`).
 /// - Outputs: `answer` (string, the generator's last answer since the last
 ///   user input: the JSON text of its structured block when it has one,
 ///   else its text blocks joined verbatim; empty if none), `is_validated`,
@@ -52,8 +54,8 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   call). The histories are not outputs: a host that resumes a call gives
 ///   back the histories it saved from the observer. The run ends with
 ///   `validated` or `exhausted`.
-/// - Configuration: the keys the text sources, the budget and the limits
-///   read.
+/// - Configuration: the keys the texts' functions declare, the keys the
+///   budget and the limits read.
 ///
 /// `generator_history` holds the generator's whole traffic (tool calls and
 /// results, answers) and the critiques; `conversation` holds the user input,
@@ -114,9 +116,9 @@ pub struct GeneratorCritic {
     /// tools.
     pub inputs: Vec<(Key, Kind)>,
     /// The critique that rejects an empty answer, written without calling
-    /// the critic. `None`, or a source that resolves to a blank text: `The
+    /// the critic. `None`, or a text that resolves blank: `The
     /// answer was empty. Write a complete answer.`
-    pub empty_answer_critique: Option<Source>,
+    pub empty_answer_critique: Option<Prompt<CriticSeat>>,
     /// A node run once, as the graph's entry, before the routing: it may do
     /// I/O (it holds its capabilities as fields) and writes through ordinary
     /// updates, typically the opening message into `conversation`. It is
@@ -206,10 +208,10 @@ impl GeneratorCritic {
         }
         let review_request = critic
             .review_request
-            .unwrap_or_else(|| Source::Const(REVIEW_REQUEST.to_owned()));
+            .unwrap_or_else(|| Prompt::text(REVIEW_REQUEST));
         let empty_answer_critique = self
             .empty_answer_critique
-            .unwrap_or_else(|| Source::Const(EMPTY_ANSWER_CRITIQUE.to_owned()));
+            .unwrap_or_else(|| Prompt::text(EMPTY_ANSWER_CRITIQUE));
         let verdict = match critic.verdict {
             Some(custom) => VerdictForm::Override(custom),
             None => VerdictForm::default_form(
@@ -220,14 +222,14 @@ impl GeneratorCritic {
             ),
         };
         verdict.check()?;
-        let mut sources = vec![
-            &generator.system,
-            &critic.system,
-            &review_request,
-            &empty_answer_critique,
+        let mut reads = vec![
+            generator.system.reads(),
+            critic.system.reads(),
+            review_request.reads(),
+            empty_answer_critique.reads(),
         ];
-        sources.extend(verdict.sources());
-        let text_inputs = declare_sources(&mut schema, sources)?;
+        reads.extend(verdict.reads());
+        let text_inputs = declare_reads(&mut schema, reads)?;
         if let Some(key) = &generator.enabled {
             declare_input(&mut schema, key, Kind::list(Kind::Str))?;
         }
@@ -292,8 +294,9 @@ impl GeneratorCritic {
         let llm = LlmNode {
             key: names.generator_history.clone(),
             author: generator.author.clone(),
-            client: generator.client,
-            system: vec![generator.system],
+            model: Model::client(generator.client),
+            system: generator.system,
+            history: None,
             tools: generator.tools,
             enabled: generator.enabled,
             output_mode: generator.output_mode,

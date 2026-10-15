@@ -11,14 +11,14 @@ use std::sync::Arc;
 
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
-    Always, Config, EndLabel, GraphBuilder, Input, Kind, NodeId, Outcome, Output, ReactAgent,
-    Schema, Source, SubGraph, Target, Value, control, run,
+    Always, Config, EndLabel, GraphBuilder, Input, Kind, Model, NodeId, Outcome, Output,
+    ReactAgent, Schema, SubGraph, Target, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
 
 use common::tools::SearchTool;
-use common::{context, key, scripted, text_step, tool_call_step, user};
+use common::{config_text, context, key, scripted, text_step, tool_call_step, user};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -31,8 +31,9 @@ async fn main() {
     // (the system prompt).
     let agent = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
-        client,
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(client),
+        system: config_text("base"),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![Arc::new(SearchTool::new())],
         tool_nodes: Vec::new(),

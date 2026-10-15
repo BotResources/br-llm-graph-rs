@@ -3,15 +3,16 @@ mod critique;
 mod generator_critic;
 mod generator_critic_nodes;
 mod generator_critic_routing;
+mod given;
 mod helpers;
 mod hook;
 mod llm_call;
+mod llm_call_check;
 mod llm_node;
 mod react_agent;
 mod react_loop;
 mod round_limit;
 mod seats;
-mod source;
 mod tool;
 mod tool_gate;
 mod tool_node;
@@ -117,12 +118,14 @@ mod test_support;
 mod test_tools;
 
 pub use generator_critic::GeneratorCritic;
+pub use given::{
+    AgentNode, Budgeted, Given, History, Model, ModelNode, Prompt, Reads, RequestContext, Scheduled,
+};
 pub use helpers::{complete, pending_calls, structured, wire};
 pub use hook::{Hook, HookError, HookFuture, Judgment};
-pub use llm_call::{LlmCall, LlmRequest};
+pub use llm_call::{LlmCall, LlmOutput, LlmRequest};
 pub use react_agent::ReactAgent;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use seats::{CriticSeat, GeneratorSeat};
-pub use source::{Source, SourceFn};
 pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
 pub use verdict::{Verdict, VerdictOverride, VerdictReader};

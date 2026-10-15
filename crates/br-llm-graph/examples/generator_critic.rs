@@ -18,13 +18,15 @@ use std::sync::Arc;
 use br_llm_clients_core::{OutputMode, ReasoningLevel};
 use br_llm_graph::{
     Always, Config, Context, Count, CriticSeat, EndLabel, GeneratorCritic, GeneratorSeat,
-    GraphBuilder, Input, Kind, Node, NodeFuture, NodeId, Outcome, Output, Schema, Source, State,
-    SubGraph, Target, Update, Value, control, run,
+    GraphBuilder, Input, Kind, Node, NodeFuture, NodeId, Outcome, Output, Prompt, Reads, Schema,
+    State, StateKey, SubGraph, Target, Update, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
 
-use common::{key, quiet_context, scripted, scripted_at, structured_step, text_step, user};
+use common::{
+    config_text, key, quiet_context, scripted, scripted_at, structured_step, text_step, user,
+};
 
 /// A question bank standing for a service the `prepare` node calls.
 struct QuestionBank(BTreeMap<&'static str, &'static str>);
@@ -58,14 +60,18 @@ impl Node for OpenQuestion {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    // The generator's system text reads `question_id`, declared with it: an
+    // input of the graph.
+    let mut reads = Reads::new();
+    let question_id: StateKey<String> = reads.state("question_id").expect("key");
     let generator = GeneratorSeat {
         author: Author::new("writer", "writer").expect("author"),
-        system: Source::Fn(Arc::new(|state, _config| {
+        system: Prompt::from_fn(reads, move |ctx| {
             Ok(format!(
                 "Answer question {} precisely.",
-                state.str(&key("question_id"))?
+                ctx.get(&question_id)?
             ))
-        })),
+        }),
         client: scripted(vec![
             text_step("Supersteps run nodes in rounds."),
             text_step(
@@ -80,7 +86,7 @@ async fn main() {
         enabled: None,
     };
     let critic = CriticSeat {
-        review_request: Some(Source::Config(key("review_request"))),
+        review_request: Some(config_text("review_request")),
         ..CriticSeat::new(
             Author::new("reviewer", "reviewer").expect("author"),
             Arc::new(scripted_at(
@@ -98,7 +104,7 @@ async fn main() {
                     })),
                 ],
             )),
-            Source::Const("Reject an answer that leaves out a key fact.".to_owned()),
+            Prompt::text("Reject an answer that leaves out a key fact."),
         )
     };
     let bank = Arc::new(QuestionBank(BTreeMap::from([(
@@ -106,7 +112,6 @@ async fn main() {
         "Explain supersteps.",
     )])));
     let duo = GeneratorCritic {
-        inputs: vec![(key("question_id"), Kind::Str)],
         prepare: Some(Box::new(OpenQuestion { bank })),
         ..GeneratorCritic::new(generator, critic, Count::Fixed(3))
     }

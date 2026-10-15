@@ -6,7 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_graph::{
-    Context, Cursor, EndLabel, IdSource, Key, NoopObserver, Observer, Origin, State, Update,
+    Context, Cursor, EndLabel, IdSource, Key, ModelNode, NoopObserver, Observer, Origin, Prompt,
+    Schema, State, Update,
 };
 use br_llm_messages::{
     AssistantBlock, InputId, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId,
@@ -66,6 +67,13 @@ pub fn quiet_context() -> Context {
 
 pub fn key(name: &str) -> Key {
     Key::new(name).expect("valid key")
+}
+
+/// The text the string configuration key `name` holds: the system text most
+/// of these examples read.
+pub fn config_text<N: ModelNode>(name: &str) -> Prompt<N> {
+    let mut keys = Schema::builder();
+    Prompt::from_config(&keys.config::<String>(name).expect("valid key"))
 }
 
 pub fn user(body: &str) -> UserInput {

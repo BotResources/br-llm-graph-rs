@@ -7,15 +7,15 @@
 mod common;
 
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
-    Always, Config, EndLabel, GraphBuilder, ItemFailure, Kind, Limit, LlmCall, LlmRequest, Map,
-    NodeId, Outcome, Output, Schema, Source, Target, Value, control, run,
+    Always, Config, ConfigKey, EndLabel, GraphBuilder, ItemFailure, Limit, LlmCall, LlmOutput,
+    LlmRequest, Map, Model, NodeId, Outcome, Prompt, Reads, Schema, StateKey, Target, Value,
+    control, run,
 };
 
-use common::{context, key, scripted, text_step};
+use common::{context, scripted, text_step};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -28,40 +28,38 @@ async fn main() {
 
     // State: the documents, the one being read, the summaries and the title;
     // configuration: the style every call is asked to keep.
-    let schema = Schema::builder()
-        .state_by_name(key("documents"), Kind::list(Kind::Str))
-        .state_by_name(key("document"), Kind::Str)
-        .state_by_name(key("summaries"), Kind::list(Kind::Str))
-        .state_by_name(key("title"), Kind::Str)
-        .config_by_name(key("style"), Kind::Str)
-        .build();
+    let mut schema = Schema::builder();
+    let documents: StateKey<Vec<String>> = schema.state("documents").expect("key");
+    let document: StateKey<String> = schema.state("document").expect("key");
+    let summaries: StateKey<Vec<String>> = schema.state("summaries").expect("key");
+    let title: StateKey<String> = schema.state("title").expect("key");
+    let style: ConfigKey<String> = schema.config("style").expect("key");
+    let schema = schema.build();
 
+    // The request is a function of the call's context: it reads the keys
+    // declared with it, through their typed keys.
+    let mut reads = Reads::new();
+    reads.read_state(&document);
+    let read = document.clone();
     let summarize = LlmCall {
-        client: client.clone(),
-        system: Source::Config(key("style")),
-        request: LlmRequest::Text(Source::Fn(Arc::new(|state, _config| {
-            Ok(format!(
-                "Summarize in one sentence:\n{}",
-                state.str(&key("document"))?
-            ))
-        }))),
+        model: Model::client(client.clone()),
+        system: Prompt::from_config(&style),
+        request: LlmRequest::Text(Prompt::from_fn(reads, move |ctx| {
+            Ok(format!("Summarize in one sentence:\n{}", ctx.get(&read)?))
+        })),
         output_mode: OutputMode::Plain,
-        output: Output::Append(key("summaries")),
+        output: LlmOutput::Append(summaries.clone()),
     };
-    let each = Map {
-        list: key("documents"),
-        item: key("document"),
-        body: Box::new(summarize),
-        max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).expect("two"))),
-        on_item_failure: ItemFailure::Finish,
-    };
-    // A list of strings is a source too: its items joined by a blank line.
+    let each = Map::new(&documents, &document, summarize)
+        .max_concurrency(Limit::Fixed(NonZeroUsize::new(2).expect("two")))
+        .on_item_failure(ItemFailure::Finish);
+    // A list of strings is a text too: its items joined by a blank line.
     let entitle = LlmCall {
-        client,
-        system: Source::Config(key("style")),
-        request: LlmRequest::Text(Source::State(key("summaries"))),
+        model: Model::client(client),
+        system: Prompt::from_config(&style),
+        request: LlmRequest::Text(Prompt::from_state_list(&summaries)),
         output_mode: OutputMode::Plain,
-        output: Output::Set(key("title")),
+        output: LlmOutput::Set(title.clone()),
     };
 
     let id = |name: &str| NodeId::new(name).expect("node id");
@@ -74,34 +72,33 @@ async fn main() {
             id("entitle"),
             Always(Target::End(EndLabel::new("done").expect("label"))),
         )
-        .input(key("documents"))
-        .output(key("summaries"))
-        .output(key("title"))
+        .input(&documents)
+        .output(&summaries)
+        .output(&title)
         .build()
         .expect("build");
 
-    let documents = [
+    let texts = [
         "The tides rise and fall twice a day, pulled by the moon.",
         "At full and new moon, sun and moon pull together: spring tides.",
         "At the quarter moons they pull apart: neap tides.",
     ];
     let state = graph
-        .start_state([(
-            key("documents"),
-            Value::list(documents.into_iter().map(Value::str).collect()),
-        )])
+        .start_state([documents
+            .given(texts.into_iter().map(str::to_owned).collect::<Vec<_>>())
+            .expect("documents")])
         .expect("start state");
     let config = Config::new(
         &schema,
-        [(key("style"), Value::str("Write plain English."))].into(),
+        [(style.key().clone(), Value::str("Write plain English."))].into(),
     )
     .expect("config");
 
     let (_sender, mut channel) = control();
     match run(&graph, &config, state, None, &context(), &mut channel).await {
         Ok(Outcome::Finished { state, .. }) => {
-            println!("llm_call: {}", state.str(&key("title")).expect("title"));
-            for summary in state.list(&key("summaries")).expect("summaries") {
+            println!("llm_call: {}", state.get(&title).expect("title"));
+            for summary in state.get(&summaries).expect("summaries") {
                 println!("  - {summary}");
             }
         }

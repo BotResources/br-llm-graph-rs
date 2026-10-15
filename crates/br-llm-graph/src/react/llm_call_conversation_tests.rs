@@ -7,11 +7,10 @@ use br_llm_messages::{
 };
 
 use crate::error::GraphError;
-use crate::graph::Output;
 use crate::react::helpers::wire;
 use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::llm_call_support::*;
-use crate::react::test_support::{author, key, mock, requests, returned, text_step};
+use crate::react::test_support::{author, key, mock, requests, returned, skey, text_step};
 use crate::state::{State, Value};
 use crate::update::Update;
 
@@ -19,10 +18,10 @@ use crate::update::Update;
 fn on_chat(client: &MockClient) -> LlmCall {
     LlmCall {
         request: LlmRequest::Conversation {
-            key: key("chat"),
+            key: skey("chat"),
             author: author(),
         },
-        ..summarize(client, Output::Set(key("summary")))
+        ..summarize(client, set_summary())
     }
 }
 

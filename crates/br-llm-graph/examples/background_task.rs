@@ -11,13 +11,13 @@ use std::sync::{Arc, Mutex};
 
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
-    Config, Edge, EndLabel, FnEdge, GraphBuilder, Input, Kind, NodeId, Outcome, Output, ReactAgent,
-    Schema, Session, Source, State, SubGraph, Target, Value,
+    Config, Edge, EndLabel, FnEdge, GraphBuilder, Input, Kind, Model, NodeId, Outcome, Output,
+    ReactAgent, Schema, Session, State, SubGraph, Target, Value,
 };
 use br_llm_messages::{Author, Conversation, Entry, UserSource};
 
 use common::tools::StartTaskTool;
-use common::{context, key, scripted, text_step, tool_call_step, user};
+use common::{config_text, context, key, scripted, text_step, tool_call_step, user};
 use serde_json::json;
 
 #[tokio::main(flavor = "current_thread")]
@@ -38,8 +38,9 @@ async fn main() {
     // configuration `base`.
     let agent = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
-        client,
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(client),
+        system: config_text("base"),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![start_task],
         tool_nodes: Vec::new(),

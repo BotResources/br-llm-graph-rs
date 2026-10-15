@@ -4,8 +4,8 @@ use br_llm_clients_core::{Client, OutputMode};
 use br_llm_messages::Author;
 
 use crate::graph::Limit;
+use crate::react::given::Prompt;
 use crate::react::round_limit::RoundLimit;
-use crate::react::source::Source;
 use crate::react::tool::Tool;
 use crate::react::verdict::VerdictOverride;
 use crate::value::{Key, NodeId};
@@ -18,9 +18,10 @@ use crate::value::{Key, NodeId};
 pub struct GeneratorSeat {
     pub author: Author,
     pub client: Arc<dyn Client>,
-    /// The generator's system text; one that resolves to a blank text gives
-    /// no system text.
-    pub system: Source,
+    /// The generator's system text, a function of the generator's context
+    /// (its conversation and the round) or a value; one that resolves to a
+    /// blank text gives no system text.
+    pub system: Prompt<GeneratorSeat>,
     pub output_mode: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
@@ -49,20 +50,20 @@ pub struct CriticSeat {
     /// that resolves to a blank text then fails the critique node with
     /// `Message`, before the call. An empty answer, rejected without calling
     /// the critic, does not read it.
-    pub system: Source,
+    pub system: Prompt<CriticSeat>,
     /// The request that follows the wrapped answer in the critic's last
     /// message. `None`: `Please evaluate the generator's response above.` A
     /// request that resolves to a blank text leaves the wrapped answer alone.
-    pub review_request: Option<Source>,
+    pub review_request: Option<Prompt<CriticSeat>>,
     /// The description of `thinking` in the default shape. `None`:
     /// `Explanation of the thought process and validation steps`.
-    pub thinking_description: Option<Source>,
+    pub thinking_description: Option<Prompt<CriticSeat>>,
     /// The description of `is_valid` in the default shape. `None`:
     /// `Boolean indicating if the generated message is valid`.
-    pub is_valid_description: Option<Source>,
+    pub is_valid_description: Option<Prompt<CriticSeat>>,
     /// The description of `message` in the default shape. `None`:
     /// `Feedback message for the generator, empty if validation passed`.
-    pub message_description: Option<Source>,
+    pub message_description: Option<Prompt<CriticSeat>>,
     /// A verdict shape of the caller's, instead of the default one; the
     /// descriptions are then ignored.
     pub verdict: Option<VerdictOverride>,
@@ -70,7 +71,7 @@ pub struct CriticSeat {
 
 impl CriticSeat {
     /// A critic with the default request and the default verdict shape.
-    pub fn new(author: Author, client: Arc<dyn Client>, system: Source) -> Self {
+    pub fn new(author: Author, client: Arc<dyn Client>, system: Prompt<CriticSeat>) -> Self {
         Self {
             author,
             client,

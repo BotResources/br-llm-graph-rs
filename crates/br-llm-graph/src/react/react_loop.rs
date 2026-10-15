@@ -6,6 +6,7 @@ use br_llm_messages::{Author, ToolName, TurnState};
 
 use crate::error::GraphError;
 use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Limit, Target};
+use crate::react::given::AgentNode;
 use crate::react::helpers::{last_turn_state, pending_calls};
 use crate::react::llm_node::LlmNode;
 use crate::react::round_limit::{RoundLimit, completed_rounds};
@@ -29,10 +30,10 @@ pub(crate) struct ReactLoop {
 }
 
 impl ReactLoop {
-    pub(crate) fn add(
+    pub(crate) fn add<N: AgentNode>(
         self,
         builder: GraphBuilder,
-        llm_node: LlmNode,
+        llm_node: LlmNode<N>,
     ) -> Result<GraphBuilder, GraphError> {
         self.check_names(&llm_node)?;
         self.check_partition(&llm_node)?;
@@ -78,7 +79,7 @@ impl ReactLoop {
     /// the model-call step is refused (`InvalidNode`, its reason `Request`
     /// carrying `DuplicateToolName`), before the rules on tool nodes, which
     /// go by name.
-    fn check_names(&self, llm_node: &LlmNode) -> Result<(), GraphError> {
+    fn check_names<N: AgentNode>(&self, llm_node: &LlmNode<N>) -> Result<(), GraphError> {
         let mut seen: HashSet<&ToolName> = HashSet::new();
         for tool in &llm_node.tools {
             let name = tool.spec().name();
@@ -94,7 +95,7 @@ impl ReactLoop {
         Ok(())
     }
 
-    fn check_partition(&self, llm_node: &LlmNode) -> Result<(), GraphError> {
+    fn check_partition<N: AgentNode>(&self, llm_node: &LlmNode<N>) -> Result<(), GraphError> {
         let declared: HashSet<&ToolName> = llm_node
             .tools
             .iter()

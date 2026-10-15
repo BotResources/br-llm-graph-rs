@@ -16,8 +16,8 @@ use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
+use crate::react::given::Prompt;
 use crate::react::seats::CriticSeat;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::state::{Config, Kind, State, Value};
 use crate::value::Key;
@@ -149,7 +149,7 @@ fn given_a_thinking_description_on_a_state_key_when_built_then_it_is_an_input_on
         GeneratorCritic::new(
             generator(&mock(Vec::new())),
             CriticSeat {
-                thinking_description: Some(Source::State(key("reasoning_rule"))),
+                thinking_description: Some(Prompt::from_state(&skey("reasoning_rule"))),
                 ..critic(&mock_at(level))
             },
             Count::Fixed(1),
@@ -178,9 +178,9 @@ fn given_a_thinking_description_on_a_state_key_when_built_then_it_is_an_input_on
 async fn given_custom_descriptions_when_the_critic_judges_then_each_is_resolved_into_the_shape() {
     let client = critic_at(ReasoningLevel::Off, vec![verdict(true, "")]);
     let seat = CriticSeat {
-        thinking_description: Some(Source::Const("Your reasoning".to_owned())),
-        is_valid_description: Some(Source::State(key("pass_rule"))),
-        message_description: Some(Source::Config(key("feedback_rule"))),
+        thinking_description: Some(Prompt::text("Your reasoning")),
+        is_valid_description: Some(Prompt::from_state(&skey("pass_rule"))),
+        message_description: Some(Prompt::from_config(&ckey("feedback_rule"))),
         ..critic(&client)
     };
     let (request, _) = judged_with(

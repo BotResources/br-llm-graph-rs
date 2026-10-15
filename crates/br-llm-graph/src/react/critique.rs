@@ -10,11 +10,12 @@ use br_llm_messages::{
 };
 
 use crate::error::GraphError;
-use crate::graph::{Context, Node, NodeFuture};
+use crate::graph::{Context, Node, NodeError, NodeFuture};
 use crate::react::generator_critic_routing::last_answer;
+use crate::react::given::Prompt;
 use crate::react::helpers::{answer_text, complete, final_step, wire};
 use crate::react::round_limit::closes_on_limit;
-use crate::react::source::Source;
+use crate::react::seats::CriticSeat;
 use crate::react::verdict::{Verdict, VerdictForm};
 use crate::state::{Config, State, Value};
 use crate::update::Update;
@@ -36,9 +37,9 @@ pub(crate) struct CritiqueNode {
     pub(crate) validated: Key,
     pub(crate) author: Author,
     pub(crate) client: Arc<dyn Client>,
-    pub(crate) system: Source,
-    pub(crate) review_request: Source,
-    pub(crate) empty_answer_critique: Source,
+    pub(crate) system: Prompt<CriticSeat>,
+    pub(crate) review_request: Prompt<CriticSeat>,
+    pub(crate) empty_answer_critique: Prompt<CriticSeat>,
     pub(crate) verdict: VerdictForm,
     /// Whether the generator's round limit is `OnLimit::End`, the only one
     /// that cuts a generation.
@@ -95,8 +96,8 @@ impl Node for CritiqueNode {
 impl CritiqueNode {
     /// The critique of an empty answer: `empty_answer_critique`, or the
     /// default text when it resolves to a blank text.
-    fn empty_answer_text(&self, state: &State, config: &Config) -> Result<String, GraphError> {
-        let text = self.empty_answer_critique.resolve(state, config)?;
+    fn empty_answer_text(&self, state: &State, config: &Config) -> Result<String, NodeError> {
+        let text = self.empty_answer_critique.give(state, config, ())?;
         if text.trim().is_empty() {
             Ok(EMPTY_ANSWER_CRITIQUE.to_owned())
         } else {
@@ -117,7 +118,7 @@ impl CritiqueNode {
         conversation: &Conversation,
         index: usize,
         answer: &Step,
-    ) -> Result<Vec<WireMessage>, GraphError> {
+    ) -> Result<Vec<WireMessage>, NodeError> {
         let mut earlier = Conversation::new();
         for entry in conversation.entries().get(..index).unwrap_or_default() {
             match entry {
@@ -135,7 +136,7 @@ impl CritiqueNode {
             "<generator_response>\n{}\n</generator_response>",
             answer_text(answer)
         );
-        let request = self.review_request.resolve(state, config)?;
+        let request = self.review_request.give(state, config, ())?;
         if !request.trim().is_empty() {
             text.push_str("\n\n");
             text.push_str(&request);
@@ -158,8 +159,8 @@ impl CritiqueNode {
         config: &Config,
         ctx: &Context,
         messages: Vec<WireMessage>,
-    ) -> Result<Verdict, GraphError> {
-        let system = Text::new(self.system.resolve(state, config)?).map_err(GraphError::from)?;
+    ) -> Result<Verdict, NodeError> {
+        let system = Text::new(self.system.give(state, config, ())?).map_err(GraphError::from)?;
         let request = ClientRequest::new(
             Some(system),
             messages,
@@ -168,7 +169,7 @@ impl CritiqueNode {
         )
         .map_err(GraphError::Request)?;
         let step = complete(self.client.as_ref(), &request, ctx, &self.conversation).await?;
-        self.verdict.read(&step)
+        Ok(self.verdict.read(&step)?)
     }
 }
 

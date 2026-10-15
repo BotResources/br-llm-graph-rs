@@ -12,8 +12,8 @@ use std::sync::atomic::Ordering;
 
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
-    Config, Hook, HookFuture, Judgment, Outcome, ReactAgent, Source, State, Tool, ToolFuture,
-    Value, control, run,
+    Config, Hook, HookFuture, Judgment, Model, Outcome, Prompt, ReactAgent, State, Tool,
+    ToolFuture, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation, ToolCallId};
 use serde_json::{Value as Json, json};
@@ -90,8 +90,9 @@ async fn main() {
     // Input `history`; configuration none: the system text is fixed.
     let graph = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
-        client,
-        system: vec![Source::Const("Save what the user asks for.".to_owned())],
+        model: Model::client(client),
+        system: Prompt::text("Save what the user asks for."),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![write.clone()],
         tool_nodes: Vec::new(),

@@ -13,15 +13,15 @@ use br_llm_clients_core::{
     Client, ClientRequest, OutputMode, Parameter, ParameterKind, Parameters, StructuredShape,
 };
 use br_llm_graph::{
-    Always, Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Input, Kind, NodeFuture,
-    NodeId, Outcome, Output, ReactAgent, Schema, Source, State, SubGraph, Target, Value, complete,
-    control, run, structured, wire,
+    Always, Config, Context, Edge, EndLabel, FnEdge, FnNode, GraphBuilder, Input, Kind, Model,
+    NodeFuture, NodeId, Outcome, Output, ReactAgent, Schema, State, SubGraph, Target, Value,
+    complete, control, run, structured, wire,
 };
 use br_llm_messages::{Author, Conversation};
 use serde::Deserialize;
 use serde_json::json;
 
-use common::{context, key, scripted, structured_step, text_step, user};
+use common::{config_text, context, key, scripted, structured_step, text_step, user};
 
 #[derive(Deserialize)]
 struct Verdict {
@@ -47,8 +47,9 @@ async fn main() {
     // model reply.
     let agent = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
-        client: agent_client,
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(agent_client),
+        system: config_text("base"),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: Vec::new(),
         tool_nodes: Vec::new(),

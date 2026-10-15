@@ -10,7 +10,7 @@ use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::generator_critic_text_tests::{lax_generator, run_with, wrapped};
-use crate::react::source::Source;
+use crate::react::given::Prompt;
 use crate::react::test_support::*;
 use crate::state::Value;
 
@@ -19,7 +19,7 @@ async fn given_an_empty_answer_then_a_full_one_when_the_critic_judges_then_the_e
  {
     let critic_client = mock(vec![verdict(true, "")]);
     let graph = GeneratorCritic {
-        empty_answer_critique: Some(Source::State(key("nudge"))),
+        empty_answer_critique: Some(Prompt::from_state(&skey("nudge"))),
         ..GeneratorCritic::new(
             lax_generator(vec![thinking_only_step(), text_step("full")]),
             critic(&critic_client),
@@ -108,7 +108,7 @@ async fn given_an_empty_answer_critique_that_resolves_blank_when_an_empty_answer
     for nudge in ["", "  \n"] {
         let critic_client = mock(vec![verdict(true, "")]);
         let graph = GeneratorCritic {
-            empty_answer_critique: Some(Source::State(key("nudge"))),
+            empty_answer_critique: Some(Prompt::from_state(&skey("nudge"))),
             ..GeneratorCritic::new(
                 lax_generator(vec![thinking_only_step(), text_step("full")]),
                 critic(&critic_client),

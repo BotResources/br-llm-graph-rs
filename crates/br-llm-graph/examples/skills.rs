@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
-    Config, Outcome, ReactAgent, Source, State, Tool, ToolFuture, ToolOutput, Update, Value,
-    control, run,
+    Config, ConfigKey, Model, Outcome, Prompt, ReactAgent, Reads, State, StateKey, Tool,
+    ToolFuture, ToolOutput, Update, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation, Text, ToolResultBlock};
 use serde_json::{Value as Json, json};
@@ -94,14 +94,24 @@ async fn main() {
     let skill = || vec![text_parameter("skill", "the skill to load or unload")];
 
     // Inputs `history`, `skill_prompt` (a string read into the system text)
-    // and `enabled` (the tools offered); configuration `base`.
+    // and `enabled` (the tools offered); configuration `base`. The system
+    // text is a function of the agent's context, which reads only the keys
+    // declared with it.
+    let mut reads = Reads::new();
+    let base: ConfigKey<String> = reads.config("base").expect("key");
+    let skill_prompt: StateKey<String> = reads.state("skill_prompt").expect("key");
+    let system = Prompt::from_fn(reads, move |ctx| {
+        Ok(format!(
+            "{}\n\n{}",
+            ctx.config(&base)?,
+            ctx.get(&skill_prompt)?
+        ))
+    });
     let graph = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
-        client: client.clone(),
-        system: vec![
-            Source::Config(key("base")),
-            Source::State(key("skill_prompt")),
-        ],
+        model: Model::client(client.clone()),
+        system,
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![
             Arc::new(LoadSkill {

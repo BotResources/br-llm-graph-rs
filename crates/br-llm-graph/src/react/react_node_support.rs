@@ -12,8 +12,9 @@ use br_llm_messages::{
 
 use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::{Model, Prompt};
 use crate::react::llm_node::LlmNode;
-use crate::react::source::Source;
+use crate::react::react_agent::ReactAgent;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::react::tool_gate::SharedGates;
@@ -50,12 +51,13 @@ pub(crate) fn tool_node(
 }
 
 /// A model-call step of the agent on `chat`, without tools.
-pub(crate) fn llm_node(client: Arc<dyn Client>, system: Vec<Source>) -> LlmNode {
-    LlmNode {
+pub(crate) fn llm_node(client: Arc<dyn Client>, system: Prompt<ReactAgent>) -> LlmNode<ReactAgent> {
+    LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client,
+        model: Model::client(client),
         system,
+        history: None,
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,

@@ -46,8 +46,9 @@ pub use graph::{
 pub use observe::{NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
-    CriticSeat, GeneratorCritic, GeneratorSeat, Hook, HookError, HookFuture, Judgment, LlmCall,
-    LlmRequest, OnLimit, ReactAgent, RoundLimit, Source, SourceFn, Tool, ToolError, ToolFuture,
+    AgentNode, Budgeted, CriticSeat, GeneratorCritic, GeneratorSeat, Given, History, Hook,
+    HookError, HookFuture, Judgment, LlmCall, LlmOutput, LlmRequest, Model, ModelNode, OnLimit,
+    Prompt, ReactAgent, Reads, RequestContext, RoundLimit, Scheduled, Tool, ToolError, ToolFuture,
     ToolOutput, Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
 };
 pub use run::{

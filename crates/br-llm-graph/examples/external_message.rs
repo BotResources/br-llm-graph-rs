@@ -13,14 +13,14 @@ use br_llm_clients_core::{
     BoxFuture, CallOutcome, Client, ClientRequest, ClientSettings, OutputMode, ReasoningLevel,
     StreamSink,
 };
-use br_llm_graph::{Config, Outcome, ReactAgent, Source, Update, Value, control, run};
+use br_llm_graph::{Config, Model, Outcome, ReactAgent, Update, Value, control, run};
 use br_llm_messages::{
     Author, Conversation, InputId, Text, UserBlock, UserInput, UserSource, WireMessage,
 };
 use serde_json::json;
 
 use common::tools::EchoTool;
-use common::{context, key, scripted_at, text_step, tool_call_step, user};
+use common::{config_text, context, key, scripted_at, text_step, tool_call_step, user};
 
 /// A client that prints the roles of each request it receives, then hands
 /// the request to the client it wraps: a host decorates its clients so.
@@ -69,8 +69,9 @@ async fn main() {
     // Input `history`; configuration `base` (the system prompt).
     let graph = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
-        client,
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(client),
+        system: config_text("base"),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![Arc::new(EchoTool::new())],
         tool_nodes: Vec::new(),

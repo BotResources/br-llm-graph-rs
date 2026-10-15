@@ -4,12 +4,15 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use br_llm_clients_core::Client;
+
 use crate::error::GraphError;
 use crate::graph::Limit;
+use crate::react::given::{History, Model, Prompt, Reads};
+use crate::react::helpers::wire;
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::*;
 use crate::react::round_limit::OnLimit;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::state::Kind;
 
@@ -35,7 +38,7 @@ fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_lim
     );
 
     let flagged = ReactAgent {
-        system: vec![Source::State(key("persona"))],
+        system: Prompt::from_state(&skey("persona")),
         tool_concurrency: Some(Limit::Config(key("width"))),
         ..limited(
             &client,
@@ -87,15 +90,15 @@ fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_co
         node: nid("limit"),
         flag: key("topic"),
     };
-    let source = ReactAgent {
-        system: vec![Source::State(key("topic"))],
+    let read = ReactAgent {
+        system: Prompt::from_state(&skey("topic")),
         ..limited(&client, 1, on_limit())
     };
     let input = ReactAgent {
         inputs: vec![(key("topic"), Kind::Bool)],
         ..limited(&client, 1, on_limit())
     };
-    for agent in [source, input] {
+    for agent in [read, input] {
         assert!(matches!(
             agent.graph(),
             Err(GraphError::KeyCollision { ref key }) if *key == self::key("topic")
@@ -159,7 +162,7 @@ fn given_an_enabled_key_that_names_a_key_of_the_graph_when_built_then_key_collis
 fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_collision() {
     let flagged = |inputs: Vec<(crate::value::Key, Kind)>| {
         ReactAgent {
-            system: vec![Source::State(key("persona"))],
+            system: Prompt::from_state(&skey("persona")),
             enabled: Some(key("offered")),
             inputs,
             ..limited(
@@ -186,15 +189,23 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
 }
 
 #[test]
-fn given_a_key_read_by_several_sources_when_built_then_it_is_declared_once() {
+fn given_a_key_read_by_several_functions_when_built_then_it_is_declared_once() {
+    let client = mock(Vec::new());
+    let both = || {
+        let mut reads = Reads::new();
+        reads.read_state(&skey::<String>("persona"));
+        reads.read_config(&ckey::<String>("base"));
+        reads.read_state(&skey::<String>("persona"));
+        reads
+    };
+    let model_client: Arc<dyn Client> = Arc::new(client.clone());
     let graph = ReactAgent {
-        system: vec![
-            Source::State(key("persona")),
-            Source::Config(key("base")),
-            Source::State(key("persona")),
-            Source::Config(key("base")),
-        ],
-        ..agent(&mock(Vec::new()))
+        model: Model::from_fn(both(), move |_| Ok(model_client.clone())),
+        system: Prompt::from_fn(both(), |_| Ok(String::new())),
+        history: Some(History::from_fn(both(), |ctx| {
+            Ok(wire(ctx.conversation(), &author())?)
+        })),
+        ..agent(&client)
     }
     .graph()
     .unwrap();
@@ -212,10 +223,10 @@ fn given_a_key_read_by_several_sources_when_built_then_it_is_declared_once() {
 }
 
 #[test]
-fn given_a_source_that_names_a_key_of_the_graph_when_built_then_key_collision() {
-    let flagged = |source: Source| {
+fn given_a_function_that_reads_a_key_of_the_graph_when_built_then_key_collision() {
+    let flagged = |system: Prompt<ReactAgent>| {
         ReactAgent {
-            system: vec![source],
+            system,
             tool_concurrency: Some(Limit::Config(key("width"))),
             ..limited(
                 &mock(Vec::new()),
@@ -229,13 +240,13 @@ fn given_a_source_that_names_a_key_of_the_graph_when_built_then_key_collision() 
         .graph()
     };
     for name in ["history", "answer", "limit_reached"] {
-        let built = flagged(Source::State(key(name)));
+        let built = flagged(Prompt::from_state(&skey(name)));
         assert!(
             matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
             "{name}"
         );
     }
-    let built = flagged(Source::Config(key("width")));
+    let built = flagged(Prompt::from_config(&ckey("width")));
     assert!(
         matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key("width"))
     );

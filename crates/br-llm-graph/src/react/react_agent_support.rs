@@ -11,9 +11,9 @@ use br_llm_messages::{Conversation, Entry, InputId, Text, Turn, UserBlock, UserI
 
 use crate::graph::{Context, Graph, Limit};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::react_agent::ReactAgent;
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
@@ -42,8 +42,9 @@ pub(crate) fn question(body: &str) -> Conversation {
 pub(crate) fn agent(client: &MockClient) -> ReactAgent {
     ReactAgent {
         author: author(),
-        client: Arc::new(client.clone()),
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(Arc::new(client.clone())),
+        system: base(),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![Arc::new(EchoTool)],
         tool_nodes: Vec::new(),

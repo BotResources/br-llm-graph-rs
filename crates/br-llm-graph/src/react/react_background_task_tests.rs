@@ -4,9 +4,10 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::run::Outcome;
@@ -83,11 +84,12 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         spec: spec("start_task"),
         pending: k("pending_tasks"),
     });
-    let llm = LlmNode {
+    let llm = LlmNode::<ReactAgent> {
         key: k("chat"),
         author: author(),
-        client,
-        system: vec![Source::Config(k("base"))],
+        model: Model::client(client),
+        system: base(),
+        history: None,
         tools: vec![start_task.clone()],
         enabled: None,
         output_mode: OutputMode::Plain,

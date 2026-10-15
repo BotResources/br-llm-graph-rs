@@ -37,7 +37,6 @@ impl std::error::Error for GraphError {
             | GraphError::ToolNotDeclared { .. }
             | GraphError::PendingToolUnsatisfiable { .. }
             | GraphError::EnabledKeyMismatch { .. }
-            | GraphError::SourceKeyMismatch { .. }
             | GraphError::Structured { .. }
             | GraphError::LimitKeyMismatch { .. }
             | GraphError::LimitNotPositive { .. }

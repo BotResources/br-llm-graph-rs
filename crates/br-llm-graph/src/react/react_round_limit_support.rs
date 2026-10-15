@@ -14,11 +14,12 @@ use br_llm_messages::{
 
 use crate::graph::{Context, Graph, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::source::Source;
-use crate::react::test_support::{EchoTool, author, key, requests, tool_names};
+use crate::react::test_support::{EchoTool, author, base, key, requests, tool_names};
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::testkit::SeqIds;
@@ -75,11 +76,12 @@ pub(crate) fn declared(client: &MockClient) -> Vec<Vec<String>> {
 }
 
 pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -> Graph {
-    let llm = LlmNode {
+    let llm = LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client: Arc::new(client.clone()),
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(Arc::new(client.clone())),
+        system: base(),
+        history: None,
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output_mode: OutputMode::Plain,

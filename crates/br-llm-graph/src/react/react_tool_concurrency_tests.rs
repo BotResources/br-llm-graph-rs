@@ -12,8 +12,8 @@ use serde_json::{Value as Json, json};
 
 use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::{Model, Prompt};
 use crate::react::react_agent::ReactAgent;
-use crate::react::source::Source;
 use crate::react::test_support::{author, calls_step, config, key, mock, schema, spec, text_step};
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::react::tool_gate::SharedGates;
@@ -164,8 +164,9 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
     steps.extend(vec![text_step("measured"); runs]);
     ReactAgent {
         author: author(),
-        client: Arc::new(mock(steps)),
-        system: vec![Source::Const("Measure.".to_owned())],
+        model: Model::client(Arc::new(mock(steps))),
+        system: Prompt::text("Measure."),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![left.clone(), right.clone()],
         tool_nodes: vec![

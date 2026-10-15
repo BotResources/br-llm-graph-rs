@@ -4,9 +4,10 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::run::Outcome;
@@ -24,12 +25,16 @@ fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-fn llm_node(client: Arc<dyn br_llm_clients_core::Client>, tools: Vec<Arc<dyn Tool>>) -> LlmNode {
-    LlmNode {
+fn llm_node(
+    client: Arc<dyn br_llm_clients_core::Client>,
+    tools: Vec<Arc<dyn Tool>>,
+) -> LlmNode<ReactAgent> {
+    LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client,
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(client),
+        system: base(),
+        history: None,
         tools,
         enabled: None,
         output_mode: OutputMode::Plain,

@@ -12,10 +12,10 @@ use br_llm_messages::{
     WireMessage, WireUserBlock,
 };
 
-use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Map, Node, Output, Target};
+use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Map, Node, Target};
 use crate::observe::NoopObserver;
-use crate::react::llm_call::{LlmCall, LlmRequest};
-use crate::react::source::Source;
+use crate::react::given::{Model, Prompt};
+use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
 use crate::react::test_support::*;
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
@@ -81,11 +81,11 @@ pub(crate) fn config() -> Config {
 }
 
 /// Summarizes the state key `doc` into `output`.
-pub(crate) fn summarize(client: &MockClient, output: Output) -> LlmCall {
+pub(crate) fn summarize(client: &MockClient, output: LlmOutput) -> LlmCall {
     LlmCall {
-        client: Arc::new(client.clone()),
-        system: Source::Config(key("style")),
-        request: LlmRequest::Text(Source::State(key("doc"))),
+        model: Model::client(Arc::new(client.clone())),
+        system: Prompt::from_config(&ckey("style")),
+        request: LlmRequest::Text(Prompt::from_state(&skey("doc"))),
         output_mode: OutputMode::Plain,
         output,
     }
@@ -150,6 +150,16 @@ pub(crate) fn user_text(text: &str) -> WireMessage {
             text: Text::new(text).unwrap(),
         }],
     }
+}
+
+/// The output setting `summary`.
+pub(crate) fn set_summary() -> LlmOutput {
+    LlmOutput::Set(skey("summary"))
+}
+
+/// The output appending to `summaries`.
+pub(crate) fn append_summaries() -> LlmOutput {
+    LlmOutput::Append(skey("summaries"))
 }
 
 /// The text of the first user message of `request`.

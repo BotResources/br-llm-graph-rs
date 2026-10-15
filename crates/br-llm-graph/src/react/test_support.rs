@@ -10,11 +10,12 @@ use br_llm_messages::{
 };
 use serde_json::{Value as Json, json};
 
+use crate::react::given::{ModelNode, Prompt};
 pub(crate) use crate::react::test_clients::{LaxClient, StreamRecorder};
 pub(crate) use crate::react::test_tools::{
     EchoTool, ScopeTool, StrictTool, TallyTool, WriteFileTool, spec,
 };
-use crate::state::{Config, Kind, Schema, State, Value};
+use crate::state::{Config, ConfigKey, Kind, Schema, State, StateKey, Value, ValueType};
 use crate::value::Key;
 
 pub(crate) fn author() -> Author {
@@ -23,6 +24,21 @@ pub(crate) fn author() -> Author {
 
 pub(crate) fn key(name: &str) -> Key {
     Key::new(name).unwrap()
+}
+
+/// The typed state key `name`, of the kind of `T`.
+pub(crate) fn skey<T: ValueType>(name: &str) -> StateKey<T> {
+    Schema::builder().state(name).unwrap()
+}
+
+/// The typed configuration key `name`, of the kind of `T`.
+pub(crate) fn ckey<T: ValueType>(name: &str) -> ConfigKey<T> {
+    Schema::builder().config(name).unwrap()
+}
+
+/// The text of the configuration key `base`, the agent's usual system text.
+pub(crate) fn base<N: ModelNode>() -> Prompt<N> {
+    Prompt::from_config(&ckey("base"))
 }
 
 pub(crate) fn schema() -> Schema {

@@ -18,8 +18,8 @@ use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
+use crate::react::given::Prompt;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
-use crate::react::source::Source;
 use crate::react::test_support::*;
 
 /// The generator seat on a `LaxClient` serving `steps`, and that client.
@@ -227,7 +227,7 @@ async fn given_a_blank_critic_system_text_when_an_empty_answer_is_rejected_witho
             CriticSeat::new(
                 reviewer(),
                 Arc::new(critic_client.clone()),
-                Source::Const(" ".to_owned()),
+                Prompt::text(" "),
             ),
             Count::Fixed(1),
         )

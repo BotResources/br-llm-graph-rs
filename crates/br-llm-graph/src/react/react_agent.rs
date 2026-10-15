@@ -1,18 +1,16 @@
 use std::sync::Arc;
 
-use br_llm_clients_core::{Client, OutputMode};
+use br_llm_clients_core::OutputMode;
 use br_llm_messages::Author;
 
 use crate::error::GraphError;
 use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Node, NodeFuture, Target};
-use crate::react::agent_build::{
-    declare_input, declare_limit, declare_sources, round_limit_flag, tools_node_clash,
-};
+use crate::react::agent_build::{declare_input, declare_limit, round_limit_flag, tools_node_clash};
+use crate::react::given::{History, Model, Prompt, declare_reads};
 use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
-use crate::react::source::Source;
 use crate::react::tool::Tool;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
@@ -25,36 +23,47 @@ use crate::value::{EndLabel, Key, NodeId};
 /// model call again; when a reply calls no tool, a node reads the answer and
 /// the graph ends with `done`.
 ///
+/// The model call is built from what the runner gives it (see `Given`), each
+/// subject a value or a function of the agent's context, which holds the
+/// state, the configuration, the agent's conversation and the round (the
+/// rounds already answered in the agent's open turn): `model` gives the
+/// client called for that round, `system` the system text (one that resolves
+/// blank gives none), `history` the messages, by default the conversation
+/// rendered for `author`. A function shapes the request only: the reply is
+/// added to the conversation whatever the history sent. A change of client
+/// never changes the author.
+///
 /// - Inputs: `history` (conversation), the agent's chat history: a new call is
 ///   a history holding one user input, a resumed call the history the host
 ///   saved. The loop always enters through the model call, so a history
 ///   saved while the agent's turn awaits tool results cannot start a call
 ///   (the render refuses it, `Message`): resume that run from its checkpoint
-///   instead. Each
-///   `Source::State` key of `system` is a string input too, and so is the
-///   `enabled` key, a list of strings, when set. Each key of `inputs` is an
-///   input of its kind, for the tools to read through the state they
-///   receive.
+///   instead. Each state key the functions declare is an input of its kind,
+///   and so is the `enabled` key, a list of strings, when set. Each key of
+///   `inputs` is an input of its kind, for the tools to read through the
+///   state they receive.
 /// - Outputs: `history` (the conversation after the run), `answer` (string,
 ///   the final step of the agent's last turn: the JSON text of its structured
 ///   block when it has one, else its text blocks joined verbatim; empty when
 ///   there is no final step) and, when the round limit's `OnLimit` is
 ///   `Continue` or `End`, its `flag` (bool, true when the limit was reached).
 ///   With `End`, the final step may be the limit's closing step.
-/// - Configuration: each `Source::Config` key of `system` (string), the tool
-///   concurrency and the round limit when they read a configuration key.
+/// - Configuration: each configuration key the functions declare, of its
+///   kind, the tool concurrency and the round limit when they read a
+///   configuration key.
 ///
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
-/// executed. A key read by several sources of `system` is declared once; a
-/// source, `enabled` or `inputs` key the graph already has, the round limit's
-/// flag included, is refused (`KeyCollision`). A flag that names `history` or
-/// `answer` is refused (`FlagKeyMismatch`), before the rules of the ReAct
-/// loop below.
+/// executed. A key read by several functions, with one kind, is declared
+/// once; a key the functions declare, `enabled` or a key of `inputs` that the
+/// graph already has, `history`, `answer`, the limit keys and the round
+/// limit's flag included, is refused (`KeyCollision`), and so is a key two
+/// functions declare with two kinds. A flag that names `history` or `answer`
+/// is refused (`FlagKeyMismatch`), before the rules of the ReAct loop below.
 ///
 /// `output_mode` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
-/// JSON text in `answer`. The settings of `client`, its level of reasoning
+/// JSON text in `answer`. The settings of a client, its level of reasoning
 /// included, are the host's: an agent that needs another model or another
 /// level is given another client.
 ///
@@ -70,8 +79,13 @@ use crate::value::{EndLabel, Key, NodeId};
 /// `RoundLimit`).
 pub struct ReactAgent {
     pub author: Author,
-    pub client: Arc<dyn Client>,
-    pub system: Vec<Source>,
+    /// The client called for each round.
+    pub model: Model<ReactAgent>,
+    /// The system text; one that resolves blank gives none.
+    pub system: Prompt<ReactAgent>,
+    /// The messages sent. `None`: the agent's conversation rendered for
+    /// `author`.
+    pub history: Option<History<ReactAgent>>,
     pub output_mode: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
@@ -108,7 +122,10 @@ impl ReactAgent {
             schema.state.entry(flag.clone()).or_insert(Kind::Bool);
         }
         let mut inputs = vec![history.clone()];
-        inputs.extend(declare_sources(&mut schema, &self.system)?);
+        let reads = [self.model.reads(), self.system.reads()]
+            .into_iter()
+            .chain(self.history.as_ref().map(History::reads));
+        inputs.extend(declare_reads(&mut schema, reads)?);
         if let Some(key) = &self.enabled {
             declare_input(&mut schema, key, Kind::list(Kind::Str))?;
             inputs.push(key.clone());
@@ -140,8 +157,9 @@ impl ReactAgent {
         let llm_node = LlmNode {
             key: history.clone(),
             author: self.author.clone(),
-            client: self.client,
+            model: self.model,
             system: self.system,
+            history: self.history,
             tools: self.tools,
             enabled: self.enabled,
             output_mode: self.output_mode,

@@ -17,9 +17,9 @@ use crate::error::{GraphError, NodeFault};
 use crate::graph::{Context, Count, Graph, Limit};
 use crate::observe::NoopObserver;
 use crate::react::generator_critic::GeneratorCritic;
+use crate::react::given::Prompt;
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
@@ -67,7 +67,7 @@ pub(crate) fn generator(client: &MockClient) -> GeneratorSeat {
     GeneratorSeat {
         author: writer(),
         client: Arc::new(client.clone()),
-        system: Source::Const("Answer the question.".to_owned()),
+        system: Prompt::text("Answer the question."),
         output_mode: OutputMode::Plain,
         tools: Vec::new(),
         tool_nodes: Vec::new(),
@@ -82,7 +82,7 @@ pub(crate) fn critic(client: &MockClient) -> CriticSeat {
     CriticSeat::new(
         reviewer(),
         Arc::new(client.clone()),
-        Source::Const("Judge the answer.".to_owned()),
+        Prompt::text("Judge the answer."),
     )
 }
 
