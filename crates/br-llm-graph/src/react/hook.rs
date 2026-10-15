@@ -14,8 +14,10 @@ pub type HookError = Box<dyn std::error::Error + Send + Sync>;
 /// The judgment of one call under way: a `Judgment`, or the hook's error.
 pub type HookFuture<'a> = Pin<Box<dyn Future<Output = Result<Judgment, HookError>> + Send + 'a>>;
 
-/// What a hook decides for one tool call.
+/// What a hook decides for one tool call. More judgments may come in a
+/// later version: a `match` on it outside the crate needs a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Judgment {
     /// The call runs.
     Accept,

@@ -52,6 +52,8 @@ instead, and `LlmCall` makes one model call whose answer is data.
   the tool node, as returned (the first in call order, once every call has
   ended), and that call is not executed. A hook returns no update. Hooks are
   the host's: the graph ships none.
+- `Judgment` and `LlmRequest` are `#[non_exhaustive]`: a host builds their
+  variants, and a `match` on them outside the crate needs a wildcard arm.
 - `GraphError::Request(BuildError)`: br-llm-clients-core refused to build the
   request of a model call; the `BuildError` is the error's source.
 - `GraphError::VerdictShapeMismatch { reason }`, which replaces

@@ -10,8 +10,10 @@ use crate::react::source::Source;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::value::Key;
 
-/// What an `LlmCall` sends as its request.
+/// What an `LlmCall` sends as its request. More kinds of request may come in
+/// a later version: a `match` on it outside the crate needs a wildcard arm.
 #[derive(Clone)]
+#[non_exhaustive]
 pub enum LlmRequest {
     /// A text, sent as one user message holding it. A text that resolves
     /// blank fails the node (`Message`: a message cannot hold a blank text).

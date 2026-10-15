@@ -17,6 +17,8 @@
 
 #[cfg(test)]
 mod acceptance;
+#[cfg(doctest)]
+mod non_exhaustive;
 #[cfg(test)]
 mod testkit;
 
