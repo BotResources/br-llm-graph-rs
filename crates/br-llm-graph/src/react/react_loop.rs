@@ -118,10 +118,9 @@ impl ReactLoop {
             match last_turn_state(conversation, &author) {
                 Some(TurnState::AwaitingToolResults { .. }) => {
                     if let Some(round_limit) = &round_limit {
-                        let done = completed_rounds(conversation, &author);
                         let max = round_limit.max_rounds.resolve(config)?.get();
-                        if done >= max {
-                            return round_limit.reached(&llm, done, max);
+                        if completed_rounds(conversation, &author) >= max {
+                            return round_limit.reached(&llm, conversation, &author, max);
                         }
                     }
                     for call in pending_calls(state, &key, &author)? {

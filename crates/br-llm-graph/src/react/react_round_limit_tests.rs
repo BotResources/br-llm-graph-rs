@@ -25,11 +25,11 @@ use crate::state::{Config, Kind, Schema, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
 
-fn nid(name: &str) -> NodeId {
+pub(crate) fn nid(name: &str) -> NodeId {
     NodeId::new(name).unwrap()
 }
 
-fn schema() -> Schema {
+pub(crate) fn schema() -> Schema {
     Schema::builder()
         .state(key("chat"), Kind::Conversation)
         .state(key("log"), Kind::list(Kind::Str))
@@ -39,14 +39,14 @@ fn schema() -> Schema {
         .build()
 }
 
-fn config(max_rounds: i64) -> Config {
+pub(crate) fn config(max_rounds: i64) -> Config {
     let mut values = BTreeMap::new();
     values.insert(key("base"), Value::str("You are a helpful agent."));
     values.insert(key("max_rounds"), Value::int(max_rounds));
     Config::new(&schema(), values).unwrap()
 }
 
-fn human(body: &str) -> UserInput {
+pub(crate) fn human(body: &str) -> UserInput {
     UserInput::new(
         UserSource::Human,
         None,
@@ -55,7 +55,7 @@ fn human(body: &str) -> UserInput {
     .unwrap()
 }
 
-fn state_with(chat: Conversation) -> State {
+pub(crate) fn state_with(chat: Conversation) -> State {
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
@@ -74,7 +74,7 @@ fn declared(client: &MockClient) -> Vec<Vec<String>> {
     requests(client).iter().map(tool_names).collect()
 }
 
-fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -> Graph {
+pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -> Graph {
     let llm = LlmNode {
         key: key("chat"),
         author: author(),
@@ -101,27 +101,31 @@ fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -> Graph {
         .unwrap()
 }
 
-async fn run_graph(graph: &Graph, config: Config, state: State) -> Result<Outcome, RunFailure> {
+pub(crate) async fn run_graph(
+    graph: &Graph,
+    config: Config,
+    state: State,
+) -> Result<Outcome, RunFailure> {
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
     let (_sender, mut inbox) = channel();
     run(graph, &config, state, None, &ctx, &mut inbox).await
 }
 
-fn finished(result: Result<Outcome, RunFailure>) -> State {
+pub(crate) fn finished(result: Result<Outcome, RunFailure>) -> State {
     match result.map_err(|f| f.error).unwrap() {
         Outcome::Finished { state, .. } => state,
         Outcome::Paused { .. } | Outcome::Cancelled { .. } => panic!("expected finished"),
     }
 }
 
-fn own_turn(state: &State) -> Turn {
+pub(crate) fn own_turn(state: &State) -> Turn {
     match state.conversation(&key("chat")).unwrap().entries().last() {
         Some(Entry::Turn(turn)) => turn.clone(),
         Some(Entry::UserInput(_)) | None => panic!("expected the agent's turn last"),
     }
 }
 
-fn result_texts(turn: &Turn) -> Vec<(String, bool)> {
+pub(crate) fn result_texts(turn: &Turn) -> Vec<(String, bool)> {
     let mut texts = Vec::new();
     for item in turn.items() {
         if let TurnItem::ToolResults(results) = item {
@@ -138,7 +142,11 @@ fn result_texts(turn: &Turn) -> Vec<(String, bool)> {
     texts
 }
 
-fn continue_limit() -> OnLimit {
+/// The error result each call gets once a limit of 1 is reached.
+pub(crate) const CONTINUE_REFUSAL: &str =
+    "Tool round limit reached (1): this call was not executed. Reply without calling tools.";
+
+pub(crate) fn continue_limit() -> OnLimit {
     OnLimit::Continue {
         node: nid("limit"),
         flag: key("limited"),
@@ -194,14 +202,13 @@ async fn given_continue_limit_when_reached_then_calls_refused_and_one_last_call_
             stop_reason: StopReason::EndTurn
         }
     ));
-    let texts = result_texts(&turn);
-    assert_eq!(texts[0], ("echoed".to_owned(), false));
-    assert!(
-        texts[1]
-            .0
-            .starts_with("Tool round limit reached (1): this call was not executed.")
+    assert_eq!(
+        result_texts(&turn),
+        [
+            ("echoed".to_owned(), false),
+            (CONTINUE_REFUSAL.to_owned(), true),
+        ]
     );
-    assert!(texts[1].1);
 }
 
 #[tokio::test]

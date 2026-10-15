@@ -77,6 +77,8 @@ mod react_node_tests;
 #[cfg(test)]
 mod react_partition_tests;
 #[cfg(test)]
+mod react_round_limit_resume_tests;
+#[cfg(test)]
 mod react_round_limit_tests;
 #[cfg(test)]
 mod react_tool_concurrency_tests;
