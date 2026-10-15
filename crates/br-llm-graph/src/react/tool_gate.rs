@@ -1,23 +1,53 @@
 //! The tool concurrency limit: a gate that lets at most a number of tool
 //! calls run at once, shared by the tool nodes of one ReAct loop.
 
-use std::collections::HashMap;
-use std::future::poll_fn;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::task::{Poll, Waker};
+use std::task::{Context, Poll, Waker};
 
 use crate::state::State;
 
 /// Lets at most `width` holders through at once; a holder leaves when its
 /// pass is dropped. Runtime-neutral: waiting tasks are woken through their
 /// wakers.
+///
+/// Each waiting entry owns one place in an arrival queue, keeping one waker
+/// whatever the number of its polls, and leaves the queue when dropped. A
+/// freed place is handed to the first waiter in arrival order, which alone
+/// is woken; a waiter handed a place it no longer wants passes it on. A
+/// waiter queues and a place is freed under one lock: no wakeup is lost.
 pub(crate) struct Gate {
     inner: Mutex<GateState>,
 }
 
 struct GateState {
+    /// Places neither held nor handed to a waiter.
     free: usize,
-    waiting: Vec<Waker>,
+    /// The id the next waiter queues under.
+    next: u64,
+    /// The waiters, in arrival order, each with the waker of its last poll.
+    queue: VecDeque<(u64, Waker)>,
+    /// The waiters handed a place, not yet polled since.
+    handed: HashSet<u64>,
+}
+
+impl GateState {
+    /// Gives a place back: to the first waiter in arrival order, whose waker
+    /// is returned to be woken out of the lock, or to the free places.
+    fn release(&mut self) -> Option<Waker> {
+        match self.queue.pop_front() {
+            Some((id, waker)) => {
+                self.handed.insert(id);
+                Some(waker)
+            }
+            None => {
+                self.free += 1;
+                None
+            }
+        }
+    }
 }
 
 impl Gate {
@@ -25,25 +55,90 @@ impl Gate {
         Self {
             inner: Mutex::new(GateState {
                 free: width,
-                waiting: Vec::new(),
+                next: 0,
+                queue: VecDeque::new(),
+                handed: HashSet::new(),
             }),
         }
     }
 
-    /// Waits for a free place and takes it until the pass is dropped.
-    pub(crate) async fn enter(&self) -> Pass<'_> {
-        poll_fn(|cx| {
-            let mut state = lock(&self.inner);
-            if state.free > 0 {
+    /// Waits for a place and holds it until the pass is dropped.
+    pub(crate) fn enter(&self) -> Enter<'_> {
+        Enter {
+            gate: self,
+            queued: None,
+        }
+    }
+
+    fn release(&self) {
+        let waker = lock(&self.inner).release();
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+}
+
+/// The wait for a place in a gate: `queued` is its id once it waits.
+pub(crate) struct Enter<'a> {
+    gate: &'a Gate,
+    queued: Option<u64>,
+}
+
+impl<'a> Future for Enter<'a> {
+    type Output = Pass<'a>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Pass<'a>> {
+        let gate = self.gate;
+        let mut state = lock(&gate.inner);
+        match self.queued {
+            None if state.free > 0 => {
                 state.free -= 1;
-                Poll::Ready(())
-            } else {
-                state.waiting.push(cx.waker().clone());
+                Poll::Ready(Pass { gate })
+            }
+            None => {
+                let id = state.next;
+                state.next += 1;
+                state.queue.push_back((id, cx.waker().clone()));
+                drop(state);
+                self.queued = Some(id);
                 Poll::Pending
             }
-        })
-        .await;
-        Pass { gate: self }
+            Some(id) if state.handed.remove(&id) => {
+                drop(state);
+                self.queued = None;
+                Poll::Ready(Pass { gate })
+            }
+            Some(id) => {
+                if let Some((_, waker)) = state.queue.iter_mut().find(|(queued, _)| *queued == id)
+                    && !waker.will_wake(cx.waker())
+                {
+                    waker.clone_from(cx.waker());
+                }
+                Poll::Pending
+            }
+        }
+    }
+}
+
+impl Drop for Enter<'_> {
+    /// A waiter dropped while it waits leaves the queue; one dropped after it
+    /// was handed a place passes the place on.
+    fn drop(&mut self) {
+        let Some(id) = self.queued else {
+            return;
+        };
+        let waker = {
+            let mut state = lock(&self.gate.inner);
+            if state.handed.remove(&id) {
+                state.release()
+            } else {
+                state.queue.retain(|(queued, _)| *queued != id);
+                None
+            }
+        };
+        if let Some(waker) = waker {
+            waker.wake();
+        }
     }
 }
 
@@ -54,14 +149,7 @@ pub(crate) struct Pass<'a> {
 
 impl Drop for Pass<'_> {
     fn drop(&mut self) {
-        let waiting = {
-            let mut state = lock(&self.gate.inner);
-            state.free += 1;
-            std::mem::take(&mut state.waiting)
-        };
-        for waker in waiting {
-            waker.wake();
-        }
+        self.gate.release();
     }
 }
 
@@ -121,3 +209,7 @@ impl Drop for Lease {
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
+
+#[cfg(test)]
+#[path = "tool_gate_tests.rs"]
+mod tests;

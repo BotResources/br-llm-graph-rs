@@ -171,6 +171,12 @@ instead, and `LlmCall` makes one model call whose answer is data.
 
 ### Fixed
 
+- The tool concurrency gate keeps one entry per waiting call, in arrival
+  order, removed when the call is dropped, and lets one waiter through per
+  freed place. Before, every poll of every waiting call pushed a clone of its
+  waker, kept until a place freed: a busy call holding the only slot made
+  the list grow without bound (40,003 clones for twenty waiting calls, now
+  at most one each), and every waiter was woken at each release.
 - A round limit read lower than the rounds a resumed turn already holds
   applies as its `OnLimit` says: a reply that asks for tools on such a turn
   comes after the last allowed round, so `End` closes the turn and
