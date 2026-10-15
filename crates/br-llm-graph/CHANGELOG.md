@@ -143,6 +143,16 @@ instead, and `LlmCall` makes one model call whose answer is data.
   the ReAct loop inside `ReactAgent` and `GeneratorCritic`. `Source` and
   `SourceFn` stay public.
 
+### Fixed
+
+- A round limit read lower than the rounds a resumed turn already holds
+  applies as its `OnLimit` says: a reply that asks for tools on such a turn
+  comes after the last allowed round, so `End` closes the turn and
+  `Continue` answers the calls and calls the model once more, failing only
+  when a reply still calls tools after its node has answered in this turn.
+  Before, both failed the run with `ToolLimitReached` unless the rounds
+  equalled the limit.
+
 ## 0.3.0 - 2026-10-13
 
 ### Added

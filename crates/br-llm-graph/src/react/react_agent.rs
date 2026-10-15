@@ -24,7 +24,10 @@ use crate::value::{EndLabel, Key, NodeId};
 ///
 /// - Inputs: `history` (conversation), the agent's chat history: a new call is
 ///   a history holding one user input, a resumed call the history the host
-///   saved. The loop always enters through the model call. Each
+///   saved. The loop always enters through the model call, so a history
+///   saved while the agent's turn awaits tool results cannot start a call
+///   (the render refuses it, `Message`): resume that run from its checkpoint
+///   instead. Each
 ///   `Source::State` key of `system` is a string input too, and so is the
 ///   `enabled` key, a list of strings, when set. Each key of `inputs` is an
 ///   input of its kind, for the tools to read through the state they
