@@ -188,16 +188,12 @@ instead, and `LlmCall` makes one model call whose answer is data.
   applies as its `OnLimit` says: a reply that asks for tools on such a turn
   comes after the last allowed round, so `End` closes the turn and
   `Continue` answers the calls and calls the model once more, failing only
-  when a reply still calls tools after its node has answered in this turn.
-  Before, both failed the run with `ToolLimitReached` unless the rounds
-  equalled the limit.
-- `Continue` recognises its node's answer only in a round of the open turn
-  past the limit (0-based index `max_rounds` or more) whose results are all
-  its refusal (error results holding exactly its text). Before (unreleased),
-  any refusal-looking result anywhere in the turn counted: a tool error
-  holding that text made `Continue` fail without its node answering, and a
-  refusal written under a lower limit failed the turn resumed under a higher
-  one. `OnLimit::Continue` documents the rule and its residual.
+  when a reply still calls tools after its node has answered in this turn:
+  a round of the open turn past the limit (0-based index `max_rounds` or
+  more) whose results are all its refusal (error results holding exactly its
+  text). `OnLimit::Continue` documents the rule and its residual. Before,
+  both failed the run with `ToolLimitReached` unless the rounds equalled the
+  limit.
 - A generation is taken for one the round limit cut only when the
   generator's round limit is `End` and its final step is the one the limit
   node writes: the stop reason `other(tool_round_limit)`, no model, no usage.
