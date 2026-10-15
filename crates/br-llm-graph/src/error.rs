@@ -1,3 +1,4 @@
+use br_llm_clients_core::{BuildError, ClientError};
 use br_llm_messages::MessageError;
 use br_llm_messages::{Author, ToolName};
 
@@ -117,9 +118,10 @@ pub enum GraphError {
     SourceKeyMismatch {
         key: Key,
     },
-    Model {
-        message: String,
-    },
+    /// The client refused or failed the call.
+    Model(ClientError),
+    /// The request of a model call could not be built.
+    Request(BuildError),
     Structured {
         message: String,
     },
@@ -129,9 +131,6 @@ pub enum GraphError {
     LimitNotPositive {
         key: Key,
         value: i64,
-    },
-    SwitchKeyMismatch {
-        key: Key,
     },
     CountKeyMismatch {
         key: Key,
@@ -143,7 +142,7 @@ pub enum GraphError {
     SameAuthor {
         author: Author,
     },
-    VerdictSchemaMismatch {
+    VerdictShapeMismatch {
         reason: &'static str,
     },
     KeyCollision {
@@ -322,7 +321,10 @@ impl std::fmt::Display for GraphError {
                 f,
                 "source key {key} is not a declared key holding a string or a list of strings"
             ),
-            GraphError::Model { message } => write!(f, "model call failed: {message}"),
+            GraphError::Model(error) => write!(f, "model call failed: {error}"),
+            GraphError::Request(error) => {
+                write!(f, "the request of a model call could not be built: {error}")
+            }
             GraphError::Structured { message } => {
                 write!(f, "structured output could not be read: {message}")
             }
@@ -331,9 +333,6 @@ impl std::fmt::Display for GraphError {
             }
             GraphError::LimitNotPositive { key, value } => {
                 write!(f, "limit key {key} holds {value}, not a positive integer")
-            }
-            GraphError::SwitchKeyMismatch { key } => {
-                write!(f, "switch key {key} is not a bool configuration key")
             }
             GraphError::CountKeyMismatch { key } => {
                 write!(f, "count key {key} is not an int configuration key")
@@ -348,9 +347,9 @@ impl std::fmt::Display for GraphError {
                 f,
                 "the generator and the critic are both written by {author}; each seat needs its own author"
             ),
-            GraphError::VerdictSchemaMismatch { reason } => write!(
+            GraphError::VerdictShapeMismatch { reason } => write!(
                 f,
-                "the critic's verdict schema cannot be read without a reader: {reason}"
+                "the critic's verdict shape cannot be read without a reader: {reason}"
             ),
             GraphError::KeyCollision { key } => {
                 write!(f, "key {key} is already a key of the graph")
@@ -454,6 +453,8 @@ impl std::error::Error for GraphError {
         match self {
             GraphError::NodeFailed { source, .. } => Some(source),
             GraphError::Message(error) => Some(error),
+            GraphError::Model(error) => Some(error),
+            GraphError::Request(error) => Some(error),
             GraphError::SubGraphFailed { source } => Some(source.as_ref()),
             GraphError::InvalidNode { source, .. } => Some(source.as_ref()),
             GraphError::Identifier { .. }
@@ -484,15 +485,13 @@ impl std::error::Error for GraphError {
             | GraphError::PendingToolUnsatisfiable { .. }
             | GraphError::EnabledKeyMismatch { .. }
             | GraphError::SourceKeyMismatch { .. }
-            | GraphError::Model { .. }
             | GraphError::Structured { .. }
             | GraphError::LimitKeyMismatch { .. }
             | GraphError::LimitNotPositive { .. }
-            | GraphError::SwitchKeyMismatch { .. }
             | GraphError::CountKeyMismatch { .. }
             | GraphError::CountNegative { .. }
             | GraphError::SameAuthor { .. }
-            | GraphError::VerdictSchemaMismatch { .. }
+            | GraphError::VerdictShapeMismatch { .. }
             | GraphError::KeyCollision { .. }
             | GraphError::FlagKeyMismatch { .. }
             | GraphError::ToolLimitReached { .. }
@@ -526,5 +525,17 @@ impl std::error::Error for GraphError {
 impl From<MessageError> for GraphError {
     fn from(error: MessageError) -> Self {
         GraphError::Message(error)
+    }
+}
+
+impl From<ClientError> for GraphError {
+    fn from(error: ClientError) -> Self {
+        GraphError::Model(error)
+    }
+}
+
+impl From<BuildError> for GraphError {
+    fn from(error: BuildError) -> Self {
+        GraphError::Request(error)
     }
 }

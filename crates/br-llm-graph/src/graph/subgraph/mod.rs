@@ -25,12 +25,13 @@ pub enum Input {
     Const(Value),
 }
 
-/// Where a child output goes in the parent state.
+/// Where a value a node gives goes in the state of the graph it runs in: an
+/// output of a called graph (`SubGraph`), or the answer of an `LlmCall`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Output {
-    /// Sets a parent key of the output's kind.
+    /// Sets a key of the value's kind.
     Set(Key),
-    /// Appends to a parent list of the output's kind.
+    /// Appends to a list of the value's kind.
     Append(Key),
 }
 

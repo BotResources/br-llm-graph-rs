@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_messages::{
     AssistantBlock, Conversation, Entry, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
     ToolResultBlock, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
@@ -11,14 +12,11 @@ use serde_json::{Value as Json, json};
 
 use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
-use crate::react::llm_node::Source;
-use crate::react::model::OutputMode;
-use crate::react::model::ToolSpec;
 use crate::react::react_agent::ReactAgent;
-use crate::react::test_support::{
-    LoggingModel, author, calls_step, config, key, schema, text_step,
-};
+use crate::react::source::Source;
+use crate::react::test_support::{author, calls_step, config, key, mock, schema, spec, text_step};
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
 use crate::run::{Outcome, channel, run};
 use crate::state::{Config, State, Value};
@@ -34,29 +32,22 @@ struct Gauge {
 
 /// A tool that measures its overlap with the other calls of its gauge.
 struct GaugeTool {
-    name: &'static str,
+    spec: ToolSpec,
     gauge: Arc<Gauge>,
 }
 
 impl GaugeTool {
     fn new(name: &'static str, gauge: &Arc<Gauge>) -> Arc<Self> {
         Arc::new(Self {
-            name,
+            spec: spec(name),
             gauge: gauge.clone(),
         })
     }
 }
 
 impl Tool for GaugeTool {
-    fn spec(&self) -> ToolSpec {
-        ToolSpec {
-            name: ToolName::new(self.name).unwrap(),
-            description: "measures overlap".to_owned(),
-            parameters: json!({ "type": "object" }),
-        }
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(
         &'a self,
@@ -117,6 +108,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         tools: vec![GaugeTool::new("gauge", &gauge)],
         max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
         enabled: None,
+        gates: Arc::new(SharedGates::default()),
     };
     let graph = GraphBuilder::new(schema())
         .entry(NodeId::new("tools").unwrap())
@@ -168,12 +160,11 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
     let calls = calls_step(&["left", "left", "left", "right", "right", "right"]);
     let mut steps = vec![calls; runs];
     steps.extend(vec![text_step("measured"); runs]);
-    let model = Arc::new(LoggingModel::new(steps));
     ReactAgent {
         author: author(),
-        model,
+        client: Arc::new(mock(steps)),
         system: vec![Source::Const("Measure.".to_owned())],
-        output: OutputMode::Text,
+        output: OutputMode::Plain,
         tools: vec![left.clone(), right.clone()],
         tool_nodes: vec![
             (
@@ -187,7 +178,6 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
         ],
         tool_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
         round_limit: None,
-        thinking: None,
         enabled: None,
         inputs: Vec::new(),
     }

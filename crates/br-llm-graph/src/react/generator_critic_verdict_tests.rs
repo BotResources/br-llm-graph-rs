@@ -1,227 +1,235 @@
+//! The critic's verdict: the default shape `verdict` and its `thinking`
+//! parameter, which follows the reasoning level of the critic's client, the
+//! descriptions, and a caller's override with or without a reader.
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use br_llm_clients_core::{
+    ClientRequest, OutputMode, Parameter, ParameterKind, Parameters, ReasoningLevel,
+    StructuredShape,
+};
+use br_llm_clients_mock::MockClient;
 use br_llm_messages::{Conversation, Step};
-use serde_json::{Value as Json, json};
+use serde_json::json;
 
 use crate::error::GraphError;
-use crate::graph::{Count, Switch};
-use crate::react::generator_critic::{CriticSeat, GeneratorCritic};
-use crate::react::generator_critic_tests::*;
-use crate::react::llm_node::Source;
-use crate::react::model::{OutputMode, Request};
+use crate::graph::Count;
+use crate::react::generator_critic::GeneratorCritic;
+use crate::react::generator_critic_support::*;
+use crate::react::seats::CriticSeat;
+use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::react::verdict::{Verdict, VerdictOverride};
-use crate::state::{Kind, Value};
+use crate::react::verdict::{Verdict, VerdictOverride, VerdictReader};
+use crate::state::{Config, Kind, State, Value};
 use crate::value::Key;
 
-/// The critic's request on a one-round run whose answer it validates with
-/// `reply`, and the generator-critic's state at its end.
+/// A critic client at `reasoning` whose script is `replies`.
+fn critic_at(reasoning: ReasoningLevel, replies: Vec<Step>) -> MockClient {
+    let client = mock_at(reasoning);
+    for reply in replies {
+        push(&client, reply);
+    }
+    client
+}
+
+/// The critic's request on a one-round run on `question("explain")` whose
+/// answer `critic` validates, with `extra` inputs and `config`, and the state
+/// at its end. `critic_client` is the client `critic` sits on.
 async fn judged_with(
     critic: CriticSeat,
-    reply: Step,
+    critic_client: &MockClient,
+    extra: Vec<(Key, Value)>,
     config: BTreeMap<Key, Value>,
-) -> (Request, crate::state::State) {
-    let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
-    let critic_model = Arc::new(LoggingModel::new(vec![reply]));
+) -> (ClientRequest, State) {
     let graph = GeneratorCritic::new(
-        generator(generator_model),
-        CriticSeat {
-            model: critic_model.clone(),
-            ..critic
-        },
+        generator(&mock(vec![text_step("draft")])),
+        critic,
         Count::Fixed(1),
     )
     .graph()
     .unwrap();
-    let state = ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
-        "validated",
-    );
-    (critic_model.requests().remove(0), state)
-}
-
-fn seat() -> CriticSeat {
-    critic(Arc::new(LoggingModel::new(Vec::new())))
-}
-
-fn valid() -> Step {
-    verdict(true, "")
-}
-
-fn schema_of(request: &Request) -> &Json {
-    match &request.output {
-        OutputMode::Structured { schema } => schema,
-        OutputMode::Text => panic!("expected a structured request"),
-    }
-}
-
-fn property_names(schema: &Json) -> Vec<&str> {
-    schema["properties"]
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect()
-}
-
-fn default_schema() -> Json {
-    json!({
-        "type": "object",
-        "properties": {
-            "thinking": {
-                "type": "string",
-                "description": "Explanation of the thought process and validation steps"
-            },
-            "is_valid": {
-                "type": "boolean",
-                "description": "Boolean indicating if the generated message is valid"
-            },
-            "message": {
-                "type": "string",
-                "description": "Feedback message for the generator, empty if validation passed"
-            }
-        },
-        "required": ["thinking", "is_valid", "message"],
-        "additionalProperties": false
-    })
-}
-
-#[tokio::test]
-async fn given_the_default_critic_when_it_judges_then_thinking_is_valid_and_message_in_order_with_their_descriptions()
- {
-    let (request, _) = judged_with(seat(), valid(), BTreeMap::new()).await;
-    assert_eq!(schema_of(&request), &default_schema());
-    assert_eq!(
-        property_names(schema_of(&request)),
-        ["thinking", "is_valid", "message"]
-    );
-    assert_eq!(request.thinking, None);
-    assert!(request.tools.is_empty());
-}
-
-#[tokio::test]
-async fn given_the_critic_thinking_switch_on_or_off_when_it_judges_then_the_schema_is_unchanged() {
-    for thinking in [Switch::Fixed(true), Switch::Fixed(false)] {
-        let (request, _) = judged_with(
-            CriticSeat {
-                thinking: Some(thinking),
-                ..seat()
-            },
-            valid(),
-            BTreeMap::new(),
-        )
-        .await;
-        assert_eq!(schema_of(&request), &default_schema());
-    }
-    for deep in [true, false] {
-        let (request, _) = judged_with(
-            CriticSeat {
-                thinking: Some(Switch::Config(key("critic_thinks"))),
-                ..seat()
-            },
-            valid(),
-            BTreeMap::from([(key("critic_thinks"), Value::bool(deep))]),
-        )
-        .await;
-        assert_eq!(request.thinking, Some(deep));
-        assert_eq!(schema_of(&request), &default_schema());
-    }
-}
-
-#[tokio::test]
-async fn given_no_reasoning_field_when_the_critic_judges_then_the_schema_has_no_thinking() {
-    let (request, _) = judged_with(
-        CriticSeat {
-            reasoning_field: false,
-            thinking_description: Some(Source::Const("never sent".to_owned())),
-            ..seat()
-        },
-        structured_step(json!({ "is_valid": true, "message": "" })),
-        BTreeMap::new(),
-    )
-    .await;
-    let mut expected = default_schema();
-    expected["properties"]
-        .as_object_mut()
-        .unwrap()
-        .remove("thinking");
-    expected["required"] = json!(["is_valid", "message"]);
-    assert_eq!(schema_of(&request), &expected);
-}
-
-#[tokio::test]
-async fn given_custom_descriptions_when_the_critic_judges_then_each_is_resolved_into_the_schema() {
-    let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
-    let critic_model = Arc::new(LoggingModel::new(vec![valid()]));
-    let graph = GeneratorCritic::new(
-        generator(generator_model),
-        CriticSeat {
-            thinking_description: Some(Source::Const("Your reasoning".to_owned())),
-            is_valid_description: Some(Source::State(key("pass_rule"))),
-            message_description: Some(Source::Config(key("feedback_rule"))),
-            ..critic(critic_model.clone())
-        },
-        Count::Fixed(1),
-    )
-    .graph()
-    .unwrap();
-    assert_eq!(
-        graph.signature().inputs.get(&key("pass_rule")),
-        Some(&Kind::Str)
-    );
-    let state = graph
-        .start_state([
-            (
-                key("conversation"),
-                Value::conversation(question("explain")),
-            ),
-            (
-                key("generator_history"),
-                Value::conversation(Conversation::new()),
-            ),
-            (key("pass_rule"), Value::str("True when complete")),
-        ])
-        .unwrap();
-    let config = crate::state::Config::new(
-        graph.schema(),
-        BTreeMap::from([(key("feedback_rule"), Value::str("What to change"))]),
-    )
-    .unwrap();
+    let mut inputs = vec![
+        (
+            key("conversation"),
+            Value::conversation(question("explain")),
+        ),
+        (
+            key("generator_history"),
+            Value::conversation(Conversation::new()),
+        ),
+    ];
+    inputs.extend(extra);
+    let state = graph.start_state(inputs).unwrap();
+    let config = Config::new(graph.schema(), config).unwrap();
     let (_sender, mut inbox) = crate::run::channel();
-    ended(
+    let state = ended(
         crate::run::run(&graph, &config, state, None, &ctx(), &mut inbox).await,
         "validated",
     );
-    let request = critic_model.requests().remove(0);
-    let schema = schema_of(&request);
-    assert_eq!(property_names(schema), ["thinking", "is_valid", "message"]);
+    (requests(critic_client).remove(0), state)
+}
+
+fn shape_sent(request: &ClientRequest) -> &StructuredShape {
+    match request.output() {
+        OutputMode::Structured(shape) => shape,
+        OutputMode::Plain => panic!("expected a structured request"),
+    }
+}
+
+/// Each parameter of `shape` as `(name, kind, required, description)`.
+fn parameters_of(shape: &StructuredShape) -> Vec<(&str, ParameterKind, bool, &str)> {
+    shape
+        .parameters()
+        .iter()
+        .map(|parameter| {
+            (
+                parameter.name(),
+                parameter.kind().clone(),
+                parameter.is_required(),
+                parameter.description(),
+            )
+        })
+        .collect()
+}
+
+const THINKING: &str = "Explanation of the thought process and validation steps";
+const IS_VALID: &str = "Boolean indicating if the generated message is valid";
+const MESSAGE: &str = "Feedback message for the generator, empty if validation passed";
+
+#[tokio::test]
+async fn given_a_critic_that_does_not_reason_when_it_judges_then_the_verdict_shape_asks_thinking_is_valid_and_message_in_order()
+ {
+    let client = critic_at(ReasoningLevel::Off, vec![verdict(true, "")]);
+    let (request, _) = judged_with(critic(&client), &client, Vec::new(), BTreeMap::new()).await;
+    let shape = shape_sent(&request);
+    assert_eq!(shape.name(), "verdict");
+    assert_eq!(shape.description(), None);
     assert_eq!(
-        schema["properties"]["thinking"]["description"],
-        "Your reasoning"
+        parameters_of(shape),
+        [
+            ("thinking", ParameterKind::String, true, THINKING),
+            ("is_valid", ParameterKind::Boolean, true, IS_VALID),
+            ("message", ParameterKind::String, true, MESSAGE),
+        ]
+    );
+    assert!(request.tools().is_empty());
+}
+
+#[tokio::test]
+async fn given_a_critic_that_reasons_natively_when_it_judges_then_the_verdict_shape_has_no_thinking()
+ {
+    for level in [
+        ReasoningLevel::Low,
+        ReasoningLevel::Medium,
+        ReasoningLevel::High,
+        ReasoningLevel::Extra,
+        ReasoningLevel::Max,
+    ] {
+        let client = critic_at(
+            level,
+            vec![structured_step(json!({ "is_valid": true, "message": "" }))],
+        );
+        let (request, _) = judged_with(critic(&client), &client, Vec::new(), BTreeMap::new()).await;
+        let shape = shape_sent(&request);
+        assert_eq!(shape.name(), "verdict");
+        assert_eq!(
+            parameters_of(shape),
+            [
+                ("is_valid", ParameterKind::Boolean, true, IS_VALID),
+                ("message", ParameterKind::String, true, MESSAGE),
+            ],
+            "{level:?}"
+        );
+    }
+}
+
+#[test]
+fn given_a_thinking_description_on_a_state_key_when_built_then_it_is_an_input_only_for_a_critic_that_does_not_reason()
+ {
+    let built = |level: ReasoningLevel| {
+        GeneratorCritic::new(
+            generator(&mock(Vec::new())),
+            CriticSeat {
+                thinking_description: Some(Source::State(key("reasoning_rule"))),
+                ..critic(&mock_at(level))
+            },
+            Count::Fixed(1),
+        )
+        .graph()
+        .unwrap()
+    };
+    assert_eq!(
+        built(ReasoningLevel::Off)
+            .signature()
+            .inputs
+            .get(&key("reasoning_rule")),
+        Some(&Kind::Str)
     );
     assert_eq!(
-        schema["properties"]["is_valid"]["description"],
-        "True when complete"
-    );
-    assert_eq!(
-        schema["properties"]["message"]["description"],
-        "What to change"
+        built(ReasoningLevel::High)
+            .signature()
+            .inputs
+            .get(&key("reasoning_rule")),
+        None,
+        "a description not in use is not declared"
     );
 }
 
-fn graded_schema() -> Json {
-    json!({
-        "type": "object",
-        "properties": {
-            "grade": { "type": "string", "enum": ["pass", "fail"] },
-            "notes": { "type": "string" }
-        },
-        "required": ["grade", "notes"]
-    })
+#[tokio::test]
+async fn given_custom_descriptions_when_the_critic_judges_then_each_is_resolved_into_the_shape() {
+    let client = critic_at(ReasoningLevel::Off, vec![verdict(true, "")]);
+    let seat = CriticSeat {
+        thinking_description: Some(Source::Const("Your reasoning".to_owned())),
+        is_valid_description: Some(Source::State(key("pass_rule"))),
+        message_description: Some(Source::Config(key("feedback_rule"))),
+        ..critic(&client)
+    };
+    let (request, _) = judged_with(
+        seat,
+        &client,
+        vec![(key("pass_rule"), Value::str("True when complete"))],
+        BTreeMap::from([(key("feedback_rule"), Value::str("What to change"))]),
+    )
+    .await;
+    assert_eq!(
+        parameters_of(shape_sent(&request)),
+        [
+            ("thinking", ParameterKind::String, true, "Your reasoning"),
+            (
+                "is_valid",
+                ParameterKind::Boolean,
+                true,
+                "True when complete"
+            ),
+            ("message", ParameterKind::String, true, "What to change"),
+        ]
+    );
 }
 
-fn graded_reader() -> crate::react::verdict::VerdictReader {
+/// A shape of the caller's: a grade among `pass` and `fail`, and notes.
+fn graded_shape() -> StructuredShape {
+    StructuredShape::new(
+        "grading",
+        Some("How the answer is graded".to_owned()),
+        Parameters::new(vec![
+            Parameter::new(
+                "grade",
+                "",
+                true,
+                ParameterKind::Enum {
+                    values: vec!["pass".to_owned(), "fail".to_owned()],
+                },
+            )
+            .unwrap(),
+            Parameter::new("notes", "", true, ParameterKind::String).unwrap(),
+        ])
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+fn graded_reader() -> VerdictReader {
     Arc::new(|value| {
         let grade = value["grade"]
             .as_str()
@@ -235,31 +243,39 @@ fn graded_reader() -> crate::react::verdict::VerdictReader {
     })
 }
 
+fn graded(client: &MockClient) -> CriticSeat {
+    CriticSeat {
+        thinking_description: Some(Source::State(key("ignored"))),
+        verdict: Some(VerdictOverride {
+            shape: graded_shape(),
+            reader: Some(graded_reader()),
+        }),
+        ..critic(client)
+    }
+}
+
 #[tokio::test]
-async fn given_an_override_with_a_reader_when_the_critic_rejects_then_its_schema_is_sent_and_the_reader_gives_the_verdict()
+async fn given_an_override_with_a_reader_when_the_critic_rejects_then_its_shape_is_sent_and_the_reader_gives_the_verdict()
  {
-    let generator_model = Arc::new(LoggingModel::new(vec![
-        text_step("draft"),
-        text_step("better"),
-    ]));
-    let critic_model = Arc::new(LoggingModel::new(vec![
-        structured_step(json!({ "grade": "fail", "notes": "too short" })),
-        structured_step(json!({ "grade": "pass", "notes": "" })),
-    ]));
+    let generator_client = mock(vec![text_step("draft"), text_step("better")]);
+    let critic_client = critic_at(
+        ReasoningLevel::Off,
+        vec![
+            structured_step(json!({ "grade": "fail", "notes": "too short" })),
+            structured_step(json!({ "grade": "pass", "notes": "" })),
+        ],
+    );
     let graph = GeneratorCritic::new(
-        generator(generator_model),
-        CriticSeat {
-            reasoning_field: false,
-            verdict: Some(VerdictOverride {
-                schema: graded_schema(),
-                reader: Some(graded_reader()),
-            }),
-            ..critic(critic_model.clone())
-        },
+        generator(&generator_client),
+        graded(&critic_client),
         Count::Fixed(2),
     )
     .graph()
     .unwrap();
+    assert!(
+        !graph.signature().inputs.contains_key(&key("ignored")),
+        "the descriptions are ignored with an override"
+    );
     let state = ended(call(&graph, question("explain")).await, "validated");
     assert_eq!(
         shape_of(&state, "conversation"),
@@ -270,125 +286,151 @@ async fn given_an_override_with_a_reader_when_the_critic_rejects_then_its_schema
             "writer:better"
         ]
     );
-    for request in critic_model.requests() {
-        assert_eq!(schema_of(&request), &graded_schema());
+    let requests = requests(&critic_client);
+    assert_eq!(requests.len(), 2);
+    for request in requests {
+        assert_eq!(shape_sent(&request), &graded_shape());
     }
 }
 
 #[tokio::test]
-async fn given_a_reader_that_rejects_with_a_blank_message_when_the_critic_judges_then_structured() {
-    let generator_model = Arc::new(LoggingModel::new(vec![text_step("draft")]));
-    let critic_model = Arc::new(LoggingModel::new(vec![structured_step(
-        json!({ "grade": "fail", "notes": " \n" }),
-    )]));
+async fn given_a_reader_error_when_the_critic_judges_then_the_run_fails_with_it_as_returned() {
+    let critic_client = critic_at(
+        ReasoningLevel::Off,
+        vec![structured_step(json!({ "notes": "no grade given" }))],
+    );
     let graph = GeneratorCritic::new(
-        generator(generator_model),
-        CriticSeat {
-            verdict: Some(VerdictOverride {
-                schema: graded_schema(),
-                reader: Some(graded_reader()),
-            }),
-            ..critic(critic_model)
-        },
+        generator(&mock(vec![text_step("draft")])),
+        graded(&critic_client),
         Count::Fixed(1),
     )
     .graph()
     .unwrap();
-    let failure = call(&graph, question("explain")).await.err().unwrap();
+    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
     assert!(
-        failure.error.to_string().contains("blank message"),
-        "{}",
-        failure.error
+        matches!(error, GraphError::Structured { ref message } if message == "no grade"),
+        "{error}"
     );
+    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
 }
 
 #[tokio::test]
-async fn given_an_override_without_a_reader_when_the_critic_judges_then_the_schema_is_sent_as_given()
- {
-    let schema = json!({
-        "type": "object",
-        "properties": {
-            "score": { "type": "integer" },
-            "is_valid": { "type": "boolean" },
-            "message": { "type": "string" }
-        },
-        "required": ["score", "is_valid", "message"]
-    });
-    let (request, _) = judged_with(
-        CriticSeat {
-            verdict: Some(VerdictOverride {
-                schema: schema.clone(),
-                reader: None,
-            }),
-            message_description: Some(Source::State(key("ignored"))),
-            ..seat()
-        },
-        structured_step(json!({ "score": 9, "is_valid": true, "message": "" })),
-        BTreeMap::new(),
+async fn given_a_reader_that_rejects_with_a_blank_message_when_the_critic_judges_then_structured() {
+    let critic_client = critic_at(
+        ReasoningLevel::Off,
+        vec![structured_step(json!({ "grade": "fail", "notes": " \n" }))],
+    );
+    let graph = GeneratorCritic::new(
+        generator(&mock(vec![text_step("draft")])),
+        graded(&critic_client),
+        Count::Fixed(1),
     )
-    .await;
-    assert_eq!(schema_of(&request), &schema);
+    .graph()
+    .unwrap();
+    let (_, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    assert!(
+        matches!(error, GraphError::Structured { ref message } if message.contains("blank message")),
+        "{error}"
+    );
+}
+
+/// A shape readable as the default verdict, with a parameter of its own.
+fn scored_shape(parameters: Vec<Parameter>) -> StructuredShape {
+    StructuredShape::new("scored", None, Parameters::new(parameters).unwrap()).unwrap()
+}
+
+fn parameter(name: &str, kind: ParameterKind, required: bool) -> Parameter {
+    Parameter::new(name, "", required, kind).unwrap()
+}
+
+#[tokio::test]
+async fn given_an_override_without_a_reader_when_the_critic_judges_then_the_shape_is_sent_as_given()
+{
+    let shape = scored_shape(vec![
+        parameter("score", ParameterKind::Integer, true),
+        parameter("is_valid", ParameterKind::Boolean, true),
+        parameter("message", ParameterKind::String, true),
+    ]);
+    let client = critic_at(
+        ReasoningLevel::Off,
+        vec![structured_step(
+            json!({ "score": 9, "is_valid": true, "message": "" }),
+        )],
+    );
+    let seat = CriticSeat {
+        verdict: Some(VerdictOverride {
+            shape: shape.clone(),
+            reader: None,
+        }),
+        message_description: Some(Source::State(key("ignored"))),
+        ..critic(&client)
+    };
+    let (request, _) = judged_with(seat, &client, Vec::new(), BTreeMap::new()).await;
+    assert_eq!(shape_sent(&request), &shape);
 }
 
 #[test]
-fn given_an_override_schema_that_cannot_be_read_without_a_reader_when_built_then_verdict_schema_mismatch()
+fn given_an_override_shape_that_cannot_be_read_without_a_reader_when_built_then_verdict_shape_mismatch()
  {
-    let base = || {
-        json!({
-            "type": "object",
-            "properties": {
-                "is_valid": { "type": "boolean" },
-                "message": { "type": "string" }
-            },
-            "required": ["is_valid", "message"]
-        })
-    };
-    let mut not_object = base();
-    not_object["type"] = json!("array");
-    let mut no_message = base();
-    no_message["properties"]
-        .as_object_mut()
-        .unwrap()
-        .remove("message");
-    let mut string_flag = base();
-    string_flag["properties"]["is_valid"] = json!({ "type": "string" });
-    let mut optional_message = base();
-    optional_message["required"] = json!(["is_valid"]);
-    for schema in [
-        json!("verdict"),
-        not_object,
-        no_message,
-        string_flag,
-        optional_message,
-    ] {
-        let built = GeneratorCritic::new(
-            generator(Arc::new(LoggingModel::new(Vec::new()))),
+    let is_valid = || parameter("is_valid", ParameterKind::Boolean, true);
+    let message = || parameter("message", ParameterKind::String, true);
+    let built = |shape: StructuredShape, reader: Option<VerdictReader>| {
+        GeneratorCritic::new(
+            generator(&mock(Vec::new())),
             CriticSeat {
-                verdict: Some(VerdictOverride {
-                    schema: schema.clone(),
-                    reader: None,
-                }),
-                ..seat()
+                verdict: Some(VerdictOverride { shape, reader }),
+                ..critic(&mock(Vec::new()))
             },
             Count::Fixed(1),
         )
-        .graph();
+        .graph()
+    };
+    for (parameters, reason) in [
+        (vec![message()], "is_valid is not a boolean parameter"),
+        (
+            vec![
+                parameter("is_valid", ParameterKind::String, true),
+                message(),
+            ],
+            "is_valid is not a boolean parameter",
+        ),
+        (vec![is_valid()], "message is not a string parameter"),
+        (
+            vec![
+                is_valid(),
+                parameter(
+                    "message",
+                    ParameterKind::Array {
+                        items: Box::new(ParameterKind::String),
+                    },
+                    true,
+                ),
+            ],
+            "message is not a string parameter",
+        ),
+        (
+            vec![
+                is_valid(),
+                parameter("message", ParameterKind::String, false),
+            ],
+            "is_valid and message are not both required",
+        ),
+        (
+            vec![
+                parameter("is_valid", ParameterKind::Boolean, false),
+                message(),
+            ],
+            "is_valid and message are not both required",
+        ),
+    ] {
+        let refused = built(scored_shape(parameters), None);
         assert!(
-            matches!(built, Err(GraphError::VerdictSchemaMismatch { .. })),
-            "{schema}"
+            matches!(refused, Err(GraphError::VerdictShapeMismatch { reason: found }) if found == reason),
+            "{reason}"
         );
     }
-    let accepted = GeneratorCritic::new(
-        generator(Arc::new(LoggingModel::new(Vec::new()))),
-        CriticSeat {
-            verdict: Some(VerdictOverride {
-                schema: json!("anything"),
-                reader: Some(graded_reader()),
-            }),
-            ..seat()
-        },
-        Count::Fixed(1),
-    )
-    .graph();
-    assert!(accepted.is_ok());
+    // Positive controls: the same refused shape is the caller's concern with
+    // a reader, and a readable shape is accepted without one.
+    assert!(built(scored_shape(vec![message()]), Some(graded_reader())).is_ok());
+    assert!(built(scored_shape(vec![message(), is_valid()]), None).is_ok());
 }

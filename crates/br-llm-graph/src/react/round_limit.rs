@@ -4,10 +4,8 @@ use br_llm_messages::{
 };
 
 use crate::error::GraphError;
-use crate::graph::{Always, CheckSite, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
+use crate::graph::{Always, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
 use crate::react::helpers::{last_turn_by_author, pending_calls};
-use crate::react::llm_node::LlmNode;
-use crate::react::model::ToolCalls;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{Key, NodeId};
@@ -29,9 +27,9 @@ pub enum OnLimit {
     /// The run fails with `ToolLimitReached`.
     Error,
     /// Each call is answered with an error result saying it was not
-    /// executed, and the model is called once more with tool calls
-    /// forbidden; a reply that still calls tools fails the run with
-    /// `ToolLimitReached`.
+    /// executed, and the model is called once more, its tools still
+    /// declared (br-llm-clients-core has no setting that forbids tool calls);
+    /// a reply that still calls tools fails the run with `ToolLimitReached`.
     Continue { node: NodeId, flag: Key },
     /// Each call is answered the same way and the turn is closed with a step
     /// whose stop reason is `other(tool_round_limit)`, without calling the
@@ -116,30 +114,6 @@ pub(crate) fn completed_rounds(conversation: &Conversation, author: &Author) -> 
             .filter(|item| matches!(item, TurnItem::ToolResults(_)))
             .count(),
         Some(_) | None => 0,
-    }
-}
-
-pub(crate) struct LimitedLlm {
-    pub llm: LlmNode,
-    pub max_rounds: Limit,
-}
-
-impl Node for LimitedLlm {
-    fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
-        Box::pin(async move {
-            let done = completed_rounds(state.conversation(&self.llm.key)?, &self.llm.author);
-            let max = self.max_rounds.resolve(config)?.get();
-            let tool_calls = if done > max {
-                ToolCalls::Forbidden
-            } else {
-                ToolCalls::Allowed
-            };
-            self.llm.step(state, config, ctx, tool_calls).await
-        })
-    }
-
-    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
-        self.llm.check(schema, site)
     }
 }
 

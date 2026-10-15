@@ -1,6 +1,5 @@
 //! The tool concurrency limit: a gate that lets at most a number of tool
-//! calls run at once, held by one tool node or shared by the tool nodes of
-//! one ReAct loop.
+//! calls run at once, shared by the tool nodes of one ReAct loop.
 
 use std::collections::HashMap;
 use std::future::poll_fn;
@@ -87,26 +86,21 @@ impl SharedGates {
         *holders += 1;
         Lease {
             gate: gate.clone(),
-            shared: Some((self.clone(), superstep)),
+            shared: self.clone(),
+            superstep,
         }
     }
 }
 
-/// A gate held by a tool node while it runs its calls: its own, or the
-/// superstep's shared gate, forgotten once its last holder is done.
+/// The superstep's shared gate, held by a tool node while it runs its calls
+/// and forgotten once its last holder is done.
 pub(crate) struct Lease {
     gate: Arc<Gate>,
-    shared: Option<(Arc<SharedGates>, usize)>,
+    shared: Arc<SharedGates>,
+    superstep: usize,
 }
 
 impl Lease {
-    pub(crate) fn own(width: usize) -> Self {
-        Self {
-            gate: Arc::new(Gate::new(width)),
-            shared: None,
-        }
-    }
-
     pub(crate) fn gate(&self) -> &Gate {
         &self.gate
     }
@@ -114,13 +108,11 @@ impl Lease {
 
 impl Drop for Lease {
     fn drop(&mut self) {
-        if let Some((shared, superstep)) = &self.shared {
-            let mut gates = lock(&shared.gates);
-            if let Some((_, holders)) = gates.get_mut(superstep) {
-                *holders -= 1;
-                if *holders == 0 {
-                    gates.remove(superstep);
-                }
+        let mut gates = lock(&self.shared.gates);
+        if let Some((_, holders)) = gates.get_mut(&self.superstep) {
+            *holders -= 1;
+            if *holders == 0 {
+                gates.remove(&self.superstep);
             }
         }
     }

@@ -1,14 +1,18 @@
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, Mutex};
 
+use br_llm_clients_core::{
+    BoxFuture, CacheRequirement, CallOutcome, CallReport, Client, ClientError, ClientRequest,
+    ClientSettings, MaxOutputTokens, Parameters, ReasoningLevel, StreamSink, ToolSpec,
+};
+use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_messages::{
-    AssistantBlock, Author, Conversation, Step, StopReason, StreamEvent, Text, ToolCall,
-    ToolCallId, ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
+    AssistantBlock, Author, Conversation, ModelId, Step, StopReason, Text, ToolCall, ToolCallId,
+    ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
 };
 use serde_json::{Value as Json, json};
 
-use crate::react::model::{Model, ModelFuture, StreamSink, ToolSpec};
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
@@ -83,7 +87,8 @@ pub(crate) fn tool_call_step(id: &str, name: &str, arguments: Json) -> Step {
     .unwrap()
 }
 
-/// A step calling each named tool once, with ids `c1`, `c2`, ...
+/// A step calling each named tool once, with ids `c1`, `c2`, ... (a mock
+/// renames them when it serves the step).
 pub(crate) fn calls_step(names: &[&str]) -> Step {
     Step::new(
         names
@@ -138,137 +143,165 @@ pub(crate) fn structured_step(value: Json) -> Step {
     .unwrap()
 }
 
-pub(crate) struct ScriptedModel {
-    steps: Mutex<VecDeque<Step>>,
+/// A step holding only a thinking block: a reply a conforming client refuses
+/// (`ReplyUnusable`), served only by `LaxClient`.
+pub(crate) fn thinking_only_step() -> Step {
+    Step::new(
+        vec![AssistantBlock::Thinking(br_llm_messages::Thinking {
+            text: "hmm".to_owned(),
+            signature: None,
+        })],
+        StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap()
 }
 
-impl ScriptedModel {
+/// The settings of a test client, at `reasoning`.
+pub(crate) fn settings(reasoning: ReasoningLevel) -> ClientSettings {
+    ClientSettings::new(
+        ModelId::new("mock-model").unwrap(),
+        reasoning,
+        CacheRequirement::NotRequired,
+        MaxOutputTokens::new(4096).unwrap(),
+    )
+}
+
+/// A mock that can do everything, at `reasoning`, with an empty script.
+pub(crate) fn mock_at(reasoning: ReasoningLevel) -> MockClient {
+    MockClient::new(
+        settings(reasoning),
+        Capabilities::new(CapabilitiesSpec::everything()).unwrap(),
+    )
+}
+
+/// A mock (reasoning `Medium`) answering `steps` in order, the tool call ids
+/// of each renamed when it is served (`call-{seq}-{i}`), so a script can call
+/// tools again in one conversation.
+pub(crate) fn mock(steps: Vec<Step>) -> MockClient {
+    let mock = mock_at(ReasoningLevel::Medium);
+    for step in steps {
+        push(&mock, step);
+    }
+    mock
+}
+
+/// Adds `step` at the end of the script of `mock`, its tool call ids renamed
+/// when it is served.
+pub(crate) fn push(mock: &MockClient, step: Step) {
+    mock.push_reply(
+        Reply::success(step)
+            .rename_tool_call_ids("call")
+            .build()
+            .unwrap(),
+    );
+}
+
+/// A mock whose next call fails with `error`.
+pub(crate) fn failing(error: ClientError) -> MockClient {
+    let mock = mock_at(ReasoningLevel::Medium);
+    mock.push_reply(Reply::failure(error).build().unwrap());
+    mock
+}
+
+/// The requests the calls of `mock` received, in call order.
+pub(crate) fn requests(mock: &MockClient) -> Vec<ClientRequest> {
+    mock.log()
+        .into_iter()
+        .map(|call| call.request().clone())
+        .collect()
+}
+
+/// The system text of `request`, if any.
+pub(crate) fn system_of(request: &ClientRequest) -> Option<String> {
+    request.system().map(|text| text.as_str().to_owned())
+}
+
+/// The names of the tools `request` declares, in order.
+pub(crate) fn tool_names(request: &ClientRequest) -> Vec<String> {
+    request
+        .tools()
+        .iter()
+        .map(|spec| spec.name().as_str().to_owned())
+        .collect()
+}
+
+/// A client that serves its steps as they are, without the checks of a
+/// conforming client: the client a test writes for a reply the mock refuses,
+/// such as a step holding only thinking. It sends no stream event and keeps
+/// every request.
+pub(crate) struct LaxClient {
+    settings: ClientSettings,
+    steps: Mutex<VecDeque<Step>>,
+    requests: Mutex<Vec<ClientRequest>>,
+}
+
+impl LaxClient {
     pub(crate) fn new(steps: Vec<Step>) -> Self {
         Self {
-            steps: Mutex::new(steps.into_iter().collect()),
-        }
-    }
-}
-
-impl Model for ScriptedModel {
-    fn complete<'a>(
-        &'a self,
-        _request: crate::react::model::Request,
-        sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        let step = self
-            .steps
-            .lock()
-            .ok()
-            .and_then(|mut queue| queue.pop_front());
-        Box::pin(async move {
-            let step = step.ok_or_else(|| -> crate::react::model::ModelError {
-                "scripted model exhausted".into()
-            })?;
-            for text in step.text() {
-                sink.event(&StreamEvent::TextDelta {
-                    index: 0,
-                    text: text.as_str().to_owned(),
-                });
-            }
-            Ok(step)
-        })
-    }
-}
-
-/// A scripted model that keeps every request it receives.
-pub(crate) struct LoggingModel {
-    steps: Mutex<VecDeque<Step>>,
-    requests: Mutex<Vec<crate::react::model::Request>>,
-}
-
-impl LoggingModel {
-    pub(crate) fn new(steps: Vec<Step>) -> Self {
-        Self {
-            steps: Mutex::new(steps.into_iter().collect()),
+            settings: settings(ReasoningLevel::Medium),
+            steps: Mutex::new(steps.into()),
             requests: Mutex::new(Vec::new()),
         }
     }
 
-    pub(crate) fn requests(&self) -> Vec<crate::react::model::Request> {
+    pub(crate) fn requests(&self) -> Vec<ClientRequest> {
         self.requests.lock().unwrap().clone()
     }
 }
 
-impl Model for LoggingModel {
-    fn complete<'a>(
+impl Client for LaxClient {
+    fn call<'a>(
         &'a self,
-        request: crate::react::model::Request,
-        _sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        self.requests.lock().unwrap().push(request);
+        request: &'a ClientRequest,
+        _sink: &'a mut dyn StreamSink,
+    ) -> BoxFuture<'a, CallOutcome> {
+        self.requests.lock().unwrap().push(request.clone());
         let step = self.steps.lock().unwrap().pop_front();
-        Box::pin(async move { step.ok_or_else(|| "scripted model exhausted".into()) })
+        Box::pin(async move {
+            let report = CallReport::new(std::time::Duration::ZERO);
+            match step {
+                Some(step) => {
+                    let report = match step.usage() {
+                        Some(usage) => report.with_usage(usage.clone()),
+                        None => report,
+                    };
+                    CallOutcome::success(report, step).unwrap()
+                }
+                None => CallOutcome::failure(
+                    report,
+                    ClientError::ProviderRejected {
+                        status: None,
+                        code: None,
+                        body: "the lax client has no step left".to_owned(),
+                    },
+                ),
+            }
+        })
+    }
+
+    fn settings(&self) -> &ClientSettings {
+        &self.settings
     }
 }
 
-pub(crate) struct FailingModel;
-
-impl Model for FailingModel {
-    fn complete<'a>(
-        &'a self,
-        _request: crate::react::model::Request,
-        _sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        Box::pin(async { Err("boom".into()) })
-    }
-}
-
-pub(crate) struct RecordingModel {
-    pub(crate) tools_seen: Mutex<Vec<String>>,
-    pub(crate) system_seen: Mutex<Option<String>>,
-}
-
-impl RecordingModel {
-    pub(crate) fn new() -> Self {
-        Self {
-            tools_seen: Mutex::new(Vec::new()),
-            system_seen: Mutex::new(None),
-        }
-    }
-}
-
-impl Model for RecordingModel {
-    fn complete<'a>(
-        &'a self,
-        request: crate::react::model::Request,
-        _sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        if let Ok(mut seen) = self.tools_seen.lock() {
-            *seen = request
-                .tools
-                .iter()
-                .map(|t| t.name.as_str().to_owned())
-                .collect();
-        }
-        if let Ok(mut seen) = self.system_seen.lock() {
-            *seen = request.system.clone();
-        }
-        Box::pin(async { Ok(text_step("recorded")) })
-    }
-}
-
-fn spec(name: &str) -> ToolSpec {
-    ToolSpec {
-        name: ToolName::new(name).unwrap(),
-        description: format!("the {name} tool"),
-        parameters: json!({ "type": "object" }),
-    }
+/// The spec of a test tool without parameters.
+pub(crate) fn spec(name: &str) -> ToolSpec {
+    ToolSpec::new(
+        ToolName::new(name).unwrap(),
+        format!("the {name} tool"),
+        Parameters::default(),
+    )
+    .unwrap()
 }
 
 pub(crate) struct EchoTool;
 
 impl Tool for EchoTool {
-    fn spec(&self) -> ToolSpec {
-        spec("echo")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("echo"));
+        &SPEC
     }
     fn call<'a>(
         &'a self,
@@ -287,11 +320,9 @@ impl Tool for EchoTool {
 pub(crate) struct TallyTool;
 
 impl Tool for TallyTool {
-    fn spec(&self) -> ToolSpec {
-        spec("tally")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("tally"));
+        &SPEC
     }
     fn call<'a>(
         &'a self,
@@ -315,11 +346,9 @@ impl Tool for TallyTool {
 pub(crate) struct ScopeTool;
 
 impl Tool for ScopeTool {
-    fn spec(&self) -> ToolSpec {
-        spec("scope")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("scope"));
+        &SPEC
     }
     fn call<'a>(
         &'a self,
@@ -336,17 +365,16 @@ impl Tool for ScopeTool {
     }
 }
 
+/// Counts its calls.
 #[derive(Default)]
 pub(crate) struct WriteFileTool {
     pub(crate) calls: AtomicUsize,
 }
 
 impl Tool for WriteFileTool {
-    fn spec(&self) -> ToolSpec {
-        spec("write_file")
-    }
-    fn safe(&self) -> bool {
-        false
+    fn spec(&self) -> &ToolSpec {
+        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("write_file"));
+        &SPEC
     }
     fn call<'a>(
         &'a self,
@@ -366,11 +394,9 @@ impl Tool for WriteFileTool {
 pub(crate) struct StrictTool;
 
 impl Tool for StrictTool {
-    fn spec(&self) -> ToolSpec {
-        spec("strict")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("strict"));
+        &SPEC
     }
     fn call<'a>(
         &'a self,
@@ -391,4 +417,46 @@ impl Tool for StrictTool {
 struct StrictArgs {
     #[allow(dead_code)]
     n: i64,
+}
+
+/// Keeps every stream event the observer receives, with the occurrence it
+/// comes from and its conversation key.
+#[derive(Default)]
+pub(crate) struct StreamRecorder {
+    events: Mutex<Vec<(String, String, br_llm_messages::StreamEvent)>>,
+}
+
+impl StreamRecorder {
+    /// The events received, as `(occurrence, key, event)`, in order.
+    pub(crate) fn events(&self) -> Vec<(String, String, br_llm_messages::StreamEvent)> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
+impl crate::observe::Observer for StreamRecorder {
+    fn stream(
+        &self,
+        origin: &crate::origin::Origin,
+        key: &Key,
+        event: &br_llm_messages::StreamEvent,
+    ) {
+        self.events.lock().unwrap().push((
+            origin.occurrence.to_string(),
+            key.as_str().to_owned(),
+            event.clone(),
+        ));
+    }
+}
+
+/// The error a node returned, read back as a `GraphError`.
+pub(crate) fn returned(error: &crate::error::GraphError) -> &crate::error::GraphError {
+    match error {
+        crate::error::GraphError::NodeFailed {
+            source: crate::error::NodeFault::Returned(returned),
+            ..
+        } => returned
+            .downcast_ref::<crate::error::GraphError>()
+            .expect("the node returned a GraphError"),
+        other => panic!("expected a node that returned an error, got: {other}"),
+    }
 }

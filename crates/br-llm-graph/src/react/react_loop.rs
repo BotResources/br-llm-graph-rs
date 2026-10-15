@@ -1,20 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use br_llm_messages::{ToolName, TurnState};
+use br_llm_messages::{Author, ToolName, TurnState};
 
 use crate::error::GraphError;
-use crate::graph::{
-    Always, CheckSite, Context, Edge, FnEdge, GraphBuilder, Limit, Node, NodeFuture, Target,
-};
+use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Limit, Target};
 use crate::react::helpers::{last_turn_state, pending_calls};
 use crate::react::llm_node::LlmNode;
-use crate::react::round_limit::{LimitedLlm, RoundLimit, completed_rounds};
+use crate::react::round_limit::{RoundLimit, completed_rounds};
 use crate::react::tool::Tool;
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
-use crate::state::{Config, Schema, State};
-use crate::value::NodeId;
+use crate::value::{Key, NodeId};
 
 /// The ReAct loop, added to a graph under construction: the model call
 /// `llm`, the tool nodes, the routing edge after the model call and, with a
@@ -47,30 +44,19 @@ impl ReactLoop {
         let key = llm_node.key.clone();
         let author = llm_node.author.clone();
         let enabled = llm_node.enabled.clone();
-        let mut builder = match &self.round_limit {
-            Some(round_limit) => builder.join(
-                self.llm.clone(),
-                LimitedLlm {
-                    llm: llm_node,
-                    max_rounds: round_limit.max_rounds.clone(),
-                },
-            ),
-            None => builder.join(self.llm.clone(), llm_node),
-        };
+        let mut builder = builder.join(self.llm.clone(), llm_node);
         // One gate per superstep for all the tool nodes: the limit bounds
         // their calls together.
         let gates = Arc::new(SharedGates::default());
         for (id, tools) in &self.tool_nodes {
             builder = builder.node(
                 id.clone(),
-                LoopToolNode {
-                    node: ToolNode {
-                        key: key.clone(),
-                        author: author.clone(),
-                        tools: tools.clone(),
-                        max_concurrency: self.tool_concurrency.clone(),
-                        enabled: enabled.clone(),
-                    },
+                ToolNode {
+                    key: key.clone(),
+                    author: author.clone(),
+                    tools: tools.clone(),
+                    max_concurrency: self.tool_concurrency.clone(),
+                    enabled: enabled.clone(),
                     gates: gates.clone(),
                 },
             );
@@ -87,34 +73,33 @@ impl ReactLoop {
     }
 
     fn check_partition(&self, llm_node: &LlmNode) -> Result<(), GraphError> {
-        let declared: HashSet<ToolName> =
-            llm_node.tools.iter().map(|tool| tool.spec().name).collect();
-        let mut counts: HashMap<ToolName, usize> = HashMap::new();
+        let declared: HashSet<&ToolName> = llm_node
+            .tools
+            .iter()
+            .map(|tool| tool.spec().name())
+            .collect();
+        let mut counts: HashMap<&ToolName, usize> = HashMap::new();
         for (_, tools) in &self.tool_nodes {
             for tool in tools {
-                let name = tool.spec().name;
-                if !declared.contains(&name) {
-                    return Err(GraphError::ToolNotDeclared { name });
+                let name = tool.spec().name();
+                if !declared.contains(name) {
+                    return Err(GraphError::ToolNotDeclared { name: name.clone() });
                 }
                 *counts.entry(name).or_insert(0) += 1;
             }
         }
         for tool in &llm_node.tools {
-            let name = tool.spec().name;
-            match counts.get(&name).copied().unwrap_or(0) {
-                0 => return Err(GraphError::ToolNotCovered { name }),
+            let name = tool.spec().name();
+            match counts.get(name).copied().unwrap_or(0) {
+                0 => return Err(GraphError::ToolNotCovered { name: name.clone() }),
                 1 => {}
-                _ => return Err(GraphError::ToolCoveredTwice { name }),
+                _ => return Err(GraphError::ToolCoveredTwice { name: name.clone() }),
             }
         }
         Ok(())
     }
 
-    fn llm_edge(
-        &self,
-        key: crate::value::Key,
-        author: br_llm_messages::Author,
-    ) -> impl Edge + 'static {
+    fn llm_edge(&self, key: Key, author: Author) -> impl Edge + 'static {
         let tool_targets: Vec<Target> = self
             .tool_nodes
             .iter()
@@ -123,7 +108,7 @@ impl ReactLoop {
         let covered: HashSet<ToolName> = self
             .tool_nodes
             .iter()
-            .flat_map(|(_, tools)| tools.iter().map(|tool| tool.spec().name))
+            .flat_map(|(_, tools)| tools.iter().map(|tool| tool.spec().name().clone()))
             .collect();
         let after = self.after.clone();
         let llm = self.llm.clone();
@@ -151,28 +136,5 @@ impl ReactLoop {
                 _ => Ok(vec![after.clone()]),
             }
         })
-    }
-}
-
-/// A tool node of the loop: it runs its calls through the gate it shares
-/// with the other tool nodes of the loop, so at most `tool_concurrency` calls
-/// run at once across all of them.
-struct LoopToolNode {
-    node: ToolNode,
-    gates: Arc<SharedGates>,
-}
-
-impl Node for LoopToolNode {
-    fn run<'a>(
-        &'a self,
-        state: &'a State,
-        config: &'a Config,
-        _ctx: &'a Context,
-    ) -> NodeFuture<'a> {
-        Box::pin(self.node.run_calls(state, config, Some(&self.gates)))
-    }
-
-    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
-        self.node.check(schema, site)
     }
 }

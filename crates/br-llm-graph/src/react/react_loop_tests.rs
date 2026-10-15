@@ -4,9 +4,9 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
-use crate::react::llm_node::{LlmNode, Source};
-use crate::react::model::OutputMode;
+use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
+use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::run::Outcome;
@@ -14,6 +14,7 @@ use crate::run::channel;
 use crate::run::run;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
+use br_llm_clients_core::OutputMode;
 
 fn nid(name: &str) -> NodeId {
     NodeId::new(name).unwrap()
@@ -23,22 +24,21 @@ fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-fn llm_node(model: Arc<dyn crate::react::model::Model>, tools: Vec<Arc<dyn Tool>>) -> LlmNode {
+fn llm_node(client: Arc<dyn br_llm_clients_core::Client>, tools: Vec<Arc<dyn Tool>>) -> LlmNode {
     LlmNode {
         key: key("chat"),
         author: author(),
-        model,
+        client,
         system: vec![Source::Config(key("base"))],
         tools,
         enabled: None,
-        output: OutputMode::Text,
-        thinking: None,
+        output: OutputMode::Plain,
     }
 }
 
 #[tokio::test]
 async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items() {
-    let model = Arc::new(ScriptedModel::new(vec![
+    let model = Arc::new(mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("all done"),
     ]));
@@ -79,10 +79,7 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
 
 #[tokio::test]
 async fn given_two_tool_nodes_with_parallel_calls_when_run_then_both_run() {
-    let model = Arc::new(ScriptedModel::new(vec![
-        two_call_step(),
-        text_step("done both"),
-    ]));
+    let model = Arc::new(mock(vec![two_call_step(), text_step("done both")]));
     let llm = llm_node(model, vec![Arc::new(EchoTool), Arc::new(TallyTool)]);
     let react = ReactLoop {
         llm: nid("llm"),

@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
 use br_llm_messages::Step;
-use serde_json::{Map, Value as Json, json};
+use serde_json::Value as Json;
 
 use crate::error::GraphError;
 use crate::react::helpers::structured;
-use crate::react::llm_node::Source;
+use crate::react::source::Source;
 use crate::state::{Config, State};
 
 /// The critic's judgement of one answer. `message` may be blank (empty or
@@ -19,18 +20,21 @@ pub struct Verdict {
 /// Reads a verdict from the critic's structured block: pure and synchronous.
 pub type VerdictReader = Arc<dyn Fn(&Json) -> Result<Verdict, GraphError> + Send + Sync>;
 
-/// A verdict schema of the caller's, sent instead of the default one.
+/// A verdict shape of the caller's, sent instead of the default one; the
+/// descriptions of the critic seat are then ignored.
 ///
 /// Without a `reader`, the block is read as the default verdict, so the build
-/// checks the schema: an object whose properties include `is_valid`
-/// (boolean) and `message` (string), both required
-/// (`VerdictSchemaMismatch`). With a `reader`, the schema is the caller's
-/// concern and the reader gives the verdict.
+/// checks the shape: its parameters include `is_valid` (boolean) and
+/// `message` (string), both required (`VerdictShapeMismatch`). With a
+/// `reader`, the shape is the caller's concern and the reader gives the
+/// verdict.
 pub struct VerdictOverride {
-    pub schema: Json,
+    pub shape: StructuredShape,
     pub reader: Option<VerdictReader>,
 }
 
+/// The name of the default verdict shape.
+const SHAPE: &str = "verdict";
 /// The default description of `thinking`.
 const THINKING: &str = "Explanation of the thought process and validation steps";
 /// The default description of `is_valid`.
@@ -40,9 +44,11 @@ const MESSAGE: &str = "Feedback message for the generator, empty if validation p
 
 /// How the critic's verdict is asked for and read.
 pub(crate) enum VerdictForm {
+    /// The default shape, `verdict`. `thinking` is the description of the
+    /// `thinking` parameter, `None` when the shape has none (a critic that
+    /// reasons natively).
     Default {
-        reasoning_field: bool,
-        thinking: Source,
+        thinking: Option<Source>,
         is_valid: Source,
         message: Source,
     },
@@ -50,9 +56,11 @@ pub(crate) enum VerdictForm {
 }
 
 impl VerdictForm {
-    /// The default form, each description a source or its default text.
+    /// The default form, each description a source or its default text. The
+    /// shape has `thinking` exactly when `with_thinking` (the critic's client
+    /// does not reason: its `ReasoningLevel` is `Off`).
     pub(crate) fn default_form(
-        reasoning_field: bool,
+        with_thinking: bool,
         thinking: Option<Source>,
         is_valid: Option<Source>,
         message: Option<Source>,
@@ -61,77 +69,66 @@ impl VerdictForm {
             source.unwrap_or_else(|| Source::Const(text.to_owned()))
         };
         VerdictForm::Default {
-            reasoning_field,
-            thinking: or(thinking, THINKING),
+            thinking: with_thinking.then(|| or(thinking, THINKING)),
             is_valid: or(is_valid, IS_VALID),
             message: or(message, MESSAGE),
         }
     }
 
-    /// The sources this form reads.
+    /// The sources this form reads: the descriptions in use.
     pub(crate) fn sources(&self) -> Vec<&Source> {
         match self {
             VerdictForm::Default {
-                reasoning_field,
                 thinking,
                 is_valid,
                 message,
-            } => {
-                let mut sources = vec![is_valid, message];
-                if *reasoning_field {
-                    sources.insert(0, thinking);
-                }
-                sources
-            }
+            } => thinking.iter().chain([is_valid, message]).collect(),
             VerdictForm::Override(_) => Vec::new(),
         }
     }
 
-    /// Refuses an override without a reader whose schema cannot be read as
-    /// the default verdict.
+    /// Refuses an override without a reader whose shape cannot be read as
+    /// the default verdict (`VerdictShapeMismatch`).
     pub(crate) fn check(&self) -> Result<(), GraphError> {
         match self {
             VerdictForm::Override(VerdictOverride {
-                schema,
+                shape,
                 reader: None,
-            }) => check_schema(schema),
+            }) => check_shape(shape),
             VerdictForm::Override(_) | VerdictForm::Default { .. } => Ok(()),
         }
     }
 
-    /// The JSON Schema sent to the critic on this call.
-    pub(crate) fn schema(&self, state: &State, config: &Config) -> Result<Json, GraphError> {
-        let (reasoning_field, thinking, is_valid, message) = match self {
-            VerdictForm::Override(VerdictOverride { schema, .. }) => return Ok(schema.clone()),
+    /// The output mode sent to the critic on this call: the structured mode
+    /// with the verdict shape, its descriptions resolved now.
+    pub(crate) fn output_mode(
+        &self,
+        state: &State,
+        config: &Config,
+    ) -> Result<OutputMode, GraphError> {
+        let (thinking, is_valid, message) = match self {
+            VerdictForm::Override(VerdictOverride { shape, .. }) => {
+                return Ok(OutputMode::Structured(shape.clone()));
+            }
             VerdictForm::Default {
-                reasoning_field,
                 thinking,
                 is_valid,
                 message,
-            } => (*reasoning_field, thinking, is_valid, message),
+            } => (thinking, is_valid, message),
         };
-        let mut properties = Map::new();
-        if reasoning_field {
-            properties.insert(
-                "thinking".to_owned(),
-                json!({ "type": "string", "description": thinking.resolve(state, config)? }),
-            );
+        let parameter = |name: &str, source: &Source, kind: ParameterKind| {
+            Parameter::new(name, source.resolve(state, config)?, true, kind)
+                .map_err(GraphError::Request)
+        };
+        let mut parameters = Vec::new();
+        if let Some(thinking) = thinking {
+            parameters.push(parameter("thinking", thinking, ParameterKind::String)?);
         }
-        properties.insert(
-            "is_valid".to_owned(),
-            json!({ "type": "boolean", "description": is_valid.resolve(state, config)? }),
-        );
-        properties.insert(
-            "message".to_owned(),
-            json!({ "type": "string", "description": message.resolve(state, config)? }),
-        );
-        let required: Vec<&String> = properties.keys().collect();
-        Ok(json!({
-            "type": "object",
-            "properties": properties,
-            "required": required,
-            "additionalProperties": false
-        }))
+        parameters.push(parameter("is_valid", is_valid, ParameterKind::Boolean)?);
+        parameters.push(parameter("message", message, ParameterKind::String)?);
+        let parameters = Parameters::new(parameters).map_err(GraphError::Request)?;
+        let shape = StructuredShape::new(SHAPE, None, parameters).map_err(GraphError::Request)?;
+        Ok(OutputMode::Structured(shape))
     }
 
     /// Reads the verdict of the critic's step. A rejection with a blank
@@ -161,29 +158,27 @@ impl VerdictForm {
     }
 }
 
-fn check_schema(schema: &Json) -> Result<(), GraphError> {
-    let refuse = |reason| Err(GraphError::VerdictSchemaMismatch { reason });
-    if schema.get("type") != Some(&json!("object")) {
-        return refuse("the schema is not an object");
-    }
-    let Some(properties) = schema.get("properties").and_then(Json::as_object) else {
-        return refuse("the schema has no properties");
+fn check_shape(shape: &StructuredShape) -> Result<(), GraphError> {
+    let find = |name: &str, kind: ParameterKind| {
+        shape
+            .parameters()
+            .iter()
+            .find(|parameter| parameter.name() == name && *parameter.kind() == kind)
     };
-    if properties.get("is_valid").and_then(|p| p.get("type")) != Some(&json!("boolean")) {
-        return refuse("is_valid is not a boolean property");
-    }
-    if properties.get("message").and_then(|p| p.get("type")) != Some(&json!("string")) {
-        return refuse("message is not a string property");
-    }
-    let required = schema
-        .get("required")
-        .and_then(Json::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    for name in ["is_valid", "message"] {
-        if !required.contains(&json!(name)) {
-            return refuse("is_valid and message are not both required");
-        }
+    let Some(is_valid) = find("is_valid", ParameterKind::Boolean) else {
+        return Err(GraphError::VerdictShapeMismatch {
+            reason: "is_valid is not a boolean parameter",
+        });
+    };
+    let Some(message) = find("message", ParameterKind::String) else {
+        return Err(GraphError::VerdictShapeMismatch {
+            reason: "message is not a string parameter",
+        });
+    };
+    if !is_valid.is_required() || !message.is_required() {
+        return Err(GraphError::VerdictShapeMismatch {
+            reason: "is_valid and message are not both required",
+        });
     }
     Ok(())
 }

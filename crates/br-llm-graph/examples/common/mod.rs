@@ -1,17 +1,21 @@
-use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use br_llm_clients_core::{
+    CacheRequirement, ClientSettings, MaxOutputTokens, Parameter, ParameterKind, Parameters,
+    ReasoningLevel, ToolSpec,
+};
+use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_graph::Tool;
 use br_llm_graph::{
-    Config, Context, Cursor, EndLabel, IdSource, Key, Model, ModelFuture, NoopObserver, Observer,
-    Origin, Request, Sender, State, StreamSink, ToolFuture, ToolOutput, ToolSpec, Update, Value,
+    Config, Context, Cursor, EndLabel, IdSource, Key, NoopObserver, Observer, Origin, Sender,
+    State, ToolFuture, ToolOutput, Update, Value,
 };
 use br_llm_messages::{
-    AssistantBlock, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId, ToolName,
+    AssistantBlock, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId, ToolName,
     ToolResultBlock, TurnId, UserBlock, UserInput, UserSource,
 };
-use serde_json::{Value as Json, json};
+use serde_json::Value as Json;
 
 pub struct PrintObserver;
 
@@ -29,9 +33,9 @@ impl Observer for PrintObserver {
     fn run_finished(&self, _origin: &Origin, end: &EndLabel) {
         println!("  run finished: {end}");
     }
-    fn stream(&self, _origin: &Origin, _key: &Key, event: &StreamEvent) {
+    fn stream(&self, origin: &Origin, key: &Key, event: &StreamEvent) {
         if let StreamEvent::TextDelta { text, .. } = event {
-            println!("  stream delta: {text:?}");
+            println!("  stream delta ({origin}, {key}): {text:?}");
         }
     }
 }
@@ -121,55 +125,73 @@ pub fn structured_step(value: Json) -> Step {
     .expect("valid step")
 }
 
-pub struct ScriptedModel {
-    steps: Mutex<VecDeque<Step>>,
+/// The settings of a client: a host builds them once, with the level of
+/// reasoning it wants from the model.
+pub fn settings(reasoning: ReasoningLevel) -> ClientSettings {
+    ClientSettings::new(
+        ModelId::new("example-model").expect("model id"),
+        reasoning,
+        CacheRequirement::NotRequired,
+        MaxOutputTokens::new(4096).expect("tokens"),
+    )
 }
 
-impl ScriptedModel {
-    pub fn new(steps: Vec<Step>) -> Self {
+/// A client answering `steps` in order, at `reasoning`. A host gives a
+/// provider library's client; the examples run offline on the scripted mock
+/// of br-llm-clients-mock, which checks every request as a real client does.
+/// The tool call ids of each step are renamed when it is served, so a
+/// script can call tools again in one conversation.
+pub fn scripted_at(reasoning: ReasoningLevel, steps: Vec<Step>) -> MockClient {
+    let mut builder = MockClient::builder(
+        settings(reasoning),
+        Capabilities::new(CapabilitiesSpec::everything()).expect("capabilities"),
+    );
+    for step in steps {
+        builder = builder.reply(
+            Reply::success(step)
+                .rename_tool_call_ids("call")
+                .build()
+                .expect("reply"),
+        );
+    }
+    builder.build()
+}
+
+/// A client answering `steps` in order, reasoning at a medium level.
+pub fn scripted(steps: Vec<Step>) -> Arc<MockClient> {
+    Arc::new(scripted_at(ReasoningLevel::Medium, steps))
+}
+
+/// The declaration of a tool: built once, when the tool is made.
+pub fn tool_spec(name: &str, description: &str, parameters: Vec<Parameter>) -> ToolSpec {
+    ToolSpec::new(
+        ToolName::new(name).expect("name"),
+        description,
+        Parameters::new(parameters).expect("parameters"),
+    )
+    .expect("spec")
+}
+
+/// A required string parameter.
+pub fn text_parameter(name: &str, description: &str) -> Parameter {
+    Parameter::new(name, description, true, ParameterKind::String).expect("parameter")
+}
+
+pub struct EchoTool {
+    spec: ToolSpec,
+}
+
+impl EchoTool {
+    pub fn new() -> Self {
         Self {
-            steps: Mutex::new(steps.into_iter().collect()),
+            spec: tool_spec("echo", "echo the message back", Vec::new()),
         }
     }
 }
 
-impl Model for ScriptedModel {
-    fn complete<'a>(&'a self, _request: Request, sink: &'a dyn StreamSink) -> ModelFuture<'a> {
-        let step = self
-            .steps
-            .lock()
-            .ok()
-            .and_then(|mut queue| queue.pop_front());
-        Box::pin(async move {
-            let step = step
-                .ok_or_else(|| -> br_llm_graph::ModelError { "scripted model exhausted".into() })?;
-            for text in step.text() {
-                sink.event(&StreamEvent::TextDelta {
-                    index: 0,
-                    text: text.as_str().to_owned(),
-                });
-            }
-            Ok(step)
-        })
-    }
-}
-
-fn spec(name: &str, description: &str) -> ToolSpec {
-    ToolSpec {
-        name: ToolName::new(name).expect("name"),
-        description: description.to_owned(),
-        parameters: json!({ "type": "object" }),
-    }
-}
-
-pub struct EchoTool;
-
 impl Tool for EchoTool {
-    fn spec(&self) -> ToolSpec {
-        spec("echo", "echo the message back")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
         Box::pin(async {
@@ -180,14 +202,25 @@ impl Tool for EchoTool {
     }
 }
 
-pub struct SearchTool;
+pub struct SearchTool {
+    spec: ToolSpec,
+}
+
+impl SearchTool {
+    pub fn new() -> Self {
+        Self {
+            spec: tool_spec(
+                "search",
+                "search a knowledge base",
+                vec![text_parameter("q", "what to search for")],
+            ),
+        }
+    }
+}
 
 impl Tool for SearchTool {
-    fn spec(&self) -> ToolSpec {
-        spec("search", "search a knowledge base")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
         Box::pin(async {
@@ -198,17 +231,31 @@ impl Tool for SearchTool {
     }
 }
 
-#[derive(Default)]
+/// Writes a file: counts its calls, so an example shows which ran.
 pub struct WriteFileTool {
+    spec: ToolSpec,
     pub calls: AtomicUsize,
 }
 
-impl Tool for WriteFileTool {
-    fn spec(&self) -> ToolSpec {
-        spec("write_file", "write a file (unsafe)")
+impl WriteFileTool {
+    pub fn new() -> Self {
+        Self {
+            spec: tool_spec(
+                "write_file",
+                "write a file",
+                vec![
+                    text_parameter("path", "where to write"),
+                    text_parameter("content", "what to write"),
+                ],
+            ),
+            calls: AtomicUsize::new(0),
+        }
     }
-    fn safe(&self) -> bool {
-        false
+}
+
+impl Tool for WriteFileTool {
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
         self.calls.fetch_add(1, Ordering::SeqCst);
@@ -221,17 +268,30 @@ impl Tool for WriteFileTool {
 }
 
 pub struct StartTaskTool {
+    spec: ToolSpec,
     pub sender: Arc<Mutex<Option<Sender>>>,
     pub chat: Key,
     pub pending: Key,
 }
 
-impl Tool for StartTaskTool {
-    fn spec(&self) -> ToolSpec {
-        spec("start_task", "start background work, return at once")
+impl StartTaskTool {
+    pub fn new(sender: Arc<Mutex<Option<Sender>>>, chat: Key, pending: Key) -> Self {
+        Self {
+            spec: tool_spec(
+                "start_task",
+                "start background work, return at once",
+                Vec::new(),
+            ),
+            sender,
+            chat,
+            pending,
+        }
     }
-    fn safe(&self) -> bool {
-        true
+}
+
+impl Tool for StartTaskTool {
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
         let chat = self.chat.clone();

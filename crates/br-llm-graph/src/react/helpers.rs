@@ -1,7 +1,6 @@
-use std::sync::Arc;
-
+use br_llm_clients_core::{BoxFuture, Client, ClientRequest, StreamSink};
 use br_llm_messages::{
-    Author, Conversation, Entry, Perspective, Step, StreamEvent, ToolCall, Turn, TurnItem,
+    Author, Conversation, Entry, Perspective, Step, StreamEvent, Text, ToolCall, Turn, TurnItem,
     TurnState, WireMessage, render,
 };
 use serde::de::DeserializeOwned;
@@ -10,11 +9,11 @@ use crate::error::GraphError;
 use crate::graph::Context;
 use crate::observe::Observer;
 use crate::origin::Origin;
-use crate::react::model::{Model, Request, StreamSink};
-use crate::react::tool::Tool;
 use crate::state::{Kind, Schema, State, Value};
 use crate::value::Key;
 
+/// Sends each stream event of a call to the observer, with the origin of the
+/// calling node and its conversation key.
 struct ObserverSink<'a> {
     observer: &'a dyn Observer,
     origin: &'a Origin,
@@ -22,34 +21,45 @@ struct ObserverSink<'a> {
 }
 
 impl StreamSink for ObserverSink<'_> {
-    fn event(&self, event: &StreamEvent) {
-        self.observer.stream(self.origin, self.key, event);
+    fn send<'a>(&'a mut self, event: StreamEvent) -> BoxFuture<'a, ()> {
+        Box::pin(async move { self.observer.stream(self.origin, self.key, &event) })
     }
 }
 
+/// `conversation` rendered for `author`; a refusal of the render gives
+/// `Message`.
 pub fn wire(conversation: &Conversation, author: &Author) -> Result<Vec<WireMessage>, GraphError> {
     render(conversation, &Perspective::new(author.clone())).map_err(GraphError::from)
 }
 
+/// Calls `client` with `request`, with a sink that sends each stream event to
+/// the observer of `ctx`, under the occurrence of `ctx` and the conversation
+/// key `key`. An error of the client gives `Model`, carrying the
+/// `ClientError`; the call's report is not kept.
 pub async fn complete(
-    model: &dyn Model,
-    request: Request,
+    client: &dyn Client,
+    request: &ClientRequest,
     ctx: &Context,
     key: &Key,
 ) -> Result<Step, GraphError> {
-    let sink = ObserverSink {
+    let mut sink = ObserverSink {
         observer: ctx.observer.as_ref(),
         origin: ctx.origin(),
         key,
     };
-    model
-        .complete(request, &sink)
-        .await
-        .map_err(|error| GraphError::Model {
-            message: error.to_string(),
-        })
+    let (_report, result) = client.call(request, &mut sink).await.into_parts();
+    result.map_err(GraphError::Model)
 }
 
+/// The system text of a model call: none when the text is blank, which a
+/// system prompt cannot hold.
+pub(crate) fn system_text(text: String) -> Option<Text> {
+    Text::new(text).ok()
+}
+
+/// Reads the first structured block of `step` into `T`. A step without one,
+/// or a block that does not fit `T`, gives `Structured`: br-llm-clients-core
+/// does not check a structured reply against its shape.
 pub fn structured<T: DeserializeOwned>(step: &Step) -> Result<T, GraphError> {
     let value = step
         .structured()
@@ -123,6 +133,9 @@ pub(crate) fn last_turn_state(conversation: &Conversation, author: &Author) -> O
     last_turn_by_author(conversation, author).map(Turn::state)
 }
 
+/// The pending calls of `author`'s last turn in the conversation `key`, in
+/// call order: none when that turn does not await tool results, or when
+/// `author` has no turn.
 pub fn pending_calls<'a>(
     state: &'a State,
     key: &Key,
@@ -146,22 +159,4 @@ pub fn pending_calls<'a>(
         }
     }
     Ok(calls)
-}
-
-pub fn pending_unsafe_calls<'a>(
-    state: &'a State,
-    key: &Key,
-    author: &Author,
-    registry: &[Arc<dyn Tool>],
-) -> Result<Vec<&'a ToolCall>, GraphError> {
-    Ok(pending_calls(state, key, author)?
-        .into_iter()
-        .filter(|call| {
-            registry
-                .iter()
-                .find(|tool| tool.spec().name == call.name)
-                .map(|tool| !tool.safe())
-                .unwrap_or(false)
-        })
-        .collect())
 }

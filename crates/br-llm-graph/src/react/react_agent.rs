@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
+use br_llm_clients_core::{Client, OutputMode};
 use br_llm_messages::Author;
 
 use crate::error::GraphError;
-use crate::graph::{
-    Always, Context, Count, Graph, GraphBuilder, Limit, Node, NodeFuture, Switch, Target,
-};
+use crate::graph::{Always, Context, Count, Graph, GraphBuilder, Limit, Node, NodeFuture, Target};
 use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
-use crate::react::llm_node::{LlmNode, Source};
-use crate::react::model::{Model, OutputMode};
+use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::{OnLimit, RoundLimit};
+use crate::react::source::Source;
 use crate::react::tool::Tool;
 use crate::state::{Config, Kind, Schema, SchemaBuilder, State, Value};
 use crate::update::Update;
@@ -36,9 +35,8 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   there is no final step) and, when the round limit's `OnLimit` is
 ///   `Continue` or `End`, its `flag` (bool, true when the limit was reached).
 ///   With `End`, the final step may be the limit's closing step.
-/// - Configuration: each `Source::Config` key of `system` (string), the
-///   `thinking` switch, the tool concurrency and the round limit when they
-///   read a configuration key.
+/// - Configuration: each `Source::Config` key of `system` (string), the tool
+///   concurrency and the round limit when they read a configuration key.
 ///
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
@@ -49,7 +47,9 @@ use crate::value::{EndLabel, Key, NodeId};
 ///
 /// `output` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
-/// JSON text in `answer`.
+/// JSON text in `answer`. The settings of `client`, its level of reasoning
+/// included, are the host's: an agent that needs another model or another
+/// level is given another client.
 ///
 /// Each tool of `tool_nodes` must be one of `tools` (`ToolNotDeclared`), and
 /// each of `tools` run by exactly one tool node (`ToolNotCovered`,
@@ -60,7 +60,7 @@ use crate::value::{EndLabel, Key, NodeId};
 /// `RoundLimit`).
 pub struct ReactAgent {
     pub author: Author,
-    pub model: Arc<dyn Model>,
+    pub client: Arc<dyn Client>,
     pub system: Vec<Source>,
     pub output: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
@@ -71,7 +71,6 @@ pub struct ReactAgent {
     /// together. `None`: every call at once.
     pub tool_concurrency: Option<Limit>,
     pub round_limit: Option<RoundLimit>,
-    pub thinking: Option<Switch>,
     /// A state key holding the names of the tools offered on this run.
     pub enabled: Option<Key>,
     /// Extra state keys the caller maps per run, read by the tools.
@@ -88,7 +87,6 @@ impl ReactAgent {
         let mut schema = Schema::builder()
             .state(history.clone(), Kind::Conversation)
             .state(answer.clone(), Kind::Str);
-        schema = declare_switch(schema, self.thinking.as_ref());
         schema = declare_limit(schema, self.tool_concurrency.as_ref());
         let flag = self.round_limit.as_ref().and_then(round_limit_flag);
         if let Some(round_limit) = &self.round_limit {
@@ -124,12 +122,11 @@ impl ReactAgent {
         let llm_node = LlmNode {
             key: history.clone(),
             author: self.author.clone(),
-            model: self.model,
+            client: self.client,
             system: self.system,
             tools: self.tools,
             enabled: self.enabled,
             output: self.output,
-            thinking: self.thinking,
         };
 
         let mut builder = GraphBuilder::new(schema).entry(llm);
@@ -153,14 +150,6 @@ impl ReactAgent {
             .edge(answer_node, Always(Target::End(EndLabel::new("done")?)))
             .build()?;
         Ok(Arc::new(graph))
-    }
-}
-
-/// Declares the configuration key a switch reads, as a bool.
-pub(crate) fn declare_switch(schema: SchemaBuilder, switch: Option<&Switch>) -> SchemaBuilder {
-    match switch {
-        Some(Switch::Config(key)) => schema.config(key.clone(), Kind::Bool),
-        Some(Switch::Fixed(_)) | None => schema,
     }
 }
 

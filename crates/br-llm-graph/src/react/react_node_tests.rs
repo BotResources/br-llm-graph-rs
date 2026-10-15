@@ -1,19 +1,21 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use br_llm_clients_core::{Client, OutputMode, ToolSpec};
 use br_llm_messages::{
     AssistantBlock, Conversation, Entry, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
     Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
 };
 use serde_json::json;
 
-use crate::graph::{Always, Context, GraphBuilder, Target};
+use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
-use crate::react::helpers::{pending_unsafe_calls, structured};
-use crate::react::llm_node::{LlmNode, Source};
-use crate::react::model::{Model, OutputMode};
+use crate::react::helpers::{pending_calls, structured};
+use crate::react::llm_node::LlmNode;
+use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
+use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
 use crate::run::Outcome;
 use crate::run::channel;
@@ -28,6 +30,35 @@ fn nid(name: &str) -> NodeId {
 
 fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
+}
+
+/// A tool node of the agent on `chat`, with its own gates.
+fn tool_node(
+    tools: Vec<Arc<dyn Tool>>,
+    max_concurrency: Option<Limit>,
+    enabled: Option<crate::value::Key>,
+) -> ToolNode {
+    ToolNode {
+        key: key("chat"),
+        author: author(),
+        tools,
+        max_concurrency,
+        enabled,
+        gates: Arc::new(SharedGates::default()),
+    }
+}
+
+/// A model-call step of the agent on `chat`, without tools.
+fn llm_node(client: Arc<dyn Client>, system: Vec<Source>) -> LlmNode {
+    LlmNode {
+        key: key("chat"),
+        author: author(),
+        client,
+        system,
+        tools: Vec::new(),
+        enabled: None,
+        output: OutputMode::Plain,
+    }
 }
 
 fn state_with_call(step: Step) -> State {
@@ -52,16 +83,7 @@ fn state_with_call(step: Step) -> State {
 async fn run_tool_node(state: State, tools: Vec<Arc<dyn Tool>>) -> State {
     let graph = GraphBuilder::new(schema())
         .entry(nid("tools"))
-        .node(
-            nid("tools"),
-            ToolNode {
-                key: key("chat"),
-                author: author(),
-                tools,
-                max_concurrency: None,
-                enabled: None,
-            },
-        )
+        .node(nid("tools"), tool_node(tools, None, None))
         .edge(
             nid("tools"),
             Always(Target::End(EndLabel::new("done").unwrap())),
@@ -123,13 +145,11 @@ async fn given_a_tool_node_with_an_enabled_key_when_calls_name_a_tool_it_does_no
         .entry(nid("tools"))
         .node(
             nid("tools"),
-            ToolNode {
-                key: key("chat"),
-                author: author(),
-                tools: vec![Arc::new(EchoTool), writer.clone()],
-                max_concurrency: None,
-                enabled: Some(key("enabled")),
-            },
+            tool_node(
+                vec![Arc::new(EchoTool), writer.clone()],
+                None,
+                Some(key("enabled")),
+            ),
         )
         .edge(
             nid("tools"),
@@ -165,18 +185,11 @@ async fn given_a_tool_node_with_an_enabled_key_when_calls_name_a_tool_it_does_no
 
 #[test]
 fn given_an_enabled_key_that_is_not_a_list_of_strings_when_built_then_refused() {
-    let model: Arc<dyn Model> = Arc::new(ScriptedModel::new(Vec::new()));
+    let client: Arc<dyn Client> = Arc::new(mock(Vec::new()));
     for name in ["chat", "missing"] {
-        let llm = LlmNode {
-            key: key("chat"),
-            author: author(),
-            model: model.clone(),
-            system: Vec::new(),
-            tools: vec![Arc::new(EchoTool)],
-            enabled: Some(key(name)),
-            output: OutputMode::Text,
-            thinking: None,
-        };
+        let mut llm = llm_node(client.clone(), Vec::new());
+        llm.tools = vec![Arc::new(EchoTool)];
+        llm.enabled = Some(key(name));
         let built = GraphBuilder::new(schema())
             .entry(nid("llm"))
             .node(nid("llm"), llm)
@@ -193,13 +206,7 @@ fn given_an_enabled_key_that_is_not_a_list_of_strings_when_built_then_refused() 
             .entry(nid("tools"))
             .node(
                 nid("tools"),
-                ToolNode {
-                    key: key("chat"),
-                    author: author(),
-                    tools: vec![Arc::new(EchoTool)],
-                    max_concurrency: None,
-                    enabled: Some(key(name)),
-                },
+                tool_node(vec![Arc::new(EchoTool)], None, Some(key(name))),
             )
             .edge(
                 nid("tools"),
@@ -231,13 +238,11 @@ fn built_alone(node: impl crate::graph::Node + 'static) -> crate::error::GraphEr
 fn given_a_tool_concurrency_on_a_key_that_is_not_an_int_configuration_key_when_built_then_refused()
 {
     for name in ["base", "missing"] {
-        let tools = ToolNode {
-            key: key("chat"),
-            author: author(),
-            tools: vec![Arc::new(EchoTool)],
-            max_concurrency: Some(crate::graph::Limit::Config(key(name))),
-            enabled: None,
-        };
+        let tools = tool_node(
+            vec![Arc::new(EchoTool)],
+            Some(Limit::Config(key(name))),
+            None,
+        );
         assert!(matches!(
             built_alone(tools),
             crate::error::GraphError::LimitKeyMismatch { key: found } if found == key(name)
@@ -247,17 +252,8 @@ fn given_a_tool_concurrency_on_a_key_that_is_not_an_int_configuration_key_when_b
 
 #[test]
 fn given_a_system_source_on_a_key_that_holds_no_text_when_built_then_refused() {
-    let model: Arc<dyn Model> = Arc::new(ScriptedModel::new(Vec::new()));
-    let llm = |source: Source| LlmNode {
-        key: key("chat"),
-        author: author(),
-        model: model.clone(),
-        system: vec![Source::Config(key("base")), source],
-        tools: Vec::new(),
-        enabled: None,
-        output: OutputMode::Text,
-        thinking: None,
-    };
+    let client: Arc<dyn Client> = Arc::new(mock(Vec::new()));
+    let llm = |source: Source| llm_node(client.clone(), vec![Source::Config(key("base")), source]);
     for (source, name) in [
         (Source::State(key("chat")), "chat"),
         (Source::State(key("missing")), "missing"),
@@ -284,17 +280,9 @@ fn given_a_system_source_on_a_key_that_holds_no_text_when_built_then_refused() {
 #[tokio::test]
 async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed() {
     let state = state_with_call(tool_call_step("c1", "echo", json!({})));
-    let model: Arc<dyn Model> = Arc::new(ScriptedModel::new(vec![text_step("fresh")]));
-    let llm = LlmNode {
-        key: key("chat"),
-        author: author(),
-        model,
-        system: vec![Source::Config(key("base"))],
-        tools: vec![Arc::new(EchoTool)],
-        enabled: None,
-        output: OutputMode::Text,
-        thinking: None,
-    };
+    let client = mock(vec![text_step("fresh")]);
+    let mut llm = llm_node(Arc::new(client.clone()), vec![Source::Config(key("base"))]);
+    llm.tools = vec![Arc::new(EchoTool)];
     let graph = GraphBuilder::new(schema())
         .entry(nid("llm"))
         .node(nid("llm"), llm)
@@ -310,9 +298,10 @@ async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed
         .err()
         .unwrap();
     assert!(matches!(
-        failure.error,
-        crate::error::GraphError::NodeFailed { .. }
+        returned(&failure.error),
+        crate::error::GraphError::Message(br_llm_messages::MessageError::TurnAwaitingResults)
     ));
+    assert_eq!(client.calls(), 0, "the render refuses before any call");
     assert_eq!(
         failure
             .checkpoint
@@ -327,24 +316,16 @@ async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed
 
 #[tokio::test]
 async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchanged() {
-    use crate::react::model::ToolSpec;
     use crate::react::tool::{ToolFuture, ToolOutput};
     use crate::state::Config;
     use crate::update::Update;
 
     struct SetLog {
-        name: &'static str,
+        spec: ToolSpec,
     }
     impl Tool for SetLog {
-        fn spec(&self) -> ToolSpec {
-            ToolSpec {
-                name: ToolName::new(self.name).unwrap(),
-                description: "set the log".to_owned(),
-                parameters: json!({ "type": "object" }),
-            }
-        }
-        fn safe(&self) -> bool {
-            true
+        fn spec(&self) -> &ToolSpec {
+            &self.spec
         }
         fn call<'a>(
             &'a self,
@@ -383,16 +364,14 @@ async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchang
         .entry(nid("tools"))
         .node(
             nid("tools"),
-            ToolNode {
-                key: key("chat"),
-                author: author(),
-                tools: vec![
-                    Arc::new(SetLog { name: "seta" }),
-                    Arc::new(SetLog { name: "setb" }),
+            tool_node(
+                vec![
+                    Arc::new(SetLog { spec: spec("seta") }),
+                    Arc::new(SetLog { spec: spec("setb") }),
                 ],
-                max_concurrency: None,
-                enabled: None,
-            },
+                None,
+                None,
+            ),
         )
         .edge(
             nid("tools"),
@@ -451,7 +430,7 @@ fn given_text_only_step_when_structured_then_error() {
 }
 
 #[test]
-fn given_mixed_calls_when_pending_unsafe_then_only_unsafe_returned() {
+fn given_a_turn_awaiting_results_when_pending_calls_read_then_the_unanswered_calls_in_call_order() {
     let step = Step::new(
         vec![
             AssistantBlock::ToolCall(ToolCall {
@@ -471,8 +450,33 @@ fn given_mixed_calls_when_pending_unsafe_then_only_unsafe_returned() {
     )
     .unwrap();
     let state = state_with_call(step);
-    let registry: Vec<Arc<dyn Tool>> = vec![Arc::new(WriteFileTool::default()), Arc::new(EchoTool)];
-    let unsafe_calls = pending_unsafe_calls(&state, &key("chat"), &author(), &registry).unwrap();
-    assert_eq!(unsafe_calls.len(), 1);
-    assert_eq!(unsafe_calls[0].name.as_str(), "write_file");
+    let names = |state: &State| -> Vec<String> {
+        pending_calls(state, &key("chat"), &author())
+            .unwrap()
+            .iter()
+            .map(|call| call.name.as_str().to_owned())
+            .collect()
+    };
+    assert_eq!(names(&state), ["write_file", "echo"]);
+
+    let mut answered = state.clone();
+    answered
+        .apply_batch(&[crate::update::Update::PushResult {
+            key: key("chat"),
+            turn: TurnId::new("t1").unwrap(),
+            result: br_llm_messages::ToolResult::new(
+                ToolCallId::new("c1").unwrap(),
+                ToolName::new("write_file").unwrap(),
+                Vec::new(),
+                false,
+            ),
+        }])
+        .unwrap();
+    assert_eq!(names(&answered), ["echo"]);
+    assert!(
+        pending_calls(&seeded_state(), &key("chat"), &author())
+            .unwrap()
+            .is_empty(),
+        "an author without a turn has no pending call"
+    );
 }

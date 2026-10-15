@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
+use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
     Conversation, Entry, Text, ToolCallId, ToolName, ToolResult, ToolResultBlock, Turn, TurnId,
     TurnItem, UserBlock, UserInput, UserSource,
@@ -10,14 +12,12 @@ use serde_json::json;
 
 use crate::error::GraphError;
 use crate::graph::{
-    Always, Context, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Output, SubGraph, Switch,
-    Target,
+    Always, Context, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Output, SubGraph, Target,
 };
 use crate::observe::NoopObserver;
-use crate::react::llm_node::Source;
-use crate::react::model::OutputMode;
 use crate::react::react_agent::ReactAgent;
 use crate::react::round_limit::{OnLimit, RoundLimit};
+use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::run::{Outcome, RunFailure, channel, run};
 use crate::state::{Config, Kind, Schema, State, Value};
@@ -41,29 +41,28 @@ fn question(body: &str) -> Conversation {
     chat
 }
 
-fn agent(model: Arc<LoggingModel>) -> ReactAgent {
+fn agent(client: &MockClient) -> ReactAgent {
     ReactAgent {
         author: author(),
-        model,
+        client: Arc::new(client.clone()),
         system: vec![Source::Config(key("base"))],
-        output: OutputMode::Text,
+        output: OutputMode::Plain,
         tools: vec![Arc::new(EchoTool)],
         tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
-        thinking: None,
         enabled: None,
         inputs: Vec::new(),
     }
 }
 
-fn limited(model: Arc<LoggingModel>, max_rounds: usize, on_limit: OnLimit) -> ReactAgent {
+fn limited(client: &MockClient, max_rounds: usize, on_limit: OnLimit) -> ReactAgent {
     ReactAgent {
         round_limit: Some(RoundLimit {
             max_rounds: Limit::Fixed(NonZeroUsize::new(max_rounds).unwrap()),
             on_limit,
         }),
-        ..agent(model)
+        ..agent(client)
     }
 }
 
@@ -122,8 +121,8 @@ fn last_turn(state: &State) -> Turn {
 
 #[test]
 fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_limit_flag() {
-    let model = Arc::new(LoggingModel::new(Vec::new()));
-    let plain = agent(model.clone()).graph().unwrap();
+    let client = mock(Vec::new());
+    let plain = agent(&client).graph().unwrap();
     let signature = plain.signature();
     assert_eq!(
         signature.inputs,
@@ -143,10 +142,9 @@ fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_lim
 
     let flagged = ReactAgent {
         system: vec![Source::State(key("persona"))],
-        thinking: Some(Switch::Config(key("deep"))),
         tool_concurrency: Some(Limit::Config(key("width"))),
         ..limited(
-            model,
+            &client,
             2,
             OnLimit::End {
                 node: nid("limit"),
@@ -169,15 +167,15 @@ fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_lim
     );
     assert_eq!(
         flagged.schema().config,
-        BTreeMap::from([(key("deep"), Kind::Bool), (key("width"), Kind::Int)])
+        BTreeMap::from([(key("width"), Kind::Int)])
     );
 }
 
 #[test]
 fn given_a_limit_flag_that_names_the_answer_when_built_then_flag_key_mismatch() {
-    let model = Arc::new(LoggingModel::new(Vec::new()));
+    let client = mock(Vec::new());
     let built = limited(
-        model,
+        &client,
         1,
         OnLimit::Continue {
             node: nid("limit"),
@@ -190,18 +188,18 @@ fn given_a_limit_flag_that_names_the_answer_when_built_then_flag_key_mismatch() 
 
 #[test]
 fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_collision() {
-    let model = Arc::new(LoggingModel::new(Vec::new()));
+    let client = mock(Vec::new());
     let on_limit = || OnLimit::End {
         node: nid("limit"),
         flag: key("topic"),
     };
     let source = ReactAgent {
         system: vec![Source::State(key("topic"))],
-        ..limited(model.clone(), 1, on_limit())
+        ..limited(&client, 1, on_limit())
     };
     let input = ReactAgent {
         inputs: vec![(key("topic"), Kind::Bool)],
-        ..limited(model, 1, on_limit())
+        ..limited(&client, 1, on_limit())
     };
     for agent in [source, input] {
         assert!(matches!(
@@ -214,14 +212,14 @@ fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_co
 #[test]
 fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_then_duplicate_node()
 {
-    let model = Arc::new(LoggingModel::new(Vec::new()));
+    let client = mock(Vec::new());
     for reserved in ["llm", "answer"] {
         let split = ReactAgent {
             tool_nodes: vec![(nid(reserved), vec![Arc::new(EchoTool) as _])],
-            ..agent(model.clone())
+            ..agent(&client)
         };
         let limit = limited(
-            model.clone(),
+            &client,
             1,
             OnLimit::End {
                 node: nid(reserved),
@@ -236,7 +234,7 @@ fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_t
         }
     }
     let limit_on_tools = limited(
-        model,
+        &client,
         1,
         OnLimit::End {
             node: nid("tools"),
@@ -251,30 +249,30 @@ fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_t
 
 #[tokio::test]
 async fn given_a_plain_answer_when_the_agent_runs_then_history_and_answer_come_back() {
-    let model = Arc::new(LoggingModel::new(vec![text_step("hello there")]));
-    let graph = agent(model.clone()).graph().unwrap();
+    let client = mock(vec![text_step("hello there")]);
+    let graph = agent(&client).graph().unwrap();
     let state = finished(call(&graph, question("hi")).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "hello there");
     assert_eq!(
         state.conversation(&key("history")).unwrap().entries().len(),
         2
     );
-    let requests = model.requests();
+    let requests = requests(&client);
     assert_eq!(requests.len(), 1);
     assert_eq!(
-        requests[0].system.as_deref(),
+        system_of(&requests[0]).as_deref(),
         Some("You are a helpful agent.")
     );
-    assert_eq!(requests[0].tools.len(), 1);
+    assert_eq!(requests[0].tools().len(), 1);
 }
 
 #[tokio::test]
 async fn given_one_tool_round_when_the_agent_runs_then_the_turn_holds_the_round_and_the_reply() {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("echo said echoed"),
-    ]));
-    let graph = agent(model).graph().unwrap();
+    ]);
+    let graph = agent(&client).graph().unwrap();
     let state = finished(call(&graph, question("hi")).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "echo said echoed");
     let turn = last_turn(&state);
@@ -299,48 +297,52 @@ async fn given_a_final_step_of_several_text_blocks_when_the_agent_runs_then_answ
         None,
     )
     .unwrap();
-    let model = Arc::new(LoggingModel::new(vec![
-        tool_call_step("c1", "echo", json!({})),
-        several,
-    ]));
-    let graph = agent(model).graph().unwrap();
+    let client = mock(vec![tool_call_step("c1", "echo", json!({})), several]);
+    let graph = agent(&client).graph().unwrap();
     let state = finished(call(&graph, question("hi")).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "one two");
 }
 
 #[tokio::test]
 async fn given_a_structured_output_when_the_agent_runs_then_answer_is_the_json_text_of_the_block() {
-    let schema = json!({ "type": "object", "properties": { "n": { "type": "integer" } } });
-    let model = Arc::new(LoggingModel::new(vec![
+    let shape = StructuredShape::new(
+        "count",
+        None,
+        Parameters::new(vec![
+            Parameter::new("n", "", true, ParameterKind::Integer).unwrap(),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
+    let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         structured_step(json!({ "n": 3 })),
-    ]));
+    ]);
     let graph = ReactAgent {
-        output: OutputMode::Structured {
-            schema: schema.clone(),
-        },
-        ..agent(model.clone())
+        output: OutputMode::Structured(shape.clone()),
+        ..agent(&client)
     }
     .graph()
     .unwrap();
     let state = finished(call(&graph, question("count")).await);
     assert_eq!(state.str(&key("answer")).unwrap(), r#"{"n":3}"#);
-    let requests = model.requests();
+    let requests = requests(&client);
     assert_eq!(requests.len(), 2);
-    assert!(requests.iter().all(|request| request.output
-        == OutputMode::Structured {
-            schema: schema.clone()
-        }));
+    assert!(
+        requests
+            .iter()
+            .all(|request| *request.output() == OutputMode::Structured(shape.clone()))
+    );
 }
 
 #[tokio::test]
 async fn given_the_round_limit_ends_the_turn_when_the_agent_runs_then_limit_reached_is_true() {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         tool_call_step("c2", "echo", json!({})),
-    ]));
+    ]);
     let graph = limited(
-        model.clone(),
+        &client,
         1,
         OnLimit::End {
             node: nid("limit"),
@@ -357,16 +359,16 @@ async fn given_the_round_limit_ends_the_turn_when_the_agent_runs_then_limit_reac
             .unwrap()
             .starts_with("Tool round limit reached (1)")
     );
-    assert_eq!(model.requests().len(), 2);
+    assert_eq!(requests(&client).len(), 2);
 }
 
 #[tokio::test]
 async fn given_the_round_limit_errors_when_the_agent_keeps_calling_then_the_run_fails() {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         tool_call_step("c2", "echo", json!({})),
-    ]));
-    let graph = limited(model, 1, OnLimit::Error).graph().unwrap();
+    ]);
+    let graph = limited(&client, 1, OnLimit::Error).graph().unwrap();
     let error = call(&graph, question("hi")).await.err().unwrap().error;
     assert!(matches!(
         error,
@@ -391,8 +393,8 @@ async fn given_a_history_with_a_finished_tool_round_when_called_again_then_the_t
     .unwrap();
     history.push_turn(turn).unwrap();
 
-    let model = Arc::new(LoggingModel::new(vec![text_step("resumed reply")]));
-    let graph = agent(model.clone()).graph().unwrap();
+    let client = mock(vec![text_step("resumed reply")]);
+    let graph = agent(&client).graph().unwrap();
     let state = finished(call(&graph, history).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "resumed reply");
     assert_eq!(
@@ -402,18 +404,18 @@ async fn given_a_history_with_a_finished_tool_round_when_called_again_then_the_t
     let turn = last_turn(&state);
     assert_eq!(turn.id().as_str(), "t0");
     assert_eq!(turn.items().len(), 3);
-    assert_eq!(model.requests().len(), 1);
+    assert_eq!(requests(&client).len(), 1);
 }
 
 #[tokio::test]
 async fn given_a_new_activation_when_the_round_limit_counts_then_it_starts_from_the_open_turn() {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("first"),
         tool_call_step("c2", "echo", json!({})),
         text_step("second"),
-    ]));
-    let graph = limited(model, 1, OnLimit::Error).graph().unwrap();
+    ]);
+    let graph = limited(&client, 1, OnLimit::Error).graph().unwrap();
     let ctx = ctx();
     let state = finished(call_in(&graph, question("hi"), &ctx).await);
     let mut history = state.conversation(&key("history")).unwrap().clone();
@@ -429,23 +431,23 @@ async fn given_a_new_activation_when_the_round_limit_counts_then_it_starts_from_
     assert_eq!(state.str(&key("answer")).unwrap(), "second");
 }
 
-fn selective(model: Arc<LoggingModel>, writer: Arc<WriteFileTool>) -> ReactAgent {
+fn selective(client: &MockClient, writer: Arc<WriteFileTool>) -> ReactAgent {
     ReactAgent {
         tools: vec![Arc::new(EchoTool), writer],
         enabled: Some(key("offered")),
-        ..agent(model)
+        ..agent(client)
     }
 }
 
 #[tokio::test]
 async fn given_an_enabled_subset_when_the_agent_runs_then_only_it_is_offered_and_another_call_is_refused()
  {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         calls_step(&["echo", "write_file"]),
         text_step("could not write"),
-    ]));
+    ]);
     let writer = Arc::new(WriteFileTool::default());
-    let graph = selective(model.clone(), writer.clone()).graph().unwrap();
+    let graph = selective(&client, writer.clone()).graph().unwrap();
     assert_eq!(
         graph.signature().inputs.get(&key("offered")),
         Some(&Kind::list(Kind::Str))
@@ -471,15 +473,10 @@ async fn given_an_enabled_subset_when_the_agent_runs_then_only_it_is_offered_and
         ]
     );
     assert_eq!(writer.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
-    let requests = model.requests();
+    let requests = requests(&client);
     assert_eq!(requests.len(), 2);
     for request in requests {
-        let offered: Vec<&str> = request
-            .tools
-            .iter()
-            .map(|tool| tool.name.as_str())
-            .collect();
-        assert_eq!(offered, ["echo"]);
+        assert_eq!(tool_names(&request), ["echo"]);
     }
 }
 
@@ -488,7 +485,7 @@ fn given_an_enabled_key_that_names_a_key_of_the_graph_when_built_then_key_collis
     for name in ["history", "answer"] {
         let built = ReactAgent {
             enabled: Some(key(name)),
-            ..agent(Arc::new(LoggingModel::new(Vec::new())))
+            ..agent(&mock(Vec::new()))
         }
         .graph();
         assert!(
@@ -505,24 +502,13 @@ fn caller_schema() -> Schema {
         .state(key("question"), Kind::Conversation)
         .state(key("replies"), Kind::list(Kind::Str))
         .config(key("prompt"), Kind::Str)
-        .config(key("deep"), Kind::Bool)
         .build()
 }
 
 fn caller_config() -> Config {
     let mut values = BTreeMap::new();
     values.insert(key("prompt"), Value::str("Be brief."));
-    values.insert(key("deep"), Value::bool(true));
     Config::new(&caller_schema(), values).unwrap()
-}
-
-fn thinking_agent(model: Arc<LoggingModel>) -> Arc<Graph> {
-    ReactAgent {
-        thinking: Some(Switch::Config(key("deep"))),
-        ..agent(model)
-    }
-    .graph()
-    .unwrap()
 }
 
 async fn run_caller(graph: &Graph, state: State) -> State {
@@ -539,14 +525,13 @@ async fn run_caller(graph: &Graph, state: State) -> State {
 
 #[tokio::test]
 async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_history_and_answer() {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("done with echo"),
-    ]));
-    let call = SubGraph::call(thinking_agent(model.clone()))
+    ]);
+    let call = SubGraph::call(agent(&client).graph().unwrap())
         .input(key("history"), Input::From(key("chat")))
         .config(key("base"), Input::Config(key("prompt")))
-        .config(key("deep"), Input::Config(key("deep")))
         .output(key("history"), Output::Set(key("chat")))
         .output(key("answer"), Output::Set(key("answer")));
     let graph = GraphBuilder::new(caller_schema())
@@ -565,27 +550,26 @@ async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_hist
     let state = run_caller(&graph, state).await;
     assert_eq!(state.str(&key("answer")).unwrap(), "done with echo");
     assert_eq!(state.conversation(&key("chat")).unwrap().entries().len(), 2);
-    let requests = model.requests();
+    let requests = requests(&client);
     assert_eq!(requests.len(), 2);
     assert!(
         requests
             .iter()
-            .all(|request| request.thinking == Some(true))
+            .all(|request| system_of(request).as_deref() == Some("Be brief."))
     );
-    assert_eq!(requests[0].system.as_deref(), Some("Be brief."));
 }
 
 #[tokio::test]
 async fn given_a_pass_through_input_mapped_by_the_caller_when_a_tool_runs_then_it_reads_the_value()
 {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         tool_call_step("c1", "scope", json!({})),
         text_step("done"),
-    ]));
+    ]);
     let agent = ReactAgent {
         tools: vec![Arc::new(ScopeTool)],
         inputs: vec![(key("scope"), Kind::Str)],
-        ..agent(model)
+        ..agent(&client)
     }
     .graph()
     .unwrap();
@@ -605,7 +589,6 @@ async fn given_a_pass_through_input_mapped_by_the_caller_when_a_tool_runs_then_i
         .state(key("chat"), Kind::Conversation)
         .state(key("folder"), Kind::Str)
         .config(key("prompt"), Kind::Str)
-        .config(key("deep"), Kind::Bool)
         .build();
     let graph = GraphBuilder::new(schema)
         .entry(nid("agent"))
@@ -642,7 +625,7 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
             enabled: Some(key("offered")),
             inputs,
             ..limited(
-                Arc::new(LoggingModel::new(Vec::new())),
+                &mock(Vec::new()),
                 1,
                 OnLimit::End {
                     node: nid("limit"),
@@ -673,7 +656,7 @@ fn given_a_key_read_by_several_sources_when_built_then_it_is_declared_once() {
             Source::State(key("persona")),
             Source::Config(key("base")),
         ],
-        ..agent(Arc::new(LoggingModel::new(Vec::new())))
+        ..agent(&mock(Vec::new()))
     }
     .graph()
     .unwrap();
@@ -695,9 +678,9 @@ fn given_a_source_that_names_a_key_of_the_graph_when_built_then_key_collision() 
     let flagged = |source: Source| {
         ReactAgent {
             system: vec![source],
-            thinking: Some(Switch::Config(key("deep"))),
+            tool_concurrency: Some(Limit::Config(key("width"))),
             ..limited(
-                Arc::new(LoggingModel::new(Vec::new())),
+                &mock(Vec::new()),
                 1,
                 OnLimit::End {
                     node: nid("limit"),
@@ -714,23 +697,22 @@ fn given_a_source_that_names_a_key_of_the_graph_when_built_then_key_collision() 
             "{name}"
         );
     }
-    let built = flagged(Source::Config(key("deep")));
+    let built = flagged(Source::Config(key("width")));
     assert!(
-        matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key("deep"))
+        matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key("width"))
     );
 }
 
 #[tokio::test]
 async fn given_the_agent_as_a_map_body_when_run_then_each_question_gets_its_reply_in_order() {
-    let model = Arc::new(LoggingModel::new(vec![
+    let client = mock(vec![
         text_step("one"),
         tool_call_step("c1", "echo", json!({})),
         text_step("two"),
-    ]));
-    let body = SubGraph::call(thinking_agent(model))
+    ]);
+    let body = SubGraph::call(agent(&client).graph().unwrap())
         .input(key("history"), Input::From(key("question")))
         .config(key("base"), Input::Config(key("prompt")))
-        .config(key("deep"), Input::Config(key("deep")))
         .output(key("answer"), Output::Append(key("replies")));
     let map = Map {
         list: key("questions"),
