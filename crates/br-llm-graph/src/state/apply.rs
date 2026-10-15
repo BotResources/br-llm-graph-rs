@@ -31,7 +31,7 @@ impl State {
             Update::Set { key, value } => self.apply_set(key, value),
             Update::Append { key, value } => self.apply_append(key, value),
             Update::Input { key, input } => {
-                self.conversation_mut(key)?.push_input(input.clone());
+                self.conversation_mut(key)?.push_input(input.clone())?;
                 Ok(())
             }
             Update::PushTurn { key, turn } => {

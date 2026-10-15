@@ -79,7 +79,8 @@ async fn main() {
     let config = Config::new(&schema, config_values).expect("config");
 
     let mut chat = Conversation::new();
-    chat.push_input(user("Please run the long job."));
+    chat.push_input(user("Please run the long job."))
+        .expect("an input id unique in the conversation");
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("pending_tasks"), Value::list(Vec::new()));

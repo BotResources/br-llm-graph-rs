@@ -178,7 +178,8 @@ fn config(schema: &Schema) -> Config {
 
 fn state(schema: &Schema) -> State {
     let mut chat = Conversation::new();
-    chat.push_input(user("Give me a good answer."));
+    chat.push_input(user("Give me a good answer."))
+        .expect("an input id unique in the conversation");
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("num_iter"), Value::int(0));

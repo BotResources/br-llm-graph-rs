@@ -9,8 +9,8 @@ use br_llm_graph::{
     Context, Cursor, EndLabel, IdSource, Key, NoopObserver, Observer, Origin, State, Update,
 };
 use br_llm_messages::{
-    AssistantBlock, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId, ToolName,
-    TurnId, UserBlock, UserInput, UserSource,
+    AssistantBlock, InputId, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId,
+    ToolName, TurnId, UserBlock, UserInput, UserSource,
 };
 use serde_json::Value as Json;
 
@@ -70,6 +70,7 @@ pub fn key(name: &str) -> Key {
 
 pub fn user(body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).expect("input id"),
         UserSource::Human,
         None,
         vec![UserBlock::text(Text::new(body).expect("non-empty"))],
@@ -79,6 +80,7 @@ pub fn user(body: &str) -> UserInput {
 
 pub fn runtime_input(kind: &str, body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).expect("input id"),
         UserSource::runtime(kind).expect("kind"),
         None,
         vec![UserBlock::text(Text::new(body).expect("non-empty"))],

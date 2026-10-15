@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_messages::{
-    AssistantBlock, Conversation, Entry, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
-    ToolResultBlock, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
+    AssistantBlock, Conversation, Entry, InputId, Step, StopReason, Text, ToolCall, ToolCallId,
+    ToolName, ToolResultBlock, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
 };
 use serde_json::{Value as Json, json};
 
@@ -83,12 +83,14 @@ fn four_calls_pending() -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-measure").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("measure").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat.push_turn(Turn::new(TurnId::new("t0").unwrap(), Some(author()), step))
         .unwrap();
     let mut values = BTreeMap::new();
@@ -187,14 +189,17 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
 
 async fn run_split_agent(graph: &crate::graph::Graph) {
     let mut history = Conversation::new();
-    history.push_input(
-        UserInput::new(
-            UserSource::Human,
-            None,
-            vec![UserBlock::text(Text::new("measure").unwrap())],
+    history
+        .push_input(
+            UserInput::new(
+                InputId::new("i-measure").unwrap(),
+                UserSource::Human,
+                None,
+                vec![UserBlock::text(Text::new("measure").unwrap())],
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    );
+        .unwrap();
     let state = graph
         .start_state([(key("history"), Value::conversation(history))])
         .unwrap();

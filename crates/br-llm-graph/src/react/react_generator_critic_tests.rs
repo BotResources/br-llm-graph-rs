@@ -28,7 +28,7 @@ fn ctx() -> Context {
 async fn given_generator_critic_graph_when_run_then_validates_after_one_iteration() {
     use std::collections::BTreeMap;
 
-    use br_llm_messages::{Conversation, Text, UserBlock, UserInput, UserSource};
+    use br_llm_messages::{Conversation, InputId, Text, UserBlock, UserInput, UserSource};
 
     use crate::graph::{Always, FnEdge, FnNode, NodeFuture};
     use crate::react::helpers::{complete, structured, wire};
@@ -101,6 +101,7 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
                         value: Value::int(next),
                     });
                     let instruction = UserInput::new(
+                        InputId::new("i-revise")?,
                         UserSource::runtime("critic")?,
                         None,
                         vec![UserBlock::text(Text::new("revise")?)],
@@ -141,12 +142,14 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-explain-supersteps").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("explain supersteps").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     let mut values = BTreeMap::new();
     values.insert(k("chat"), Value::conversation(chat));
     values.insert(k("is_validated"), Value::bool(false));

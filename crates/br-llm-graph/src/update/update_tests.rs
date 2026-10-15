@@ -1,6 +1,6 @@
 use br_llm_messages::{
-    AssistantBlock, Author, Step, StopReason, Text, ToolCallId, ToolName, ToolResult, Turn, TurnId,
-    UserBlock, UserInput, UserSource,
+    AssistantBlock, Author, InputId, Step, StopReason, Text, ToolCallId, ToolName, ToolResult,
+    Turn, TurnId, UserBlock, UserInput, UserSource,
 };
 
 use super::*;
@@ -33,6 +33,7 @@ fn given_append_when_round_tripped_then_identical() {
 #[test]
 fn given_input_when_round_tripped_then_identical() {
     let input = UserInput::new(
+        InputId::new("i-done").unwrap(),
         UserSource::runtime("wake").unwrap(),
         Some(Author::new("scheduler", "scheduler").unwrap()),
         vec![UserBlock::text(Text::new("done").unwrap())],

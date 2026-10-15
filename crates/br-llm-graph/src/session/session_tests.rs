@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use br_llm_messages::{Text, UserBlock, UserInput, UserSource};
+use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
 
 use super::*;
 use crate::graph::{Always, FnNode, Graph, GraphBuilder, NodeFuture};
@@ -31,6 +31,7 @@ fn linear_graph() -> Arc<Graph> {
 
 fn input(body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).unwrap(),
         UserSource::Human,
         None,
         vec![UserBlock::text(Text::new(body).unwrap())],

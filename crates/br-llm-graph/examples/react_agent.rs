@@ -66,7 +66,8 @@ async fn main() {
         .expect("build");
 
     let mut chat = Conversation::new();
-    chat.push_input(user("Find me something about Rust."));
+    chat.push_input(user("Find me something about Rust."))
+        .expect("an input id unique in the conversation");
     let state = graph
         .start_state([(key("chat"), Value::conversation(chat))])
         .expect("start state");

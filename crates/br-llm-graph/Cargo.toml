@@ -8,17 +8,17 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v0.4.0", version = "0.4.0" }
-br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.3.0", version = "0.3.0" }
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", tag = "br-llm-messages/v0.5.0", version = "0.5.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.4.0", version = "0.4.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 futures-util = "0.3"
 futures-channel = "0.3"
 
 [dev-dependencies]
-# The mock is taken from the release tag of br-llm-clients-core 0.3.0, which
-# names the same commit as br-llm-clients-mock/v0.3.0: a git dependency's
+# The mock is taken from the release tag of br-llm-clients-core 0.4.0, which
+# names the same commit as br-llm-clients-mock/v0.4.0: a git dependency's
 # source is its tag, so pinning the mock on its own tag would build a second
 # br-llm-clients-core from that source, whose `Client` is not the graph's.
-br-llm-clients-mock = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.3.0", version = "0.3.0" }
+br-llm-clients-mock = { git = "https://github.com/BotResources/br-llm-clients-rs", tag = "br-llm-clients-core/v0.4.0", version = "0.4.0" }
 tokio = { version = "1", features = ["rt", "macros"] }

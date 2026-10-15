@@ -8,8 +8,8 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
-    AssistantBlock, Author, Conversation, Entry, Step, StopReason, Text, Turn, TurnItem, UserBlock,
-    UserInput, UserSource, WireMessage, WireUserBlock,
+    AssistantBlock, Author, Conversation, Entry, InputId, Step, StopReason, Text, Turn, TurnItem,
+    UserBlock, UserInput, UserSource, WireMessage, WireUserBlock,
 };
 use serde_json::json;
 
@@ -46,12 +46,14 @@ pub(crate) fn question(body: &str) -> Conversation {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new(format!("i-{body}")).unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new(body).unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat
 }
 

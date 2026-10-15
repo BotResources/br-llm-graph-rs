@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use br_llm_clients_core::OutputMode;
 use br_llm_clients_mock::MockClient;
-use br_llm_messages::{Conversation, Entry, Text, Turn, UserBlock, UserInput, UserSource};
+use br_llm_messages::{Conversation, Entry, InputId, Text, Turn, UserBlock, UserInput, UserSource};
 
 use crate::graph::{Context, Graph, Limit};
 use crate::observe::NoopObserver;
@@ -28,12 +28,14 @@ pub(crate) fn question(body: &str) -> Conversation {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new(format!("i-{body}")).unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new(body).unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat
 }
 

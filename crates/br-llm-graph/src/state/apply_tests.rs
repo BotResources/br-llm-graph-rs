@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use br_llm_messages::AssistantBlock;
 use br_llm_messages::{
-    Author, Conversation, Entry, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
+    Author, Conversation, Entry, InputId, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
     ToolResult, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
 };
 
@@ -33,6 +33,7 @@ fn state() -> State {
 
 fn input(body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).unwrap(),
         UserSource::Human,
         None,
         vec![UserBlock::text(Text::new(body).unwrap())],

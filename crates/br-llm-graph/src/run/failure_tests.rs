@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use br_llm_messages::{Text, UserBlock, UserInput, UserSource};
+use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
 
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Always, Context, FnNode, GraphBuilder, NodeFuture};
@@ -20,6 +20,7 @@ fn ctx() -> Context {
 
 fn input(body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).unwrap(),
         UserSource::Human,
         None,
         vec![UserBlock::text(Text::new(body).unwrap())],

@@ -121,7 +121,7 @@ impl CritiqueNode {
         let mut earlier = Conversation::new();
         for entry in conversation.entries().get(..index).unwrap_or_default() {
             match entry {
-                Entry::UserInput(input) => earlier.push_input(input.clone()),
+                Entry::UserInput(input) => earlier.push_input(input.clone())?,
                 Entry::Turn(turn) if self.cut_generation(turn) => {}
                 Entry::Turn(turn) => earlier.push_turn(turn.clone())?,
             }

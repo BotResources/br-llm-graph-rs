@@ -182,9 +182,9 @@ async fn given_an_earlier_finished_turn_when_the_agent_runs_again_then_rounds_re
         .unwrap();
     earlier.push_step(text_step("earlier answer")).unwrap();
     let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
+    chat.push_input(human("hi")).unwrap();
     chat.push_turn(earlier).unwrap();
-    chat.push_input(human("again"));
+    chat.push_input(human("again")).unwrap();
     let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("second answer"),

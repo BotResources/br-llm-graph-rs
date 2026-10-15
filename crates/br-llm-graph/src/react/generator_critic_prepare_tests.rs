@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use br_llm_clients_mock::MockClient;
-use br_llm_messages::{Conversation, Text, UserBlock, UserInput, UserSource};
+use br_llm_messages::{Conversation, InputId, Text, UserBlock, UserInput, UserSource};
 
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{
@@ -56,6 +56,7 @@ impl Node for OpenDocument {
         Box::pin(async move {
             let text = self.documents.read(state.str(&key("document_id"))?)?;
             let input = UserInput::new(
+                InputId::new(format!("i-{text}"))?,
                 UserSource::Human,
                 None,
                 vec![UserBlock::text(Text::new(format!("Summarize: {text}"))?)],

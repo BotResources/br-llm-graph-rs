@@ -128,7 +128,8 @@ async fn main() {
     let config = Config::new(graph.schema(), config_values).expect("config");
 
     let mut chat = Conversation::new();
-    chat.push_input(user("Solve a tricky problem, using a skill if helpful."));
+    chat.push_input(user("Solve a tricky problem, using a skill if helpful."))
+        .expect("an input id unique in the conversation");
     let state = graph
         .start_state([
             (key("history"), Value::conversation(chat)),

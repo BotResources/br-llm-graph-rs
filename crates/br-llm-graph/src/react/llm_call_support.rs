@@ -8,8 +8,8 @@ use std::sync::Arc;
 use br_llm_clients_core::{ClientRequest, OutputMode};
 use br_llm_clients_mock::{MockClient, Reply, ReplySource};
 use br_llm_messages::{
-    Author, Conversation, Text, Turn, TurnId, UserBlock, UserInput, UserSource, WireMessage,
-    WireUserBlock,
+    Author, Conversation, InputId, Text, Turn, TurnId, UserBlock, UserInput, UserSource,
+    WireMessage, WireUserBlock,
 };
 
 use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Map, Node, Output, Target};
@@ -43,12 +43,14 @@ pub(crate) fn state_with(doc: &str, docs: &[&str]) -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-what-do-tides-follow").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("What do tides follow?").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat.push_turn(Turn::new(
         TurnId::new("t0").unwrap(),
         Some(Author::new("librarian", "librarian").unwrap()),

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use br_llm_clients_core::OutputMode;
 use br_llm_messages::{
-    Conversation, Text, ToolResultBlock, UserBlock, UserInput, UserSource, WireMessage,
+    Conversation, InputId, Text, ToolResultBlock, UserBlock, UserInput, UserSource, WireMessage,
     WireUserBlock,
 };
 use serde_json::json;
@@ -99,14 +99,17 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
     .graph()
     .unwrap();
     let mut history = Conversation::new();
-    history.push_input(
-        UserInput::new(
-            UserSource::Human,
-            None,
-            vec![UserBlock::text(Text::new("save my note").unwrap())],
+    history
+        .push_input(
+            UserInput::new(
+                InputId::new("i-save-my-note").unwrap(),
+                UserSource::Human,
+                None,
+                vec![UserBlock::text(Text::new("save my note").unwrap())],
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    );
+        .unwrap();
     let state = graph
         .start_state([
             (key("history"), Value::conversation(history)),

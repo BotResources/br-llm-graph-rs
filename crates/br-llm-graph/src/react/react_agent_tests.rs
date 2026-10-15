@@ -6,8 +6,8 @@ use std::sync::Arc;
 use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
 use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
-    Text, ToolCallId, ToolName, ToolResult, ToolResultBlock, Turn, TurnId, TurnItem, UserBlock,
-    UserInput, UserSource,
+    InputId, Text, ToolCallId, ToolName, ToolResult, ToolResultBlock, Turn, TurnId, TurnItem,
+    UserBlock, UserInput, UserSource,
 };
 use serde_json::json;
 
@@ -190,14 +190,17 @@ async fn given_a_new_activation_when_the_round_limit_counts_then_it_starts_from_
     let ctx = ctx();
     let state = finished(call_in(&graph, question("hi"), &ctx).await);
     let mut history = state.conversation(&key("history")).unwrap().clone();
-    history.push_input(
-        UserInput::new(
-            UserSource::Human,
-            None,
-            vec![UserBlock::text(Text::new("again").unwrap())],
+    history
+        .push_input(
+            UserInput::new(
+                InputId::new("i-again").unwrap(),
+                UserSource::Human,
+                None,
+                vec![UserBlock::text(Text::new("again").unwrap())],
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    );
+        .unwrap();
     let state = finished(call_in(&graph, history, &ctx).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "second");
 }

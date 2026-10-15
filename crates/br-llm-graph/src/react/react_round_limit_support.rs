@@ -8,7 +8,8 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
-    Conversation, Entry, Text, ToolResultBlock, Turn, TurnItem, UserBlock, UserInput, UserSource,
+    Conversation, Entry, InputId, Text, ToolResultBlock, Turn, TurnItem, UserBlock, UserInput,
+    UserSource,
 };
 
 use crate::graph::{Context, Graph, GraphBuilder, Limit, Target};
@@ -46,6 +47,7 @@ pub(crate) fn config(max_rounds: i64) -> Config {
 
 pub(crate) fn human(body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).unwrap(),
         UserSource::Human,
         None,
         vec![UserBlock::text(Text::new(body).unwrap())],
@@ -63,7 +65,7 @@ pub(crate) fn state_with(chat: Conversation) -> State {
 
 pub(crate) fn fresh_state() -> State {
     let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
+    chat.push_input(human("hi")).unwrap();
     state_with(chat)
 }
 

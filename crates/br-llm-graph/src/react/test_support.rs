@@ -5,8 +5,8 @@ use br_llm_clients_core::{
 };
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_messages::{
-    AssistantBlock, Author, Conversation, ModelId, Step, StopReason, Text, ToolCall, ToolCallId,
-    ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
+    AssistantBlock, Author, Conversation, InputId, ModelId, Step, StopReason, Text, ToolCall,
+    ToolCallId, ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
 };
 use serde_json::{Value as Json, json};
 
@@ -38,12 +38,14 @@ pub(crate) fn seeded_state() -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-hi").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("hi").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));

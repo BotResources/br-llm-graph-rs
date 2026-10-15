@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 
 use br_llm_clients_core::ToolSpec;
 use br_llm_messages::{
-    AssistantBlock, Conversation, Entry, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
-    ToolResultBlock, Turn, TurnId, UserBlock, UserInput, UserSource,
+    AssistantBlock, Conversation, Entry, InputId, Step, StopReason, Text, ToolCall, ToolCallId,
+    ToolName, ToolResultBlock, Turn, TurnId, UserBlock, UserInput, UserSource,
 };
 use serde_json::{Value as Json, json};
 
@@ -258,12 +258,14 @@ pub(crate) fn pending(calls: Vec<AssistantBlock>) -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-go").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("go").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat.push_turn(Turn::new(TurnId::new("t0").unwrap(), Some(author()), step))
         .unwrap();
     let values = BTreeMap::from([

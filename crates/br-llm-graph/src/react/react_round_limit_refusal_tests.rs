@@ -39,7 +39,7 @@ fn refusal_naming(max: &str) -> String {
 /// `rounds_turn`) and awaits its next step.
 fn turn_of(rounds: &[&[(&str, bool)]]) -> State {
     let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
+    chat.push_input(human("hi")).unwrap();
     chat.push_turn(rounds_turn(rounds)).unwrap();
     state_with(chat)
 }
@@ -236,9 +236,9 @@ async fn given_a_refusal_in_a_finished_turn_when_a_new_turn_reaches_the_limit_th
     let mut earlier = rounds_turn(&[&[("echoed", false)], &[(&refusal(1), true)]]);
     earlier.push_step(text_step("earlier answer")).unwrap();
     let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
+    chat.push_input(human("hi")).unwrap();
     chat.push_turn(earlier).unwrap();
-    chat.push_input(human("again"));
+    chat.push_input(human("again")).unwrap();
     let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         tool_call_step("c2", "echo", json!({})),

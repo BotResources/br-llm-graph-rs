@@ -13,7 +13,9 @@ use br_llm_clients_core::{
     StreamSink,
 };
 use br_llm_graph::{Config, Outcome, ReactAgent, Source, Update, Value, channel, run};
-use br_llm_messages::{Author, Conversation, Text, UserBlock, UserInput, UserSource, WireMessage};
+use br_llm_messages::{
+    Author, Conversation, InputId, Text, UserBlock, UserInput, UserSource, WireMessage,
+};
 use serde_json::json;
 
 use common::tools::EchoTool;
@@ -84,7 +86,8 @@ async fn main() {
     let config = Config::new(graph.schema(), config_values).expect("config");
 
     let mut chat = Conversation::new();
-    chat.push_input(user("Do the task."));
+    chat.push_input(user("Do the task."))
+        .expect("an input id unique in the conversation");
     let first_state = graph
         .start_state([(key("history"), Value::conversation(chat))])
         .expect("start state");
@@ -104,6 +107,7 @@ async fn main() {
     println!("external_message: second run (an upper agent relaunches with its own message)");
     let mut relaunch_state = state;
     let supervisor = UserInput::new(
+        InputId::new("i-now-summarize-for-the-board").expect("input id"),
         UserSource::Human,
         Some(Author::new("supervisor", "supervisor").expect("author")),
         vec![UserBlock::text(

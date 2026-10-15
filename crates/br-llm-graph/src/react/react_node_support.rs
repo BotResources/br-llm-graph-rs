@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use br_llm_clients_core::{Client, OutputMode};
 use br_llm_messages::{
-    Conversation, Entry, Step, Text, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
+    Conversation, Entry, InputId, Step, Text, Turn, TurnId, TurnItem, UserBlock, UserInput,
+    UserSource,
 };
 
 use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
@@ -65,12 +66,14 @@ pub(crate) fn state_with_call(step: Step) -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-hi").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("hi").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat.push_turn(Turn::new(TurnId::new("t1").unwrap(), Some(author()), step))
         .unwrap();
     let mut values = BTreeMap::new();
