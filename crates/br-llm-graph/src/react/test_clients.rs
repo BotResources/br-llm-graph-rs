@@ -14,10 +14,11 @@ use br_llm_messages::Step;
 use crate::react::test_support::settings;
 use crate::value::Key;
 
-/// A client that serves its steps as they are, without the checks of a
-/// conforming client: the client a test writes for a reply the mock refuses,
-/// such as a step holding only thinking. It sends no stream event and keeps
-/// every request.
+/// A client that serves its steps as they are, without the checks a
+/// conforming client makes of its replies: the client a test writes for a
+/// reply the mock refuses, such as a step holding only thinking. It refuses
+/// a list of messages like every client library (`check_messages`), sends
+/// no stream event and keeps every request.
 pub(crate) struct LaxClient {
     settings: ClientSettings,
     steps: Mutex<VecDeque<Step>>,
@@ -45,9 +46,16 @@ impl Client for LaxClient {
         _sink: &'a mut dyn StreamSink,
     ) -> BoxFuture<'a, CallOutcome> {
         self.requests.lock().unwrap().push(request.clone());
-        let step = self.steps.lock().unwrap().pop_front();
+        let checked = request.check_messages();
+        let step = match checked {
+            Ok(()) => self.steps.lock().unwrap().pop_front(),
+            Err(_) => None,
+        };
         Box::pin(async move {
             let report = CallReport::new(std::time::Duration::ZERO);
+            if let Err(error) = checked {
+                return CallOutcome::failure(report, error);
+            }
             match step {
                 Some(step) => {
                     let report = match step.usage() {
