@@ -59,7 +59,8 @@ impl Node for LlmCall {
         Box::pin(async move {
             let (messages, key) = match &self.request {
                 LlmRequest::Text(source) => {
-                    let text = Text::new(source.resolve(state, config)?)?;
+                    let text =
+                        Text::new(source.resolve(state, config)?).map_err(GraphError::from)?;
                     let message = WireMessage::User {
                         content: vec![WireUserBlock::Text { text }],
                     };
