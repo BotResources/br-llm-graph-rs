@@ -12,6 +12,7 @@ use crate::react::react_agent::{
     declare_count, declare_input, declare_limit, declare_sources, round_limit_flag,
 };
 use crate::react::react_loop::ReactLoop;
+use crate::react::round_limit::OnLimit;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::source::Source;
 use crate::react::verdict::VerdictForm;
@@ -96,7 +97,9 @@ use crate::value::{EndLabel, Key, NodeId};
 /// With tools, the generation is the ReAct loop of `ReactAgent` inline in
 /// this graph; each generation opens a new generator turn, so the round limit
 /// counts per generation. A generation cut by `OnLimit::End` (its final step
-/// is the limit's closing step) is an empty answer: rejected without the
+/// is the closing step the limit node writes: the stop reason
+/// `other(tool_round_limit)`, no model, no usage; a provider's reply keeping
+/// that stop reason carries a model and is an answer) is an empty answer: rejected without the
 /// critic where the critic would judge it, left out of what the critic reads
 /// in later rounds (the user messages around it merged), and, as the last
 /// generation, an empty `answer`. The limit's flag output is true when the
@@ -190,6 +193,10 @@ impl GeneratorCritic {
         }
         let mut schema = schema.build();
         let flag = generator.round_limit.as_ref().and_then(round_limit_flag);
+        let limit_ends = matches!(
+            generator.round_limit.as_ref().map(|limit| &limit.on_limit),
+            Some(OnLimit::End { .. })
+        );
         if let Some(flag) = &flag {
             if schema.state.get(flag) == Some(&Kind::Bool) {
                 return Err(GraphError::KeyCollision { key: flag.clone() });
@@ -331,6 +338,7 @@ impl GeneratorCritic {
                     review_request,
                     empty_answer_critique,
                     verdict,
+                    limit_ends,
                 },
             )
             .edge(
@@ -344,6 +352,7 @@ impl GeneratorCritic {
                     answer: names.answer,
                     generations: names.generations,
                     generator: generator.author,
+                    limit_ends,
                 },
             )
             .edge(

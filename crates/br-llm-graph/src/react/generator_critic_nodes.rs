@@ -92,6 +92,9 @@ pub(crate) struct FinishNode {
     pub(crate) answer: Key,
     pub(crate) generations: Key,
     pub(crate) generator: Author,
+    /// Whether the generator's round limit is `OnLimit::End`, the only one
+    /// that cuts a generation.
+    pub(crate) limit_ends: bool,
 }
 
 impl Node for FinishNode {
@@ -108,7 +111,7 @@ impl Node for FinishNode {
                 .filter(|entry| authored_by(entry, &self.generator))
                 .count();
             let answer = match last_answer(conversation, &self.generator) {
-                Some((_, step)) if !closes_on_limit(step) => answer_text(step),
+                Some((_, step)) if !(self.limit_ends && closes_on_limit(step)) => answer_text(step),
                 Some(_) | None => String::new(),
             };
             Ok(vec![

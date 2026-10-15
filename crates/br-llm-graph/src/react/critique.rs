@@ -40,6 +40,9 @@ pub(crate) struct CritiqueNode {
     pub(crate) review_request: Source,
     pub(crate) empty_answer_critique: Source,
     pub(crate) verdict: VerdictForm,
+    /// Whether the generator's round limit is `OnLimit::End`, the only one
+    /// that cuts a generation.
+    pub(crate) limit_ends: bool,
 }
 
 impl Node for CritiqueNode {
@@ -47,7 +50,7 @@ impl Node for CritiqueNode {
         Box::pin(async move {
             let conversation = state.conversation(&self.conversation)?;
             let verdict = match last_answer(conversation, &self.generator) {
-                Some((index, step)) if !empty_step(step) => {
+                Some((index, step)) if !self.empty_step(step) => {
                     let messages = self.messages(state, config, conversation, index, step)?;
                     self.judge(state, config, ctx, messages).await?
                 }
@@ -119,7 +122,7 @@ impl CritiqueNode {
         for entry in conversation.entries().get(..index).unwrap_or_default() {
             match entry {
                 Entry::UserInput(input) => earlier.push_input(input.clone()),
-                Entry::Turn(turn) if cut_generation(turn, &self.generator) => {}
+                Entry::Turn(turn) if self.cut_generation(turn) => {}
                 Entry::Turn(turn) => earlier.push_turn(turn.clone())?,
             }
         }
@@ -169,18 +172,27 @@ impl CritiqueNode {
     }
 }
 
-/// Whether `turn` is a generation of `generator` that the round limit cut
-/// (`OnLimit::End`'s closing step as its final step).
-fn cut_generation(turn: &Turn, generator: &Author) -> bool {
-    turn.author() == Some(generator) && final_step(turn).is_some_and(closes_on_limit)
-}
+impl CritiqueNode {
+    /// Whether `step` closes a generation the round limit cut: the
+    /// generator's limit is `OnLimit::End` and `step` is its closing step.
+    fn cut_step(&self, step: &Step) -> bool {
+        self.limit_ends && closes_on_limit(step)
+    }
 
-/// Whether an answer is empty: no non-blank text and no structured block,
-/// or a generation the round limit cut (`OnLimit::End`'s closing step).
-fn empty_step(step: &Step) -> bool {
-    closes_on_limit(step)
-        || (step.structured().next().is_none()
-            && step.text().all(|text| text.as_str().trim().is_empty()))
+    /// Whether `turn` is a generation of the generator that the round limit
+    /// cut.
+    fn cut_generation(&self, turn: &Turn) -> bool {
+        turn.author() == Some(&self.generator)
+            && final_step(turn).is_some_and(|step| self.cut_step(step))
+    }
+
+    /// Whether an answer is empty: no non-blank text and no structured block,
+    /// or a generation the round limit cut.
+    fn empty_step(&self, step: &Step) -> bool {
+        self.cut_step(step)
+            || (step.structured().next().is_none()
+                && step.text().all(|text| text.as_str().trim().is_empty()))
+    }
 }
 
 /// Removes the thinking blocks of every assistant message. A message left

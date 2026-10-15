@@ -118,9 +118,15 @@ impl RoundLimit {
 /// The stop reason of the step that closes a turn cut by `OnLimit::End`.
 const LIMIT_REACHED: &str = "tool_round_limit";
 
-/// Whether `step` is the step `OnLimit::End` closes a turn with.
+/// Whether `step` is the step `OnLimit::End` closes a turn with: its stop
+/// reason, and only the marks the limit node writes, no model and no usage. A
+/// client's step always carries a model (br-llm-clients-core), so a
+/// provider's reply that keeps this stop reason verbatim is not taken for it.
+/// Callers ask it only of a generator whose round limit is `End`.
 pub(crate) fn closes_on_limit(step: &Step) -> bool {
     matches!(step.stop_reason(), StopReason::Other { reason } if reason == LIMIT_REACHED)
+        && step.model().is_none()
+        && step.usage().is_none()
 }
 
 /// The rounds answered in `author`'s open turn: none when the last turn of

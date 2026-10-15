@@ -191,6 +191,13 @@ instead, and `LlmCall` makes one model call whose answer is data.
   holding that text made `Continue` fail without its node answering, and a
   refusal written under a lower limit failed the turn resumed under a higher
   one. `OnLimit::Continue` documents the rule and its residual.
+- A generation is taken for one the round limit cut only when the
+  generator's round limit is `End` and its final step is the one the limit
+  node writes: the stop reason `other(tool_round_limit)`, no model, no usage.
+  Before, the stop reason alone decided, and br-llm-clients-core keeps an
+  unknown provider stop reason verbatim in `other(..)`: a real answer
+  carrying it was judged empty, without the critic, even with no round
+  limit at all.
 
 ## 0.3.0 - 2026-10-13
 
