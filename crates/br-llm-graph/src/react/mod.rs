@@ -45,6 +45,12 @@ mod react_background_task_tests;
 #[cfg(test)]
 mod react_generator_critic_tests;
 #[cfg(test)]
+mod react_hook_slot_tests;
+#[cfg(test)]
+mod react_hook_support;
+#[cfg(test)]
+mod react_hook_tests;
+#[cfg(test)]
 mod react_llm_tests;
 #[cfg(test)]
 mod react_loop_tests;
