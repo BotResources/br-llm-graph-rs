@@ -8,7 +8,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll, Wake, Waker};
 
+use br_llm_clients_core::ToolSpec;
+use br_llm_messages::{Text, ToolResultBlock};
+use serde_json::{Value as Json, json};
+
 use super::Gate;
+use crate::react::test_support::{EchoTool, spec};
+use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+use crate::state::{Config, State};
 
 /// A waker that counts its wakes; its strong count tells the live clones.
 #[derive(Default)]
@@ -213,5 +220,75 @@ fn given_a_waiting_call_dropped_when_it_leaves_the_queue_then_its_waker_goes_out
         lock_free_at_drop.get(),
         Some(&true),
         "the waker of a waiter leaving the queue, its last clone, is dropped out of the lock"
+    );
+}
+
+/// A future pending `n` times, waking its task each time, as a tool
+/// streaming I/O does.
+struct Busy(usize);
+
+impl Future for Busy {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.0 == 0 {
+            return Poll::Ready(());
+        }
+        self.0 -= 1;
+        cx.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+
+/// A tool busy for `{"yields": n}` polls of its task.
+struct BusyTool(ToolSpec);
+
+impl Tool for BusyTool {
+    fn spec(&self) -> &ToolSpec {
+        &self.0
+    }
+
+    fn call<'a>(
+        &'a self,
+        arguments: Json,
+        _state: &'a State,
+        _config: &'a Config,
+    ) -> ToolFuture<'a> {
+        Box::pin(async move {
+            Busy(usize::try_from(arguments["yields"].as_u64().unwrap_or(0)).unwrap_or(0)).await;
+            Ok(ToolOutput::text(vec![ToolResultBlock::text(
+                Text::new("busy done").unwrap(),
+            )]))
+        })
+    }
+}
+
+#[test]
+fn given_calls_waiting_for_a_busy_slot_when_their_task_is_polled_again_and_again_then_the_gate_keeps_one_waker_per_waiting_call()
+ {
+    // R3b's probe: one call busy for 2000 polls holds the only slot while
+    // twenty calls wait for it.
+    use crate::react::react_hook_support::{answered, call, pending, run_tools, tool_graph};
+    let mut calls = vec![call("c0", "busy", json!({ "yields": 2000 }))];
+    calls.extend((1..=20).map(|index| call(&format!("c{index}"), "echo", json!({}))));
+    let busy: Arc<dyn Tool> = Arc::new(BusyTool(spec("busy")));
+    let graph = tool_graph(vec![busy, Arc::new(EchoTool)], Some(1), false);
+    let (counter, waker) = counting();
+    let mut cx = Context::from_waker(&waker);
+    let mut run = Box::pin(run_tools(&graph, pending(calls)));
+
+    let mut peak = 0;
+    let outcome = loop {
+        if let Poll::Ready(outcome) = run.as_mut().poll(&mut cx) {
+            break outcome;
+        }
+        peak = peak.max(Arc::strong_count(&counter));
+    };
+
+    assert_eq!(answered(outcome).len(), 21);
+    assert!(
+        peak <= 25,
+        "live waker clones peaked at {peak} for twenty waiting calls: the counter, the task's \
+         waker, one per waiting call and a margin of three"
     );
 }
