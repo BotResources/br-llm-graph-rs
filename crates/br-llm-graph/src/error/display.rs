@@ -134,6 +134,13 @@ impl std::fmt::Display for GraphError {
             GraphError::FlagKeyMismatch { key } => {
                 write!(f, "flag key {key} is not a bool state key")
             }
+            GraphError::Thread { source } => write!(f, "thread store error: {source}"),
+            GraphError::ThreadNotFound { thread } => {
+                write!(f, "thread {thread} is not in the thread store")
+            }
+            GraphError::OpeningNotInputs => f.write_str(
+                "the opening of a durable agent must hold user inputs, and only user inputs",
+            ),
             GraphError::ToolLimitReached { node, max_rounds } => {
                 write!(
                     f,

@@ -6,12 +6,14 @@ mod display;
 mod fault;
 mod source;
 
+use std::sync::Arc;
+
 use br_llm_clients_core::{BuildError, ClientError};
 use br_llm_messages::MessageError;
 use br_llm_messages::{Author, ToolName};
 
 use crate::state::Kind;
-use crate::value::{EndLabel, Key, NodeId};
+use crate::value::{EndLabel, Key, NodeId, ThreadId};
 
 pub use fault::NodeFault;
 
@@ -134,6 +136,19 @@ pub enum GraphError {
     FlagKeyMismatch {
         key: Key,
     },
+    /// The thread store failed or refused a write: its error, which the
+    /// host can downcast to its own type.
+    Thread {
+        source: Arc<dyn std::error::Error + Send + Sync>,
+    },
+    /// The thread a durable agent was given is absent from its store: the
+    /// library never creates a thread it was given.
+    ThreadNotFound {
+        thread: ThreadId,
+    },
+    /// The `opening` of a durable agent holds no user input, or something
+    /// other than user inputs.
+    OpeningNotInputs,
     ToolLimitReached {
         node: NodeId,
         max_rounds: usize,

@@ -9,6 +9,7 @@ impl std::error::Error for GraphError {
             GraphError::Request(error) => Some(error),
             GraphError::SubGraphFailed { source } => Some(source.as_ref()),
             GraphError::InvalidNode { source, .. } => Some(source.as_ref()),
+            GraphError::Thread { source } => Some(source.as_ref()),
             GraphError::Identifier { .. }
             | GraphError::FloatNotFinite
             | GraphError::ThreadId { .. }
@@ -46,6 +47,8 @@ impl std::error::Error for GraphError {
             | GraphError::VerdictShapeMismatch { .. }
             | GraphError::KeyCollision { .. }
             | GraphError::FlagKeyMismatch { .. }
+            | GraphError::ThreadNotFound { .. }
+            | GraphError::OpeningNotInputs
             | GraphError::ToolLimitReached { .. }
             | GraphError::DuplicateInput { .. }
             | GraphError::DuplicateOutput { .. }

@@ -14,6 +14,7 @@ mod react_loop;
 mod round_limit;
 mod seats;
 mod sink;
+mod thread_store;
 mod tool;
 mod tool_gate;
 mod tool_node;
@@ -136,5 +137,8 @@ pub use react_agent::ReactAgent;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use seats::{CriticSeat, GeneratorSeat};
 pub use sink::complete;
+pub use thread_store::{
+    MessageStatus, ThreadError, ThreadFuture, ThreadMessage, ThreadStore, ThreadView, TurnEnd,
+};
 pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
 pub use verdict::{Verdict, VerdictOverride, VerdictReader};

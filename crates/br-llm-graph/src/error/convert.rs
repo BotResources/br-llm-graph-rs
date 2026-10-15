@@ -20,3 +20,12 @@ impl From<BuildError> for GraphError {
         GraphError::Request(error)
     }
 }
+
+impl From<crate::react::ThreadError> for GraphError {
+    /// The error of a thread store: `Thread`, carrying it.
+    fn from(error: crate::react::ThreadError) -> Self {
+        GraphError::Thread {
+            source: std::sync::Arc::from(error),
+        }
+    }
+}
