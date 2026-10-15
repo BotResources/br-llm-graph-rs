@@ -109,6 +109,8 @@ mod react_tool_result_tests;
 #[cfg(test)]
 mod test_clients;
 #[cfg(test)]
+mod test_clients_tests;
+#[cfg(test)]
 mod test_support;
 #[cfg(test)]
 mod test_tools;
