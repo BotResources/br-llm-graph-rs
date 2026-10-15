@@ -40,7 +40,11 @@ instead, and `LlmCall` makes one model call whose answer is data.
   (`MapBodySet`). At build it checks the keys its sources read
   (`SourceKeyMismatch`), its conversation key (`UnknownKey`, `KindMismatch`)
   and its output key, refused with the error writing a string through it
-  would give (`UnknownKey`, `KindMismatch`, `AppendNotList`).
+  would give (`UnknownKey`, `KindMismatch`, `AppendNotList`). A call can not
+  have tools; it may ask for a structured reply. Tool calls and results in
+  the history of a conversation request reach the client with no tool
+  declared, which some providers (Anthropic, Bedrock) refuse: keep tool
+  traffic out of an `LlmCall`'s conversation.
 - `Hook` (`judge(id, arguments, state, config) -> HookFuture`), `Judgment`
   (`Accept`, `Refuse { reason }`), `HookFuture` and `HookError`, and
   `Tool::hook()` (`Option<&dyn Hook>`, `None` by default): the judgment of

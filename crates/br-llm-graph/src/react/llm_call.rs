@@ -19,23 +19,30 @@ pub enum LlmRequest {
     /// blank fails the node (`Message`: a message cannot hold a blank text).
     Text(Source),
     /// A conversation state key, rendered for `author`: for images or
-    /// earlier turns.
+    /// earlier turns. An empty conversation fails the node (`Message`, the
+    /// render's refusal). The call declares no tools, so tool calls and tool
+    /// results in this history reach the client with no tool declared, which
+    /// some providers (Anthropic, Bedrock) refuse: that is a matter of the
+    /// provider's table, so keep tool traffic out of an `LlmCall`'s
+    /// conversation.
     Conversation { key: Key, author: Author },
 }
 
 /// A node that makes one model call and gives back its answer as data.
 ///
 /// The request holds the text of `system` (a blank text gives no system
-/// text), the messages of `request`, no tools and `output_mode`. The answer
-/// is the JSON text of the reply's structured block when it has one, else its
-/// text blocks joined verbatim; it is written through `output`, `Set` to a
-/// string state key or `Append` to a list of strings. Nothing else is
-/// written: the call keeps no conversation.
+/// text), the messages of `request`, no tools and `output_mode`: a call can
+/// not have tools, and it may ask for a structured reply. The answer is the
+/// JSON text of the reply's structured block when it has one, else its text
+/// blocks joined verbatim; it is written through `output`, `Set` to a string
+/// state key or `Append` to a list of strings. Nothing else is written: the
+/// call keeps no conversation.
 ///
 /// The stream events of the call reach the observer with the conversation
 /// key of an `LlmRequest::Conversation`, or the key of `output` for an
-/// `LlmRequest::Text`. A refusal to build the request fails the node with
-/// `Request`, an error of the client with `Model`.
+/// `LlmRequest::Text`, which has no conversation key. A refusal to build the
+/// request fails the node with `Request`, an error of the client with
+/// `Model`.
 ///
 /// As the body of a `Map`, an `Append` output makes one model call per item,
 /// at most the map's concurrency limit at once, the answers appended in item

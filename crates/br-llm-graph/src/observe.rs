@@ -17,6 +17,8 @@ pub trait Observer: Send + Sync {
     fn node_finished(&self, origin: &Origin, node: &NodeId) {
         let _ = (origin, node);
     }
+    /// A model stream event, with the conversation key of the calling node,
+    /// or the output key of an `LlmCall` whose request is a text.
     fn stream(&self, origin: &Origin, key: &Key, event: &StreamEvent) {
         let _ = (origin, key, event);
     }
