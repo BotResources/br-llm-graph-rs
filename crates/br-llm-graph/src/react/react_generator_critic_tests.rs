@@ -4,14 +4,17 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
-use crate::react::llm_node::{LlmNode, Source};
-use crate::react::model::{OutputMode, ToolCalls};
+use crate::react::llm_node::LlmNode;
+use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::run::Outcome;
 use crate::run::channel;
 use crate::run::run;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
+use br_llm_clients_core::{
+    Client, ClientRequest, OutputMode, Parameter, ParameterKind, Parameters, StructuredShape,
+};
 
 fn nid(name: &str) -> NodeId {
     NodeId::new(name).unwrap()
@@ -29,7 +32,6 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
 
     use crate::graph::{Always, FnEdge, FnNode, NodeFuture};
     use crate::react::helpers::{complete, structured, wire};
-    use crate::react::model::{Model, Request};
     use crate::state::{Config, Kind, Schema, State, Value};
     use crate::update::Update;
     use crate::value::Key;
@@ -53,37 +55,40 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
     let generator = LlmNode {
         key: k("chat"),
         author: author(),
-        model: Arc::new(ScriptedModel::new(vec![
+        client: Arc::new(mock(vec![
             text_step("first attempt"),
             text_step("revised attempt"),
         ])),
         system: vec![Source::Config(k("base"))],
         tools: Vec::new(),
         enabled: None,
-        output: OutputMode::Text,
-        thinking: None,
+        output_mode: OutputMode::Plain,
     };
 
-    let critic_model: Arc<dyn Model> = Arc::new(ScriptedModel::new(vec![
+    let critic_client: Arc<dyn Client> = Arc::new(mock(vec![
         structured_step(json!({ "validated": false })),
         structured_step(json!({ "validated": true })),
     ]));
+    let shape = StructuredShape::new(
+        "verdict",
+        None,
+        Parameters::new(vec![
+            Parameter::new("validated", "", true, ParameterKind::Boolean).unwrap(),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
     let critic_author = author();
     let critic = FnNode::new(
         move |state: &State, _config: &Config, ctx: &Context| -> NodeFuture<'_> {
-            let model = critic_model.clone();
+            let client = critic_client.clone();
             let author = critic_author.clone();
+            let shape = shape.clone();
             Box::pin(async move {
                 let messages = wire(state.conversation(&k("chat"))?, &author)?;
-                let request = Request {
-                    system: None,
-                    messages,
-                    tools: Vec::new(),
-                    tool_calls: ToolCalls::Allowed,
-                    output: OutputMode::Structured { schema: json!({}) },
-                    thinking: None,
-                };
-                let step = complete(model.as_ref(), request, ctx, &k("chat")).await?;
+                let request =
+                    ClientRequest::new(None, messages, Vec::new(), OutputMode::Structured(shape))?;
+                let step = complete(client.as_ref(), &request, ctx, &k("chat")).await?;
                 let verdict: Verdict = structured(&step)?;
                 let mut updates = vec![Update::Set {
                     key: k("is_validated"),

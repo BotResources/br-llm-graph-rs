@@ -1,13 +1,11 @@
 use br_llm_messages::{
     AssistantBlock, Author, Conversation, Step, StopReason, Text, ToolResult, ToolResultBlock,
-    TurnItem, TurnState,
+    Turn, TurnItem, TurnState,
 };
 
 use crate::error::GraphError;
-use crate::graph::{Always, CheckSite, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
+use crate::graph::{Always, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
 use crate::react::helpers::{last_turn_by_author, pending_calls};
-use crate::react::llm_node::LlmNode;
-use crate::react::model::ToolCalls;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{Key, NodeId};
@@ -22,16 +20,29 @@ pub struct RoundLimit {
     pub on_limit: OnLimit,
 }
 
-/// What a reply asking for tools after the last allowed round does. `node`
-/// names the node added to do it; `flag`, a bool state key, is set to true.
+/// What a reply asking for tools after the last allowed round does: a reply
+/// of a turn that already holds `max_rounds` answered rounds or more, as a
+/// resumed turn may when the limit is read lower than before. `node` names
+/// the node added to do it; `flag`, a bool state key, is set to true.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnLimit {
     /// The run fails with `ToolLimitReached`.
     Error,
     /// Each call is answered with an error result saying it was not
-    /// executed, and the model is called once more with tool calls
-    /// forbidden; a reply that still calls tools fails the run with
-    /// `ToolLimitReached`.
+    /// executed, and the model is called once more, its tools still
+    /// declared (br-llm-clients-core has no setting that forbids tool calls);
+    /// a reply that still calls tools once the node has answered in this turn
+    /// fails the run with `ToolLimitReached`.
+    ///
+    /// The node has answered in this turn when a round of the open turn at
+    /// 0-based index `max_rounds` or more holds only its refusals (error
+    /// results whose one text is the refusal, whatever limit it names): tool
+    /// nodes never run past the limit, so no other node answers those rounds,
+    /// and a lookalike a tool writes in an earlier round does not count. The
+    /// one residual: after the limit is read lower, a round a tool node
+    /// answered under the higher limit sits past the new one, and a tool
+    /// whose every result there was exactly the refusal would read as the
+    /// node's answer.
     Continue { node: NodeId, flag: Key },
     /// Each call is answered the same way and the turn is closed with a step
     /// whose stop reason is `other(tool_round_limit)`, without calling the
@@ -53,22 +64,26 @@ impl RoundLimit {
         }
     }
 
+    /// Where a reply of `author`'s open turn that asks for tools after the
+    /// last allowed round goes: `End` always to its node; `Continue` to its
+    /// node until that node has answered in this turn, then the run fails, as
+    /// `Error` does.
     pub(crate) fn reached(
         &self,
         llm: &NodeId,
-        done: usize,
+        conversation: &Conversation,
+        author: &Author,
         max: usize,
     ) -> Result<Vec<Target>, GraphError> {
         match &self.on_limit {
-            OnLimit::Continue { node, .. } | OnLimit::End { node, .. } if done == max => {
+            OnLimit::End { node, .. } => Ok(vec![Target::Node(node.clone())]),
+            OnLimit::Continue { node, .. } if !answered_by_limit(conversation, author, max) => {
                 Ok(vec![Target::Node(node.clone())])
             }
-            OnLimit::Error | OnLimit::Continue { .. } | OnLimit::End { .. } => {
-                Err(GraphError::ToolLimitReached {
-                    node: llm.clone(),
-                    max_rounds: max,
-                })
-            }
+            OnLimit::Error | OnLimit::Continue { .. } => Err(GraphError::ToolLimitReached {
+                node: llm.clone(),
+                max_rounds: max,
+            }),
         }
     }
 
@@ -103,44 +118,71 @@ impl RoundLimit {
 /// The stop reason of the step that closes a turn cut by `OnLimit::End`.
 const LIMIT_REACHED: &str = "tool_round_limit";
 
-/// Whether `step` is the step `OnLimit::End` closes a turn with.
+/// Whether `step` is the step `OnLimit::End` closes a turn with: its stop
+/// reason, and only the marks the limit node writes, no model and no usage. A
+/// client's step always carries a model (br-llm-clients-core), so a
+/// provider's reply that keeps this stop reason verbatim is not taken for it.
+/// Callers ask it only of a generator whose round limit is `End`.
 pub(crate) fn closes_on_limit(step: &Step) -> bool {
     matches!(step.stop_reason(), StopReason::Other { reason } if reason == LIMIT_REACHED)
+        && step.model().is_none()
+        && step.usage().is_none()
 }
 
+/// The rounds answered in `author`'s open turn: none when the last turn of
+/// `author` is finished, or when there is none.
 pub(crate) fn completed_rounds(conversation: &Conversation, author: &Author) -> usize {
-    match last_turn_by_author(conversation, author) {
-        Some(turn) if !matches!(turn.state(), TurnState::Finished { .. }) => turn
-            .items()
+    open_turn(conversation, author).map_or(0, |turn| {
+        turn.items()
             .iter()
             .filter(|item| matches!(item, TurnItem::ToolResults(_)))
-            .count(),
-        Some(_) | None => 0,
-    }
+            .count()
+    })
 }
 
-pub(crate) struct LimitedLlm {
-    pub llm: LlmNode,
-    pub max_rounds: Limit,
+/// Whether the limit node has answered calls in `author`'s open turn under a
+/// limit of `max`: a round at 0-based index `max` or more holds only its
+/// refusals. Tool nodes never run past the limit, so only the limit node
+/// answers those rounds.
+fn answered_by_limit(conversation: &Conversation, author: &Author, max: usize) -> bool {
+    open_turn(conversation, author).is_some_and(|turn| {
+        turn.items()
+            .iter()
+            .filter_map(|item| match item {
+                TurnItem::ToolResults(results) => Some(results.results()),
+                TurnItem::Step(_) => None,
+            })
+            .skip(max)
+            .any(|results| !results.is_empty() && results.iter().all(is_refusal))
+    })
 }
 
-impl Node for LimitedLlm {
-    fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
-        Box::pin(async move {
-            let done = completed_rounds(state.conversation(&self.llm.key)?, &self.llm.author);
-            let max = self.max_rounds.resolve(config)?.get();
-            let tool_calls = if done > max {
-                ToolCalls::Forbidden
-            } else {
-                ToolCalls::Allowed
-            };
-            self.llm.step(state, config, ctx, tool_calls).await
-        })
-    }
+fn open_turn<'a>(conversation: &'a Conversation, author: &Author) -> Option<&'a Turn> {
+    last_turn_by_author(conversation, author)
+        .filter(|turn| !matches!(turn.state(), TurnState::Finished { .. }))
+}
 
-    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
-        self.llm.check(schema, site)
-    }
+/// The first and last parts of the error result the limit node answers a
+/// call with; the limit, a number, stands between them.
+const REFUSAL_HEAD: &str = "Tool round limit reached (";
+const REFUSAL_TAIL: &str = "): this call was not executed. Reply without calling tools.";
+
+/// The error result's text the limit node answers a call with.
+fn refusal(max: usize) -> String {
+    format!("{REFUSAL_HEAD}{max}{REFUSAL_TAIL}")
+}
+
+/// Whether `result` is the limit node's answer to a call: an error result
+/// whose one text is the limit's refusal, whatever limit it names, written
+/// as the node writes it (no sign, no leading zero).
+fn is_refusal(result: &ToolResult) -> bool {
+    result.is_error
+        && matches!(result.content.as_slice(), [ToolResultBlock::Text { text }] if text
+            .as_str()
+            .strip_prefix(REFUSAL_HEAD)
+            .and_then(|rest| rest.strip_suffix(REFUSAL_TAIL))
+            .and_then(|max| max.parse::<usize>().ok())
+            .is_some_and(|max| refusal(max) == text.as_str()))
 }
 
 struct LimitNode {
@@ -164,9 +206,7 @@ impl Node for LimitNode {
             let Some(turn) = last_turn_by_author(conversation, &self.author) else {
                 return Ok(Vec::new());
             };
-            let refusal = Text::new(format!(
-                "Tool round limit reached ({max}): this call was not executed. Reply without calling tools."
-            ))?;
+            let refusal = Text::new(refusal(max))?;
             let mut updates = Vec::new();
             for call in pending_calls(state, &self.key, &self.author)? {
                 updates.push(Update::PushResult {

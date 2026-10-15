@@ -1,7 +1,7 @@
 //! A ReAct agent built as a graph and called from another graph with
 //! `SubGraph`: the caller hands it a chat history, gets the history and the
-//! reply back. Whether the model thinks natively is read from the caller's
-//! configuration at run time.
+//! reply back. The model is a `Client` of br-llm-clients-core; its settings,
+//! the level of reasoning included, are fixed when the host builds it.
 
 #[allow(dead_code)]
 mod common;
@@ -9,34 +9,35 @@ mod common;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
-    Always, Config, EndLabel, GraphBuilder, Input, Kind, NodeId, Outcome, Output, OutputMode,
-    ReactAgent, Schema, Source, SubGraph, Switch, Target, Value, channel, run,
+    Always, Config, EndLabel, GraphBuilder, Input, Kind, NodeId, Outcome, Output, ReactAgent,
+    Schema, Source, SubGraph, Target, Value, channel, run,
 };
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
 
-use common::{ScriptedModel, SearchTool, context, key, text_step, tool_call_step, user};
+use common::tools::SearchTool;
+use common::{context, key, scripted, text_step, tool_call_step, user};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let model = Arc::new(ScriptedModel::new(vec![
+    let client = scripted(vec![
         tool_call_step("c1", "search", json!({ "q": "rust" })),
         text_step("Here is what I found."),
-    ]));
+    ]);
 
-    // Inputs `history`; outputs `history`, `answer` and `reply`;
-    // configuration `base` (the system prompt) and `thinking`.
+    // Input `history`; outputs `history` and `answer`; configuration `base`
+    // (the system prompt).
     let agent = ReactAgent {
-        author: Author::new("agent").expect("author"),
-        model,
+        author: Author::new("agent", "agent").expect("author"),
+        client,
         system: vec![Source::Config(key("base"))],
-        output: OutputMode::Text,
-        tools: vec![Arc::new(SearchTool)],
+        output_mode: OutputMode::Plain,
+        tools: vec![Arc::new(SearchTool::new())],
         tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
-        thinking: Some(Switch::Config(key("thinking"))),
         enabled: None,
         inputs: Vec::new(),
     }
@@ -47,12 +48,10 @@ async fn main() {
         .state(key("chat"), Kind::Conversation)
         .state(key("answer"), Kind::Str)
         .config(key("prompt"), Kind::Str)
-        .config(key("deep_thinking"), Kind::Bool)
         .build();
     let call = SubGraph::call(agent)
         .input(key("history"), Input::From(key("chat")))
         .config(key("base"), Input::Config(key("prompt")))
-        .config(key("thinking"), Input::Config(key("deep_thinking")))
         .output(key("history"), Output::Set(key("chat")))
         .output(key("answer"), Output::Set(key("answer")));
     let graph = GraphBuilder::new(schema.clone())
@@ -73,7 +72,6 @@ async fn main() {
         .expect("start state");
     let mut values = BTreeMap::new();
     values.insert(key("prompt"), Value::str("You are a research assistant."));
-    values.insert(key("deep_thinking"), Value::bool(false));
     let config = Config::new(&schema, values).expect("config");
 
     let (_sender, mut inbox) = channel();

@@ -4,14 +4,15 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
-use crate::react::llm_node::{LlmNode, Source};
-use crate::react::model::OutputMode;
+use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
+use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::run::Outcome;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
+use br_llm_clients_core::OutputMode;
 
 fn nid(name: &str) -> NodeId {
     NodeId::new(name).unwrap()
@@ -29,31 +30,25 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     use serde_json::Value as Json;
 
     use crate::graph::{FnEdge, FnNode, NodeFuture};
-    use crate::react::model::ToolSpec;
     use crate::react::tool::{ToolFuture, ToolOutput};
     use crate::session::Session;
     use crate::state::{Config, Kind, Schema, State, Value};
     use crate::update::Update;
     use crate::value::Key;
+    use br_llm_clients_core::ToolSpec;
 
     fn k(name: &str) -> Key {
         Key::new(name).unwrap()
     }
 
     struct StartTask {
+        spec: ToolSpec,
         pending: Key,
     }
 
     impl Tool for StartTask {
-        fn spec(&self) -> ToolSpec {
-            ToolSpec {
-                name: br_llm_messages::ToolName::new("start_task").unwrap(),
-                description: "start a background task".to_owned(),
-                parameters: json!({ "type": "object" }),
-            }
-        }
-        fn safe(&self) -> bool {
-            true
+        fn spec(&self) -> &ToolSpec {
+            &self.spec
         }
         fn call<'a>(
             &'a self,
@@ -79,23 +74,23 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         .config(k("base"), Kind::Str)
         .build();
 
-    let model = Arc::new(ScriptedModel::new(vec![
+    let client = Arc::new(mock(vec![
         tool_call_step("c1", "start_task", json!({})),
         text_step("task started, waiting"),
         text_step("the task is complete"),
     ]));
     let start_task = Arc::new(StartTask {
+        spec: spec("start_task"),
         pending: k("pending_tasks"),
     });
     let llm = LlmNode {
         key: k("chat"),
         author: author(),
-        model,
+        client,
         system: vec![Source::Config(k("base"))],
         tools: vec![start_task.clone()],
         enabled: None,
-        output: OutputMode::Text,
-        thinking: None,
+        output_mode: OutputMode::Plain,
     };
     let react = ReactLoop {
         llm: nid("llm"),

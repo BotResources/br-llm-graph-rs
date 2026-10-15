@@ -1,17 +1,18 @@
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+pub mod tools;
 
-use br_llm_graph::Tool;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
+use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_graph::{
-    Config, Context, Cursor, EndLabel, IdSource, Key, Model, ModelFuture, NoopObserver, Observer,
-    Origin, Request, Sender, State, StreamSink, ToolFuture, ToolOutput, ToolSpec, Update, Value,
+    Context, Cursor, EndLabel, IdSource, Key, NoopObserver, Observer, Origin, State, Update,
 };
 use br_llm_messages::{
-    AssistantBlock, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId, ToolName,
-    ToolResultBlock, TurnId, UserBlock, UserInput, UserSource,
+    AssistantBlock, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId, ToolName,
+    TurnId, UserBlock, UserInput, UserSource,
 };
-use serde_json::{Value as Json, json};
+use serde_json::Value as Json;
 
 pub struct PrintObserver;
 
@@ -29,9 +30,9 @@ impl Observer for PrintObserver {
     fn run_finished(&self, _origin: &Origin, end: &EndLabel) {
         println!("  run finished: {end}");
     }
-    fn stream(&self, _origin: &Origin, _key: &Key, event: &StreamEvent) {
+    fn stream(&self, origin: &Origin, key: &Key, event: &StreamEvent) {
         if let StreamEvent::TextDelta { text, .. } = event {
-            println!("  stream delta: {text:?}");
+            println!("  stream delta ({origin}, {key}): {text:?}");
         }
     }
 }
@@ -121,136 +122,53 @@ pub fn structured_step(value: Json) -> Step {
     .expect("valid step")
 }
 
-pub struct ScriptedModel {
-    steps: Mutex<VecDeque<Step>>,
+/// The settings of a client: a host builds them once, with the level of
+/// reasoning it wants from the model.
+pub fn settings(reasoning: ReasoningLevel) -> ClientSettings {
+    ClientSettings::new(
+        ModelId::new("example-model").expect("model id"),
+        reasoning,
+        CacheRequirement::NotRequired,
+        MaxOutputTokens::new(4096).expect("tokens"),
+    )
 }
 
-impl ScriptedModel {
-    pub fn new(steps: Vec<Step>) -> Self {
-        Self {
-            steps: Mutex::new(steps.into_iter().collect()),
-        }
+/// A client answering `steps` in order, at `reasoning`. A host gives a
+/// provider library's client; the examples run offline on the scripted mock
+/// of br-llm-clients-mock, which checks every request as a real client does.
+/// The tool call ids of each step are renamed when it is served, so a
+/// script can call tools again in one conversation.
+pub fn scripted_at(reasoning: ReasoningLevel, steps: Vec<Step>) -> MockClient {
+    let mut builder = MockClient::builder(
+        settings(reasoning),
+        Capabilities::new(CapabilitiesSpec::everything()).expect("capabilities"),
+    );
+    for step in steps {
+        builder = builder.reply(
+            Reply::success(step)
+                .rename_tool_call_ids("call")
+                .build()
+                .expect("reply"),
+        );
     }
+    builder.build()
 }
 
-impl Model for ScriptedModel {
-    fn complete<'a>(&'a self, _request: Request, sink: &'a dyn StreamSink) -> ModelFuture<'a> {
-        let step = self
-            .steps
-            .lock()
-            .ok()
-            .and_then(|mut queue| queue.pop_front());
-        Box::pin(async move {
-            let step = step
-                .ok_or_else(|| -> br_llm_graph::ModelError { "scripted model exhausted".into() })?;
-            for text in step.text() {
-                sink.event(&StreamEvent::TextDelta {
-                    index: 0,
-                    text: text.as_str().to_owned(),
-                });
-            }
-            Ok(step)
-        })
-    }
+/// A client answering `steps` in order, reasoning at a medium level.
+pub fn scripted(steps: Vec<Step>) -> Arc<MockClient> {
+    Arc::new(scripted_at(ReasoningLevel::Medium, steps))
 }
 
-fn spec(name: &str, description: &str) -> ToolSpec {
-    ToolSpec {
-        name: ToolName::new(name).expect("name"),
-        description: description.to_owned(),
-        parameters: json!({ "type": "object" }),
+/// A client answering `steps` in order, reasoning at a medium level, with
+/// the tool call ids as the script writes them: each must be unique in the
+/// conversation.
+pub fn scripted_as_written(steps: Vec<Step>) -> Arc<MockClient> {
+    let mut builder = MockClient::builder(
+        settings(ReasoningLevel::Medium),
+        Capabilities::new(CapabilitiesSpec::everything()).expect("capabilities"),
+    );
+    for step in steps {
+        builder = builder.reply(Reply::success(step).build().expect("reply"));
     }
-}
-
-pub struct EchoTool;
-
-impl Tool for EchoTool {
-    fn spec(&self) -> ToolSpec {
-        spec("echo", "echo the message back")
-    }
-    fn safe(&self) -> bool {
-        true
-    }
-    fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
-        Box::pin(async {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("echoed").expect("non-empty"),
-            )]))
-        })
-    }
-}
-
-pub struct SearchTool;
-
-impl Tool for SearchTool {
-    fn spec(&self) -> ToolSpec {
-        spec("search", "search a knowledge base")
-    }
-    fn safe(&self) -> bool {
-        true
-    }
-    fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
-        Box::pin(async {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("one result found").expect("non-empty"),
-            )]))
-        })
-    }
-}
-
-#[derive(Default)]
-pub struct WriteFileTool {
-    pub calls: AtomicUsize,
-}
-
-impl Tool for WriteFileTool {
-    fn spec(&self) -> ToolSpec {
-        spec("write_file", "write a file (unsafe)")
-    }
-    fn safe(&self) -> bool {
-        false
-    }
-    fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("file written").expect("non-empty"),
-            )]))
-        })
-    }
-}
-
-pub struct StartTaskTool {
-    pub sender: Arc<Mutex<Option<Sender>>>,
-    pub chat: Key,
-    pub pending: Key,
-}
-
-impl Tool for StartTaskTool {
-    fn spec(&self) -> ToolSpec {
-        spec("start_task", "start background work, return at once")
-    }
-    fn safe(&self) -> bool {
-        true
-    }
-    fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
-        let chat = self.chat.clone();
-        let handle = self.sender.lock().ok().and_then(|guard| guard.clone());
-        if let Some(sender) = handle {
-            tokio::spawn(async move {
-                tokio::task::yield_now().await;
-                sender.send(chat, runtime_input("task_done", "task-1 completed"));
-            });
-        }
-        let pending = self.pending.clone();
-        Box::pin(async move {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("task started").expect("non-empty"),
-            )])
-            .with_updates(vec![Update::Append {
-                key: pending,
-                value: Value::str("task-1"),
-            }]))
-        })
-    }
+    Arc::new(builder.build())
 }

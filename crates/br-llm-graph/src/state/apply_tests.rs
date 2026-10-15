@@ -52,7 +52,7 @@ fn turn(id: &str) -> Turn {
     .unwrap();
     Turn::new(
         TurnId::new(id).unwrap(),
-        Some(Author::new("agent").unwrap()),
+        Some(Author::new("agent", "agent").unwrap()),
         step,
     )
 }
@@ -171,7 +171,7 @@ fn given_push_result_on_matching_turn_when_applied_then_added() {
     .unwrap();
     let turn = Turn::new(
         TurnId::new("t1").unwrap(),
-        Some(Author::new("agent").unwrap()),
+        Some(Author::new("agent", "agent").unwrap()),
         step,
     );
     state
@@ -240,7 +240,7 @@ fn given_push_step_to_awaiting_turn_when_applied_then_appended() {
     .unwrap();
     let turn = Turn::new(
         TurnId::new("t1").unwrap(),
-        Some(Author::new("agent").unwrap()),
+        Some(Author::new("agent", "agent").unwrap()),
         step,
     );
     state

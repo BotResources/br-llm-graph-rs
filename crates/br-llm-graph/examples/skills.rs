@@ -5,49 +5,19 @@
 #[allow(dead_code)]
 mod common;
 
-use std::collections::{BTreeMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
+use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
-    Config, Model, ModelError, ModelFuture, Outcome, OutputMode, ReactAgent, Request, Source,
-    State, StreamSink, Tool, ToolFuture, ToolOutput, ToolSpec, Update, Value, channel, run,
+    Config, Outcome, ReactAgent, Source, State, Tool, ToolFuture, ToolOutput, Update, Value,
+    channel, run,
 };
-use br_llm_messages::{Author, Conversation, Step, Text, ToolName, ToolResultBlock};
+use br_llm_messages::{Author, Conversation, Text, ToolResultBlock};
 use serde_json::{Value as Json, json};
 
-use common::{context, key, text_step, tool_call_step, user};
-
-struct SkillModel {
-    steps: Mutex<VecDeque<Step>>,
-}
-
-impl Model for SkillModel {
-    fn complete<'a>(&'a self, request: Request, _sink: &'a dyn StreamSink) -> ModelFuture<'a> {
-        let system = request
-            .system
-            .clone()
-            .unwrap_or_else(|| "<none>".to_owned());
-        let tools: Vec<&str> = request.tools.iter().map(|t| t.name.as_str()).collect();
-        println!("  request system: {system:?}");
-        println!("  request tools: {tools:?}");
-        let step = self
-            .steps
-            .lock()
-            .ok()
-            .and_then(|mut queue| queue.pop_front());
-        Box::pin(
-            async move { step.ok_or_else(|| -> ModelError { "skill model exhausted".into() }) },
-        )
-    }
-}
-
-fn tool_spec(name: &str) -> ToolSpec {
-    ToolSpec {
-        name: ToolName::new(name).expect("name"),
-        description: format!("the {name} tool"),
-        parameters: json!({ "type": "object" }),
-    }
-}
+use common::tools::{text_parameter, tool_spec};
+use common::{context, key, scripted, text_step, tool_call_step, user};
 
 fn result(text: &str) -> ToolOutput {
     ToolOutput::text(vec![ToolResultBlock::text(
@@ -55,13 +25,12 @@ fn result(text: &str) -> ToolOutput {
     )])
 }
 
-struct LoadSkill;
+struct LoadSkill {
+    spec: ToolSpec,
+}
 impl Tool for LoadSkill {
-    fn spec(&self) -> ToolSpec {
-        tool_spec("load_skill")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(&'a self, _a: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
         Box::pin(async {
@@ -79,13 +48,12 @@ impl Tool for LoadSkill {
     }
 }
 
-struct UnloadSkill;
+struct UnloadSkill {
+    spec: ToolSpec,
+}
 impl Tool for UnloadSkill {
-    fn spec(&self) -> ToolSpec {
-        tool_spec("unload_skill")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(&'a self, _a: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
         Box::pin(async {
@@ -103,13 +71,12 @@ impl Tool for UnloadSkill {
     }
 }
 
-struct SpecialTool;
+struct SpecialTool {
+    spec: ToolSpec,
+}
 impl Tool for SpecialTool {
-    fn spec(&self) -> ToolSpec {
-        tool_spec("special")
-    }
-    fn safe(&self) -> bool {
-        true
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
     }
     fn call<'a>(&'a self, _a: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
         Box::pin(async { Ok(result("special capability used")) })
@@ -118,38 +85,38 @@ impl Tool for SpecialTool {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let model: Arc<dyn Model> = Arc::new(SkillModel {
-        steps: Mutex::new(
-            vec![
-                tool_call_step("c1", "load_skill", json!({ "skill": "math" })),
-                tool_call_step("c2", "special", json!({})),
-                tool_call_step("c3", "unload_skill", json!({ "skill": "math" })),
-                text_step("All set."),
-            ]
-            .into_iter()
-            .collect(),
-        ),
-    });
+    let client = scripted(vec![
+        tool_call_step("c1", "load_skill", json!({ "skill": "math" })),
+        tool_call_step("c2", "special", json!({})),
+        tool_call_step("c3", "unload_skill", json!({ "skill": "math" })),
+        text_step("All set."),
+    ]);
+    let skill = || vec![text_parameter("skill", "the skill to load or unload")];
 
     // Inputs `history`, `skill_prompt` (a string read into the system text)
     // and `enabled` (the tools offered); configuration `base`.
     let graph = ReactAgent {
-        author: Author::new("agent").expect("author"),
-        model,
+        author: Author::new("agent", "agent").expect("author"),
+        client: client.clone(),
         system: vec![
             Source::Config(key("base")),
             Source::State(key("skill_prompt")),
         ],
-        output: OutputMode::Text,
+        output_mode: OutputMode::Plain,
         tools: vec![
-            Arc::new(LoadSkill),
-            Arc::new(UnloadSkill),
-            Arc::new(SpecialTool),
+            Arc::new(LoadSkill {
+                spec: tool_spec("load_skill", "load a skill", skill()),
+            }),
+            Arc::new(UnloadSkill {
+                spec: tool_spec("unload_skill", "unload a skill", skill()),
+            }),
+            Arc::new(SpecialTool {
+                spec: tool_spec("special", "the capability of the math skill", Vec::new()),
+            }),
         ],
         tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
-        thinking: None,
         enabled: Some(key("enabled")),
         inputs: Vec::new(),
     }
@@ -175,6 +142,19 @@ async fn main() {
 
     let (_sender, mut inbox) = channel();
     let outcome = run(&graph, &config, state, None, &context(), &mut inbox).await;
+    for call in client.log() {
+        let request = call.request();
+        let system = request.system().map_or("<none>", Text::as_str);
+        let tools: Vec<&str> = request
+            .tools()
+            .iter()
+            .map(|tool| tool.name().as_str())
+            .collect();
+        println!(
+            "  request {}: system {system:?}, tools {tools:?}",
+            call.sequence()
+        );
+    }
     match outcome {
         Ok(Outcome::Finished { end, .. }) => println!("skills finished on End({end})"),
         Ok(_) => println!("skills paused or cancelled"),

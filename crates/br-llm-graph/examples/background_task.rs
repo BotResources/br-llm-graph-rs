@@ -9,41 +9,42 @@ mod common;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
-    Config, Edge, EndLabel, FnEdge, GraphBuilder, Input, Kind, NodeId, Outcome, Output, OutputMode,
-    ReactAgent, Schema, Session, Source, State, SubGraph, Target, Value,
+    Config, Edge, EndLabel, FnEdge, GraphBuilder, Input, Kind, NodeId, Outcome, Output, ReactAgent,
+    Schema, Session, Source, State, SubGraph, Target, Value,
 };
 use br_llm_messages::{Author, Conversation, Entry, UserSource};
 
-use common::{StartTaskTool, context, key, text_step, tool_call_step, user};
+use common::tools::StartTaskTool;
+use common::{context, key, scripted, text_step, tool_call_step, user};
 use serde_json::json;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let model = Arc::new(common::ScriptedModel::new(vec![
+    let client = scripted(vec![
         tool_call_step("c1", "start_task", json!({})),
         text_step("Task started; I will wait."),
         text_step("The task is complete."),
-    ]));
+    ]);
 
-    let start_task = Arc::new(StartTaskTool {
-        sender: Arc::new(Mutex::new(None)),
-        chat: key("history"),
-        pending: key("pending_tasks"),
-    });
+    let start_task = Arc::new(StartTaskTool::new(
+        Arc::new(Mutex::new(None)),
+        key("history"),
+        key("pending_tasks"),
+    ));
 
     // Inputs `history` and `pending_tasks` (written by the tool);
     // configuration `base`.
     let agent = ReactAgent {
-        author: Author::new("agent").expect("author"),
-        model,
+        author: Author::new("agent", "agent").expect("author"),
+        client,
         system: vec![Source::Config(key("base"))],
-        output: OutputMode::Text,
+        output_mode: OutputMode::Plain,
         tools: vec![start_task],
         tool_nodes: Vec::new(),
         tool_concurrency: None,
         round_limit: None,
-        thinking: None,
         enabled: None,
         inputs: vec![(key("pending_tasks"), Kind::list(Kind::Str))],
     }

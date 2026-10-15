@@ -17,6 +17,8 @@
 
 #[cfg(test)]
 mod acceptance;
+#[cfg(doctest)]
+mod non_exhaustive;
 #[cfg(test)]
 mod testkit;
 
@@ -35,15 +37,14 @@ pub use error::{GraphError, NodeFault};
 pub use graph::{
     Always, CaptureSource, CaptureUpdate, CheckSite, Context, Count, Edge, FnEdge, FnNode, Graph,
     GraphBuilder, IdSource, Input, ItemFailure, Limit, Map, Node, NodeError, NodeFuture, OnFailure,
-    Output, Signature, SubGraph, Switch, Target,
+    Output, Signature, SubGraph, Target,
 };
 pub use observe::{NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
-    CriticSeat, GeneratorCritic, GeneratorSeat, LlmNode, Model, ModelError, ModelFuture, OnLimit,
-    OutputMode, ReactAgent, Request, RoundLimit, Source, SourceFn, StreamSink, Tool, ToolCalls,
-    ToolError, ToolFuture, ToolNode, ToolOutput, ToolSpec, Verdict, VerdictOverride, VerdictReader,
-    complete, pending_calls, pending_unsafe_calls, structured, wire,
+    CriticSeat, GeneratorCritic, GeneratorSeat, Hook, HookError, HookFuture, Judgment, LlmCall,
+    LlmRequest, OnLimit, ReactAgent, RoundLimit, Source, SourceFn, Tool, ToolError, ToolFuture,
+    ToolOutput, Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
 };
 pub use run::{
     Checkpoint, Cursor, Inbox, Outcome, PendingEntry, PendingWrites, RunFailure, Sender, channel,

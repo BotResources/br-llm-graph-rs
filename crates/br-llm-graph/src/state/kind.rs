@@ -20,6 +20,19 @@ impl Kind {
         }
     }
 
+    /// The type name a value of this kind carries (`Value::tag`): what a
+    /// check made at build names as found, before any value exists.
+    pub(crate) fn tag(&self) -> &'static str {
+        match self {
+            Kind::Int => "int",
+            Kind::Float => "float",
+            Kind::Str => "str",
+            Kind::Bool => "bool",
+            Kind::List { .. } => "list",
+            Kind::Conversation => "conversation",
+        }
+    }
+
     /// The value a key of this kind holds when nothing else is given: empty
     /// string, 0, 0.0, false, empty list, empty conversation.
     pub fn neutral(&self) -> Value {
@@ -72,6 +85,20 @@ mod tests {
             let neutral = kind.neutral();
             assert!(neutral.matches(&kind));
             assert_eq!(neutral, expected);
+        }
+    }
+
+    #[test]
+    fn given_each_kind_when_tagged_then_the_tag_of_its_values() {
+        for kind in [
+            Kind::Int,
+            Kind::Float,
+            Kind::Str,
+            Kind::Bool,
+            Kind::list(Kind::Int),
+            Kind::Conversation,
+        ] {
+            assert_eq!(kind.tag(), kind.neutral().tag());
         }
     }
 

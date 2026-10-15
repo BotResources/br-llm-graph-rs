@@ -34,7 +34,7 @@ fn given_append_when_round_tripped_then_identical() {
 fn given_input_when_round_tripped_then_identical() {
     let input = UserInput::new(
         UserSource::runtime("wake").unwrap(),
-        Some(Author::new("scheduler").unwrap()),
+        Some(Author::new("scheduler", "scheduler").unwrap()),
         vec![UserBlock::text(Text::new("done").unwrap())],
     )
     .unwrap();
@@ -59,7 +59,7 @@ fn given_push_turn_when_round_tripped_then_identical() {
         key: key("chat"),
         turn: Turn::new(
             TurnId::new("t1").unwrap(),
-            Some(Author::new("a").unwrap()),
+            Some(Author::new("a", "a").unwrap()),
             step,
         ),
     });
@@ -105,4 +105,26 @@ fn given_set_when_serialized_then_type_tagged() {
     })
     .unwrap();
     assert_eq!(json["type"], serde_json::json!("set"));
+}
+
+#[test]
+fn given_push_turn_when_displayed_then_names_the_turn_by_its_id() {
+    let step = Step::new(
+        vec![AssistantBlock::Text {
+            text: Text::new("hi").unwrap(),
+        }],
+        StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap();
+    let update = Update::PushTurn {
+        key: key("chat"),
+        turn: Turn::new(
+            TurnId::new("t1").unwrap(),
+            Some(Author::new("a", "a").unwrap()),
+            step,
+        ),
+    };
+    assert_eq!(update.to_string(), "push turn t1 into chat");
 }

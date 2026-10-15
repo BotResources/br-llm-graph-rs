@@ -53,7 +53,7 @@ impl std::fmt::Display for Update {
             Update::Set { key, value } => write!(f, "set {key} = {value}"),
             Update::Append { key, value } => write!(f, "append {value} to {key}"),
             Update::Input { key, .. } => write!(f, "input into {key}"),
-            Update::PushTurn { key, turn } => write!(f, "push turn {turn} into {key}"),
+            Update::PushTurn { key, turn } => write!(f, "push turn {} into {key}", turn.id()),
             Update::PushStep { key, turn, .. } => write!(f, "push step into turn {turn} of {key}"),
             Update::PushResult { key, turn, .. } => {
                 write!(f, "push result into turn {turn} of {key}")

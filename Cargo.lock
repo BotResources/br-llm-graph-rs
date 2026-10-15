@@ -3,9 +3,31 @@
 version = 4
 
 [[package]]
-name = "br-llm-graph"
+name = "br-llm-clients-core"
 version = "0.3.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.3.0#62f581ac813eb6ff3785f3cb2129093c6fb56745"
 dependencies = [
+ "br-llm-messages",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "br-llm-clients-mock"
+version = "0.3.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.3.0#62f581ac813eb6ff3785f3cb2129093c6fb56745"
+dependencies = [
+ "br-llm-clients-core",
+ "br-llm-messages",
+ "thiserror",
+]
+
+[[package]]
+name = "br-llm-graph"
+version = "0.4.0"
+dependencies = [
+ "br-llm-clients-core",
+ "br-llm-clients-mock",
  "br-llm-messages",
  "futures-channel",
  "futures-util",
@@ -16,8 +38,8 @@ dependencies = [
 
 [[package]]
 name = "br-llm-messages"
-version = "0.2.0"
-source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=v0.2.0#53ad03633c1e8b90d62070c5f7ec67a1526e1b0c"
+version = "0.4.0"
+source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv0.4.0#4ee316aaa1f4b560cbb728829db46745847d45bf"
 dependencies = [
  "serde",
  "serde_json",
@@ -185,6 +207,26 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

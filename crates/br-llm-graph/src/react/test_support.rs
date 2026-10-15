@@ -1,21 +1,24 @@
-use std::collections::{BTreeMap, VecDeque};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::BTreeMap;
 
+use br_llm_clients_core::{
+    CacheRequirement, ClientError, ClientRequest, ClientSettings, MaxOutputTokens, ReasoningLevel,
+};
+use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_messages::{
-    AssistantBlock, Author, Conversation, Step, StopReason, StreamEvent, Text, ToolCall,
-    ToolCallId, ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
+    AssistantBlock, Author, Conversation, ModelId, Step, StopReason, Text, ToolCall, ToolCallId,
+    ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
 };
 use serde_json::{Value as Json, json};
 
-use crate::react::model::{Model, ModelFuture, StreamSink, ToolSpec};
-use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+pub(crate) use crate::react::test_clients::{LaxClient, StreamRecorder};
+pub(crate) use crate::react::test_tools::{
+    EchoTool, ScopeTool, StrictTool, TallyTool, WriteFileTool, spec,
+};
 use crate::state::{Config, Kind, Schema, State, Value};
-use crate::update::Update;
 use crate::value::Key;
 
 pub(crate) fn author() -> Author {
-    Author::new("agent").unwrap()
+    Author::new("agent", "agent").unwrap()
 }
 
 pub(crate) fn key(name: &str) -> Key {
@@ -83,7 +86,8 @@ pub(crate) fn tool_call_step(id: &str, name: &str, arguments: Json) -> Step {
     .unwrap()
 }
 
-/// A step calling each named tool once, with ids `c1`, `c2`, ...
+/// A step calling each named tool once, with ids `c1`, `c2`, ... (a mock
+/// renames them when it serves the step).
 pub(crate) fn calls_step(names: &[&str]) -> Step {
     Step::new(
         names
@@ -138,257 +142,99 @@ pub(crate) fn structured_step(value: Json) -> Step {
     .unwrap()
 }
 
-pub(crate) struct ScriptedModel {
-    steps: Mutex<VecDeque<Step>>,
+/// A step holding only a thinking block: a reply a conforming client refuses
+/// (`ReplyUnusable`), served only by `LaxClient`.
+pub(crate) fn thinking_only_step() -> Step {
+    Step::new(
+        vec![AssistantBlock::Thinking(br_llm_messages::Thinking {
+            text: "hmm".to_owned(),
+            signature: None,
+        })],
+        StopReason::EndTurn,
+        None,
+        None,
+    )
+    .unwrap()
 }
 
-impl ScriptedModel {
-    pub(crate) fn new(steps: Vec<Step>) -> Self {
-        Self {
-            steps: Mutex::new(steps.into_iter().collect()),
-        }
-    }
+/// The settings of a test client, at `reasoning`.
+pub(crate) fn settings(reasoning: ReasoningLevel) -> ClientSettings {
+    ClientSettings::new(
+        ModelId::new("mock-model").unwrap(),
+        reasoning,
+        CacheRequirement::NotRequired,
+        MaxOutputTokens::new(4096).unwrap(),
+    )
 }
 
-impl Model for ScriptedModel {
-    fn complete<'a>(
-        &'a self,
-        _request: crate::react::model::Request,
-        sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        let step = self
-            .steps
-            .lock()
-            .ok()
-            .and_then(|mut queue| queue.pop_front());
-        Box::pin(async move {
-            let step = step.ok_or_else(|| -> crate::react::model::ModelError {
-                "scripted model exhausted".into()
-            })?;
-            for text in step.text() {
-                sink.event(&StreamEvent::TextDelta {
-                    index: 0,
-                    text: text.as_str().to_owned(),
-                });
-            }
-            Ok(step)
-        })
-    }
+/// A mock that can do everything, at `reasoning`, with an empty script.
+pub(crate) fn mock_at(reasoning: ReasoningLevel) -> MockClient {
+    MockClient::new(
+        settings(reasoning),
+        Capabilities::new(CapabilitiesSpec::everything()).unwrap(),
+    )
 }
 
-/// A scripted model that keeps every request it receives.
-pub(crate) struct LoggingModel {
-    steps: Mutex<VecDeque<Step>>,
-    requests: Mutex<Vec<crate::react::model::Request>>,
+/// A mock (reasoning `Medium`) answering `steps` in order, the tool call ids
+/// of each renamed when it is served (`call-{seq}-{i}`), so a script can call
+/// tools again in one conversation.
+pub(crate) fn mock(steps: Vec<Step>) -> MockClient {
+    let mock = mock_at(ReasoningLevel::Medium);
+    for step in steps {
+        push(&mock, step);
+    }
+    mock
 }
 
-impl LoggingModel {
-    pub(crate) fn new(steps: Vec<Step>) -> Self {
-        Self {
-            steps: Mutex::new(steps.into_iter().collect()),
-            requests: Mutex::new(Vec::new()),
-        }
-    }
-
-    pub(crate) fn requests(&self) -> Vec<crate::react::model::Request> {
-        self.requests.lock().unwrap().clone()
-    }
+/// Adds `step` at the end of the script of `mock`, its tool call ids renamed
+/// when it is served.
+pub(crate) fn push(mock: &MockClient, step: Step) {
+    mock.push_reply(
+        Reply::success(step)
+            .rename_tool_call_ids("call")
+            .build()
+            .unwrap(),
+    );
 }
 
-impl Model for LoggingModel {
-    fn complete<'a>(
-        &'a self,
-        request: crate::react::model::Request,
-        _sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        self.requests.lock().unwrap().push(request);
-        let step = self.steps.lock().unwrap().pop_front();
-        Box::pin(async move { step.ok_or_else(|| "scripted model exhausted".into()) })
-    }
+/// A mock whose next call fails with `error`.
+pub(crate) fn failing(error: ClientError) -> MockClient {
+    let mock = mock_at(ReasoningLevel::Medium);
+    mock.push_reply(Reply::failure(error).build().unwrap());
+    mock
 }
 
-pub(crate) struct FailingModel;
-
-impl Model for FailingModel {
-    fn complete<'a>(
-        &'a self,
-        _request: crate::react::model::Request,
-        _sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        Box::pin(async { Err("boom".into()) })
-    }
+/// The requests the calls of `mock` received, in call order.
+pub(crate) fn requests(mock: &MockClient) -> Vec<ClientRequest> {
+    mock.log()
+        .into_iter()
+        .map(|call| call.request().clone())
+        .collect()
 }
 
-pub(crate) struct RecordingModel {
-    pub(crate) tools_seen: Mutex<Vec<String>>,
-    pub(crate) system_seen: Mutex<Option<String>>,
+/// The system text of `request`, if any.
+pub(crate) fn system_of(request: &ClientRequest) -> Option<String> {
+    request.system().map(|text| text.as_str().to_owned())
 }
 
-impl RecordingModel {
-    pub(crate) fn new() -> Self {
-        Self {
-            tools_seen: Mutex::new(Vec::new()),
-            system_seen: Mutex::new(None),
-        }
-    }
+/// The names of the tools `request` declares, in order.
+pub(crate) fn tool_names(request: &ClientRequest) -> Vec<String> {
+    request
+        .tools()
+        .iter()
+        .map(|spec| spec.name().as_str().to_owned())
+        .collect()
 }
 
-impl Model for RecordingModel {
-    fn complete<'a>(
-        &'a self,
-        request: crate::react::model::Request,
-        _sink: &'a dyn StreamSink,
-    ) -> ModelFuture<'a> {
-        if let Ok(mut seen) = self.tools_seen.lock() {
-            *seen = request
-                .tools
-                .iter()
-                .map(|t| t.name.as_str().to_owned())
-                .collect();
-        }
-        if let Ok(mut seen) = self.system_seen.lock() {
-            *seen = request.system.clone();
-        }
-        Box::pin(async { Ok(text_step("recorded")) })
+/// The error a node returned, read back as a `GraphError`.
+pub(crate) fn returned(error: &crate::error::GraphError) -> &crate::error::GraphError {
+    match error {
+        crate::error::GraphError::NodeFailed {
+            source: crate::error::NodeFault::Returned(returned),
+            ..
+        } => returned
+            .downcast_ref::<crate::error::GraphError>()
+            .expect("the node returned a GraphError"),
+        other => panic!("expected a node that returned an error, got: {other}"),
     }
-}
-
-fn spec(name: &str) -> ToolSpec {
-    ToolSpec {
-        name: ToolName::new(name).unwrap(),
-        description: format!("the {name} tool"),
-        parameters: json!({ "type": "object" }),
-    }
-}
-
-pub(crate) struct EchoTool;
-
-impl Tool for EchoTool {
-    fn spec(&self) -> ToolSpec {
-        spec("echo")
-    }
-    fn safe(&self) -> bool {
-        true
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("echoed").unwrap(),
-            )]))
-        })
-    }
-}
-
-pub(crate) struct TallyTool;
-
-impl Tool for TallyTool {
-    fn spec(&self) -> ToolSpec {
-        spec("tally")
-    }
-    fn safe(&self) -> bool {
-        true
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async {
-            Ok(
-                ToolOutput::text(vec![ToolResultBlock::text(Text::new("tallied").unwrap())])
-                    .with_updates(vec![Update::Append {
-                        key: key("log"),
-                        value: Value::str("tallied"),
-                    }]),
-            )
-        })
-    }
-}
-
-/// Answers with the value of the string state key `scope`.
-pub(crate) struct ScopeTool;
-
-impl Tool for ScopeTool {
-    fn spec(&self) -> ToolSpec {
-        spec("scope")
-    }
-    fn safe(&self) -> bool {
-        true
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async move {
-            let scope = state.str(&key("scope"))?;
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(Text::new(
-                format!("scope is {scope}"),
-            )?)]))
-        })
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct WriteFileTool {
-    pub(crate) calls: AtomicUsize,
-}
-
-impl Tool for WriteFileTool {
-    fn spec(&self) -> ToolSpec {
-        spec("write_file")
-    }
-    fn safe(&self) -> bool {
-        false
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("written").unwrap(),
-            )]))
-        })
-    }
-}
-
-pub(crate) struct StrictTool;
-
-impl Tool for StrictTool {
-    fn spec(&self) -> ToolSpec {
-        spec("strict")
-    }
-    fn safe(&self) -> bool {
-        true
-    }
-    fn call<'a>(
-        &'a self,
-        arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async move {
-            let _parsed: StrictArgs = serde_json::from_value(arguments)?;
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("ok").unwrap(),
-            )]))
-        })
-    }
-}
-
-#[derive(serde::Deserialize)]
-struct StrictArgs {
-    #[allow(dead_code)]
-    n: i64,
 }
