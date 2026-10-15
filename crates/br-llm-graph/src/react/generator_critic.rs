@@ -23,7 +23,8 @@ use crate::value::{EndLabel, Key, NodeId};
 /// The generator reads its system text, then `generator_history` from its own
 /// perspective: its turns (tool traffic and thinking included) as assistant
 /// messages, the critiques as framed messages. The critic reads its system
-/// text, then `conversation` before the answer it judges, rendered as the
+/// text (always sent: a text that resolves to a blank one fails the node),
+/// then `conversation` before the answer it judges, rendered as the
 /// generator sees it with the generator's thinking removed (an answer left
 /// with nothing is left out), then one user message holding
 /// `<generator_response>\n{answer}\n</generator_response>`, a blank line

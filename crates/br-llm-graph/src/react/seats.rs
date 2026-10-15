@@ -18,7 +18,8 @@ use crate::value::{Key, NodeId};
 pub struct GeneratorSeat {
     pub author: Author,
     pub client: Arc<dyn Client>,
-    /// The generator's system text.
+    /// The generator's system text; one that resolves to a blank text gives
+    /// no system text.
     pub system: Source,
     pub output_mode: OutputMode,
     pub tools: Vec<Arc<dyn Tool>>,
@@ -43,7 +44,8 @@ pub struct GeneratorSeat {
 pub struct CriticSeat {
     pub author: Author,
     pub client: Arc<dyn Client>,
-    /// The critic's system text.
+    /// The critic's system text, always sent: one that resolves to a blank
+    /// text fails the critique node with `Message`, before the critic's call.
     pub system: Source,
     /// The request that follows the wrapped answer in the critic's last
     /// message. `None`: `Please evaluate the generator's response above.` A

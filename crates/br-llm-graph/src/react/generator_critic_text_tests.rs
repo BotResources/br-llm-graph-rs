@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use br_llm_messages::{Conversation, Step, WireMessage};
+use br_llm_messages::{Conversation, MessageError, Step, WireMessage};
 
 use crate::error::GraphError;
 use crate::graph::{Count, Graph};
@@ -201,8 +201,8 @@ fn given_a_source_key_that_is_already_a_key_of_the_graph_when_built_then_key_col
 }
 
 #[tokio::test]
-async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_then_no_system_text()
-{
+async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_then_the_node_fails_before_the_call()
+ {
     for system in ["", " \n"] {
         let critic_client = mock(vec![verdict(true, "")]);
         let graph = GeneratorCritic::new(
@@ -216,15 +216,81 @@ async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_t
         )
         .graph()
         .unwrap();
-        ended(call(&graph, question("explain")).await, "validated");
-        let request = &requests(&critic_client)[0];
-        assert_eq!(system_of(request), None, "{system:?}");
-        assert_eq!(
-            request.messages(),
-            [
-                opening(),
-                wrapped("draft", "Please evaluate the generator's response above.")
-            ]
+
+        let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+
+        assert!(
+            matches!(
+                error,
+                GraphError::Message(MessageError::Blank { field: "text" })
+            ),
+            "{system:?}: {error}"
         );
+        assert_eq!(
+            critic_client.calls(),
+            0,
+            "{system:?}: the critic is not called"
+        );
+        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
     }
+}
+
+#[tokio::test]
+async fn given_one_configuration_key_for_both_seats_when_run_then_it_is_declared_once_and_each_seat_reads_it()
+ {
+    let built = |generator_client: &br_llm_clients_mock::MockClient,
+                 critic_client: &br_llm_clients_mock::MockClient| {
+        GeneratorCritic::new(
+            GeneratorSeat {
+                system: Source::Config(key("brief")),
+                ..generator(generator_client)
+            },
+            CriticSeat::new(
+                reviewer(),
+                Arc::new(critic_client.clone()),
+                Source::Config(key("brief")),
+            ),
+            Count::Fixed(1),
+        )
+        .graph()
+        .unwrap()
+    };
+    let brief = |text: &str| BTreeMap::from([(key("brief"), Value::str(text))]);
+
+    let (generator_client, critic_client) = (
+        mock(vec![text_step("draft")]),
+        mock(vec![verdict(true, "")]),
+    );
+    let graph = built(&generator_client, &critic_client);
+    assert_eq!(
+        graph.schema().config,
+        BTreeMap::from([(key("brief"), Kind::Str)])
+    );
+    ended(
+        run_with(&graph, Vec::new(), brief("Be exact.")).await,
+        "validated",
+    );
+    assert_eq!(
+        system_of(&requests(&generator_client)[0]).as_deref(),
+        Some("Be exact.")
+    );
+    assert_eq!(
+        system_of(&requests(&critic_client)[0]).as_deref(),
+        Some("Be exact.")
+    );
+
+    // Blank, the shared text is no system text for the generator and fails
+    // the critic.
+    let (generator_client, critic_client) = (
+        mock(vec![text_step("draft")]),
+        mock(vec![verdict(true, "")]),
+    );
+    let graph = built(&generator_client, &critic_client);
+    let (_, error) = failed_in(run_with(&graph, Vec::new(), brief(" ")).await, "critique");
+    assert!(matches!(
+        error,
+        GraphError::Message(MessageError::Blank { field: "text" })
+    ));
+    assert_eq!(system_of(&requests(&generator_client)[0]), None);
+    assert_eq!(critic_client.calls(), 0);
 }

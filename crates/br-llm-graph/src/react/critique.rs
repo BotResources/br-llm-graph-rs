@@ -12,7 +12,7 @@ use br_llm_messages::{
 use crate::error::GraphError;
 use crate::graph::{Context, Node, NodeFuture};
 use crate::react::generator_critic_routing::last_answer;
-use crate::react::helpers::{answer_text, complete, final_step, system_text, wire};
+use crate::react::helpers::{answer_text, complete, final_step, wire};
 use crate::react::round_limit::closes_on_limit;
 use crate::react::source::Source;
 use crate::react::verdict::{Verdict, VerdictForm};
@@ -145,9 +145,10 @@ impl CritiqueNode {
         Ok(messages)
     }
 
-    /// The critic's call: its system text, `messages`, no tools and the
-    /// structured mode with the verdict shape. Its stream events carry the
-    /// key `conversation`.
+    /// The critic's call: its system text, always sent (a text that resolves
+    /// to a blank one fails the node with `Message`, before the call),
+    /// `messages`, no tools and the structured mode with the verdict shape.
+    /// Its stream events carry the key `conversation`.
     async fn judge(
         &self,
         state: &State,
@@ -155,8 +156,9 @@ impl CritiqueNode {
         ctx: &Context,
         messages: Vec<WireMessage>,
     ) -> Result<Verdict, GraphError> {
+        let system = Text::new(self.system.resolve(state, config)?).map_err(GraphError::from)?;
         let request = ClientRequest::new(
-            system_text(self.system.resolve(state, config)?),
+            Some(system),
             messages,
             Vec::new(),
             self.verdict.output_mode(state, config)?,

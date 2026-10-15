@@ -118,8 +118,14 @@ instead, and `LlmCall` makes one model call whose answer is data.
   whose tool nodes cover them by name, built and failed at the first model
   call.
 - A system text that resolves blank (empty or whitespace only) is sent as no
-  system text, by the model-call step of the ReAct loop, by the critic and by
-  `LlmCall`: a core system prompt is a `Text`, which refuses a blank text.
+  system text by the model-call step of the ReAct loop (a `ReactAgent`, the
+  generator seat) and by `LlmCall`: a core system prompt is a `Text`, which
+  refuses a blank text.
+- **Breaking:** the critic's system text is always sent: a critic system
+  source that resolves to a blank text fails the critique node with
+  `Message` (`Blank { field: "text" }`), before the critic's call. A seat of
+  each kind may read one source key; it is declared once, and a blank value
+  then gives the generator no system text and fails the critic.
 - With a conforming client, a reply that holds nothing but thinking is
   refused by the client (`ReplyUnusable`) and fails the generation with
   `Model`; a critic reply without a structured block is refused by the client
