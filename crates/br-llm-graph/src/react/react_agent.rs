@@ -93,8 +93,8 @@ impl ReactAgent {
         let answer_node = NodeId::new("answer")?;
 
         let mut schema = Schema::builder()
-            .state(history.clone(), Kind::Conversation)
-            .state(answer.clone(), Kind::Str);
+            .state_by_name(history.clone(), Kind::Conversation)
+            .state_by_name(answer.clone(), Kind::Str);
         schema = declare_limit(schema, self.tool_concurrency.as_ref());
         let flag = self.round_limit.as_ref().and_then(round_limit_flag);
         if let Some(round_limit) = &self.round_limit {
@@ -174,7 +174,7 @@ impl ReactAgent {
 /// Declares the configuration key a limit reads, as an int.
 pub(crate) fn declare_limit(schema: SchemaBuilder, limit: Option<&Limit>) -> SchemaBuilder {
     match limit {
-        Some(Limit::Config(key)) => schema.config(key.clone(), Kind::Int),
+        Some(Limit::Config(key)) => schema.config_by_name(key.clone(), Kind::Int),
         Some(Limit::Fixed(_)) | None => schema,
     }
 }
@@ -221,7 +221,7 @@ pub(crate) fn declare_sources<'a>(
 /// Declares the configuration key a count reads, as an int.
 pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuilder {
     match count {
-        Count::Config(key) => schema.config(key.clone(), Kind::Int),
+        Count::Config(key) => schema.config_by_name(key.clone(), Kind::Int),
         Count::Fixed(_) => schema,
     }
 }

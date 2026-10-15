@@ -28,14 +28,14 @@ pub(crate) fn nid(name: &str) -> NodeId {
 
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("doc"), Kind::Str)
-        .state(key("docs"), Kind::list(Kind::Str))
-        .state(key("summary"), Kind::Str)
-        .state(key("summaries"), Kind::list(Kind::Str))
-        .state(key("chat"), Kind::Conversation)
-        .state(key("count"), Kind::Int)
-        .state(key("counts"), Kind::list(Kind::Int))
-        .config(key("style"), Kind::Str)
+        .state_by_name(key("doc"), Kind::Str)
+        .state_by_name(key("docs"), Kind::list(Kind::Str))
+        .state_by_name(key("summary"), Kind::Str)
+        .state_by_name(key("summaries"), Kind::list(Kind::Str))
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("counts"), Kind::list(Kind::Int))
+        .config_by_name(key("style"), Kind::Str)
         .build()
 }
 

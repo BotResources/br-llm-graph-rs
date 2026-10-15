@@ -17,14 +17,14 @@ use crate::value::EndLabel;
 
 fn caller_schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("best"), Kind::Str)
-        .state(key("count"), Kind::Int)
-        .state(key("label"), Kind::Str)
-        .state(key("questions"), Kind::list(Kind::Conversation))
-        .state(key("question"), Kind::Conversation)
-        .state(key("answers"), Kind::list(Kind::Str))
-        .state(key("verdicts"), Kind::list(Kind::Bool))
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("best"), Kind::Str)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("label"), Kind::Str)
+        .state_by_name(key("questions"), Kind::list(Kind::Conversation))
+        .state_by_name(key("question"), Kind::Conversation)
+        .state_by_name(key("answers"), Kind::list(Kind::Str))
+        .state_by_name(key("verdicts"), Kind::list(Kind::Bool))
         .build()
 }
 

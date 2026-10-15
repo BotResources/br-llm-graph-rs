@@ -20,9 +20,9 @@ fn key(name: &str) -> Key {
 
 fn state() -> State {
     let schema = Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("items"), Kind::list(Kind::Str))
-        .state(key("chat"), Kind::Conversation)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("chat"), Kind::Conversation)
         .build();
     let mut values = BTreeMap::new();
     values.insert(key("count"), Value::int(0));

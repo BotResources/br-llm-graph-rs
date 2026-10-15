@@ -24,13 +24,13 @@ pub(crate) fn to(name: &str) -> Target {
 
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("log"), Kind::list(Kind::Str))
-        .state(key("items"), Kind::list(Kind::Str))
-        .state(key("item"), Kind::Str)
-        .state(key("out"), Kind::Str)
-        .state(key("outs"), Kind::list(Kind::Str))
-        .state(key("chat"), Kind::Conversation)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("log"), Kind::list(Kind::Str))
+        .state_by_name(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("out"), Kind::Str)
+        .state_by_name(key("outs"), Kind::list(Kind::Str))
+        .state_by_name(key("chat"), Kind::Conversation)
         .build()
 }
 
@@ -56,8 +56,8 @@ pub(crate) fn config() -> Config {
 /// A state and a configuration made from schemas that are not `schema()`.
 pub(crate) fn foreign_state_and_config() -> (State, Config) {
     let foreign = Schema::builder()
-        .state(key("count"), Kind::Int)
-        .config(key("width"), Kind::Int)
+        .state_by_name(key("count"), Kind::Int)
+        .config_by_name(key("width"), Kind::Int)
         .build();
     let state = State::new(
         foreign.clone(),

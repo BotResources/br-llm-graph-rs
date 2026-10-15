@@ -27,10 +27,10 @@ pub(crate) fn key(name: &str) -> Key {
 
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("log"), Kind::list(Kind::Str))
-        .state(key("enabled"), Kind::list(Kind::Str))
-        .config(key("base"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("log"), Kind::list(Kind::Str))
+        .state_by_name(key("enabled"), Kind::list(Kind::Str))
+        .config_by_name(key("base"), Kind::Str)
         .build()
 }
 

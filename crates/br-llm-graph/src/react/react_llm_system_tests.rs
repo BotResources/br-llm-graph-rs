@@ -90,8 +90,8 @@ fn given_each_kind_of_source_when_resolved_then_one_text() {
 #[test]
 fn given_a_source_key_holding_another_kind_when_resolved_then_kind_mismatch() {
     let schema = Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("counts"), Kind::list(Kind::Int))
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("counts"), Kind::list(Kind::Int))
         .build();
     let state = State::new(
         schema.clone(),

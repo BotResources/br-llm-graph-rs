@@ -64,20 +64,24 @@ pub struct SchemaBuilder {
 }
 
 impl SchemaBuilder {
-    pub fn state(mut self, key: Key, kind: Kind) -> Self {
+    /// Declares the state key `key` of kind `kind`, known only at run time (a
+    /// graph described as data). A key declared again takes the last kind.
+    pub fn state_by_name(mut self, key: Key, kind: Kind) -> Self {
         self.state.insert(key, kind);
         self
     }
 
-    /// Declares a state key with an explicit start value. The value must have
-    /// the kind of the key; `GraphBuilder::build` refuses it otherwise.
-    pub fn state_with_default(mut self, key: Key, kind: Kind, default: Value) -> Self {
+    /// Declares a state key with an explicit start value, by name. The value
+    /// must have the kind of the key; `GraphBuilder::build` refuses it
+    /// otherwise (`KindMismatch`).
+    pub fn state_by_name_with_default(mut self, key: Key, kind: Kind, default: Value) -> Self {
         self.state.insert(key.clone(), kind);
         self.defaults.insert(key, default);
         self
     }
 
-    pub fn config(mut self, key: Key, kind: Kind) -> Self {
+    /// Declares the configuration key `key` of kind `kind`, by name.
+    pub fn config_by_name(mut self, key: Key, kind: Kind) -> Self {
         self.config.insert(key, kind);
         self
     }
@@ -98,9 +102,9 @@ mod tests {
     #[test]
     fn given_schema_when_round_tripped_then_identical() {
         let schema = Schema::builder()
-            .state(Key::new("chat").unwrap(), Kind::Conversation)
-            .state(Key::new("items").unwrap(), Kind::list(Kind::Str))
-            .config(Key::new("model").unwrap(), Kind::Str)
+            .state_by_name(Key::new("chat").unwrap(), Kind::Conversation)
+            .state_by_name(Key::new("items").unwrap(), Kind::list(Kind::Str))
+            .config_by_name(Key::new("model").unwrap(), Kind::Str)
             .build();
         let json = serde_json::to_string(&schema).unwrap();
         assert_eq!(serde_json::from_str::<Schema>(&json).unwrap(), schema);
@@ -109,7 +113,7 @@ mod tests {
     #[test]
     fn given_schema_with_a_default_when_round_tripped_then_identical() {
         let schema = Schema::builder()
-            .state_with_default(Key::new("limit").unwrap(), Kind::Int, Value::int(3))
+            .state_by_name_with_default(Key::new("limit").unwrap(), Kind::Int, Value::int(3))
             .build();
         let json = serde_json::to_string(&schema).unwrap();
         assert_eq!(serde_json::from_str::<Schema>(&json).unwrap(), schema);
@@ -129,7 +133,7 @@ mod tests {
     #[test]
     fn given_default_of_the_wrong_kind_when_checked_then_kind_mismatch() {
         let schema = Schema::builder()
-            .state_with_default(Key::new("limit").unwrap(), Kind::Int, Value::str("3"))
+            .state_by_name_with_default(Key::new("limit").unwrap(), Kind::Int, Value::str("3"))
             .build();
         assert!(matches!(
             schema.check_defaults(),

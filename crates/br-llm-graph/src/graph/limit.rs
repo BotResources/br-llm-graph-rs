@@ -24,7 +24,7 @@ impl Limit {
     /// use br_llm_graph::{GraphError, Key, Kind, Limit, Schema};
     ///
     /// let width = Key::new("width").unwrap();
-    /// let schema = Schema::builder().config(width.clone(), Kind::Str).build();
+    /// let schema = Schema::builder().config_by_name(width.clone(), Kind::Str).build();
     /// assert!(matches!(
     ///     Limit::Config(width).check(&schema),
     ///     Err(GraphError::LimitKeyMismatch { .. })
@@ -50,7 +50,7 @@ impl Limit {
     /// use br_llm_graph::{Config, Key, Kind, Limit, Schema, Value};
     ///
     /// let width = Key::new("width").unwrap();
-    /// let schema = Schema::builder().config(width.clone(), Kind::Int).build();
+    /// let schema = Schema::builder().config_by_name(width.clone(), Kind::Int).build();
     /// let config = Config::new(&schema, BTreeMap::from([(width.clone(), Value::int(4))])).unwrap();
     /// assert_eq!(Limit::Config(width).resolve(&config).unwrap().get(), 4);
     /// ```

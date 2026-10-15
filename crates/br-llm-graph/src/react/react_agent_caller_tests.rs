@@ -20,12 +20,12 @@ use crate::value::EndLabel;
 
 fn caller_schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("answer"), Kind::Str)
-        .state(key("questions"), Kind::list(Kind::Conversation))
-        .state(key("question"), Kind::Conversation)
-        .state(key("replies"), Kind::list(Kind::Str))
-        .config(key("prompt"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("answer"), Kind::Str)
+        .state_by_name(key("questions"), Kind::list(Kind::Conversation))
+        .state_by_name(key("question"), Kind::Conversation)
+        .state_by_name(key("replies"), Kind::list(Kind::Str))
+        .config_by_name(key("prompt"), Kind::Str)
         .build()
 }
 
@@ -110,9 +110,9 @@ async fn given_a_pass_through_input_mapped_by_the_caller_when_a_tool_runs_then_i
         .config(key("base"), Input::Config(key("prompt")))
         .output(key("history"), Output::Set(key("chat")));
     let schema = Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("folder"), Kind::Str)
-        .config(key("prompt"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("folder"), Kind::Str)
+        .config_by_name(key("prompt"), Kind::Str)
         .build();
     let graph = GraphBuilder::new(schema)
         .entry(nid("agent"))

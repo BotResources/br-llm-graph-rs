@@ -21,7 +21,7 @@ impl Count {
     /// use br_llm_graph::{Count, Key, Kind, Schema};
     ///
     /// let budget = Key::new("budget").unwrap();
-    /// let schema = Schema::builder().config(budget.clone(), Kind::Int).build();
+    /// let schema = Schema::builder().config_by_name(budget.clone(), Kind::Int).build();
     /// assert!(Count::Config(budget).check(&schema).is_ok());
     /// ```
     pub fn check(&self, schema: &Schema) -> Result<(), GraphError> {
@@ -46,7 +46,7 @@ impl Count {
     /// use br_llm_graph::{Config, Count, Key, Kind, Schema, Value};
     ///
     /// let budget = Key::new("budget").unwrap();
-    /// let schema = Schema::builder().config(budget.clone(), Kind::Int).build();
+    /// let schema = Schema::builder().config_by_name(budget.clone(), Kind::Int).build();
     /// let config = Config::new(&schema, BTreeMap::from([(budget.clone(), Value::int(0))])).unwrap();
     /// assert_eq!(Count::Config(budget).resolve(&config).unwrap(), 0);
     /// ```

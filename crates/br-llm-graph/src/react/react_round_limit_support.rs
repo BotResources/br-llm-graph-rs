@@ -30,11 +30,11 @@ pub(crate) fn nid(name: &str) -> NodeId {
 
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("log"), Kind::list(Kind::Str))
-        .state(key("limited"), Kind::Bool)
-        .config(key("base"), Kind::Str)
-        .config(key("max_rounds"), Kind::Int)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("log"), Kind::list(Kind::Str))
+        .state_by_name(key("limited"), Kind::Bool)
+        .config_by_name(key("base"), Kind::Str)
+        .config_by_name(key("max_rounds"), Kind::Int)
         .build()
 }
 

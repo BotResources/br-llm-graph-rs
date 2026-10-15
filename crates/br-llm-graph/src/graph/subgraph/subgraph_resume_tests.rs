@@ -15,12 +15,12 @@ use crate::update::Update;
 /// then joins the pieces into `summary`. Input `text`, output `summary`.
 fn split_and_join(calls: &Arc<Counted>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("text"), Kind::Str)
-        .state(key("parts"), Kind::list(Kind::Str))
-        .state(key("part"), Kind::Str)
-        .state(key("pieces"), Kind::list(Kind::Str))
-        .state(key("trail"), Kind::list(Kind::Str))
-        .state(key("summary"), Kind::Str)
+        .state_by_name(key("text"), Kind::Str)
+        .state_by_name(key("parts"), Kind::list(Kind::Str))
+        .state_by_name(key("part"), Kind::Str)
+        .state_by_name(key("pieces"), Kind::list(Kind::Str))
+        .state_by_name(key("trail"), Kind::list(Kind::Str))
+        .state_by_name(key("summary"), Kind::Str)
         .build();
     let split = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         let text = s.str(&key("text")).map(str::to_owned);

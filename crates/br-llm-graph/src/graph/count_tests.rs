@@ -9,8 +9,8 @@ fn key(name: &str) -> Key {
 
 fn schema() -> Schema {
     Schema::builder()
-        .config(key("budget"), Kind::Int)
-        .config(key("label"), Kind::Str)
+        .config_by_name(key("budget"), Kind::Int)
+        .config_by_name(key("label"), Kind::Str)
         .build()
 }
 

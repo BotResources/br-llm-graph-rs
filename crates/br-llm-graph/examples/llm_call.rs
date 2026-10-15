@@ -29,11 +29,11 @@ async fn main() {
     // State: the documents, the one being read, the summaries and the title;
     // configuration: the style every call is asked to keep.
     let schema = Schema::builder()
-        .state(key("documents"), Kind::list(Kind::Str))
-        .state(key("document"), Kind::Str)
-        .state(key("summaries"), Kind::list(Kind::Str))
-        .state(key("title"), Kind::Str)
-        .config(key("style"), Kind::Str)
+        .state_by_name(key("documents"), Kind::list(Kind::Str))
+        .state_by_name(key("document"), Kind::Str)
+        .state_by_name(key("summaries"), Kind::list(Kind::Str))
+        .state_by_name(key("title"), Kind::Str)
+        .config_by_name(key("style"), Kind::Str)
         .build();
 
     let summarize = LlmCall {

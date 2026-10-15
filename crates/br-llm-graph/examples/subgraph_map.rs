@@ -28,8 +28,8 @@ fn done() -> Always {
 /// Input `item`, output `analysis`. Fails the first time it reads "beta".
 fn analyze(calls: Arc<AtomicUsize>, failed_once: Arc<AtomicBool>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("item"), Kind::Str)
-        .state(key("analysis"), Kind::Str)
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("analysis"), Kind::Str)
         .build();
     let read = FnNode::new(
         move |s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
@@ -62,9 +62,9 @@ fn analyze(calls: Arc<AtomicUsize>, failed_once: Arc<AtomicBool>) -> Arc<Graph> 
 
 fn each_item(child: Arc<Graph>) -> Graph {
     let schema = Schema::builder()
-        .state(key("items"), Kind::list(Kind::Str))
-        .state(key("item"), Kind::Str)
-        .state(key("analyses"), Kind::list(Kind::Str))
+        .state_by_name(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("analyses"), Kind::list(Kind::Str))
         .build();
     let body = SubGraph::call(child)
         .input(key("item"), Input::From(key("item")))

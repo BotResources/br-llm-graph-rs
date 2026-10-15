@@ -184,9 +184,9 @@ async fn given_a_failing_prepare_called_with_a_capture_when_run_then_the_caller_
             CaptureSource::Reason,
         )]));
     let schema = Schema::builder()
-        .state(key("id"), Kind::Str)
-        .state(key("summary"), Kind::Str)
-        .state(key("failure"), Kind::Str)
+        .state_by_name(key("id"), Kind::Str)
+        .state_by_name(key("summary"), Kind::Str)
+        .state_by_name(key("failure"), Kind::Str)
         .build();
     let caller = GraphBuilder::new(schema)
         .entry(NodeId::new("summarize").unwrap())

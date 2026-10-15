@@ -82,7 +82,7 @@ fn given_output_declared_twice_when_built_then_duplicate_output() {
 #[test]
 fn given_explicit_default_of_the_wrong_kind_when_built_then_kind_mismatch() {
     let schema = Schema::builder()
-        .state_with_default(key("count"), Kind::Int, Value::str("seven"))
+        .state_by_name_with_default(key("count"), Kind::Int, Value::str("seven"))
         .build();
     assert!(matches!(
         build(schema, &[], &[]),

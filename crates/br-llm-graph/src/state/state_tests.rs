@@ -12,8 +12,8 @@ fn key(name: &str) -> Key {
 
 fn schema() -> Schema {
     Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("items"), Kind::list(Kind::Str))
         .build()
 }
 

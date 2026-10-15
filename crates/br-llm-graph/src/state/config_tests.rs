@@ -12,8 +12,8 @@ fn key(name: &str) -> Key {
 
 fn schema() -> Schema {
     Schema::builder()
-        .config(key("model"), Kind::Str)
-        .config(key("limit"), Kind::Int)
+        .config_by_name(key("model"), Kind::Str)
+        .config_by_name(key("limit"), Kind::Int)
         .build()
 }
 

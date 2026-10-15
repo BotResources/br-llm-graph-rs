@@ -48,9 +48,9 @@ impl Script {
 /// case to `out`. Output `out`.
 fn child(script: &Arc<Script>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("inner"), Kind::list(Kind::Str))
-        .state(key("item"), Kind::Str)
-        .state(key("out"), Kind::list(Kind::Str))
+        .state_by_name(key("inner"), Kind::list(Kind::Str))
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("out"), Kind::list(Kind::Str))
         .build();
     let lister = script.clone();
     let list = FnNode::new(
@@ -109,7 +109,7 @@ fn child(script: &Arc<Script>) -> Arc<Graph> {
 /// Runs the caller once (it fails), then resumes it on the next attempt.
 async fn fail_then_resume(script: &Arc<Script>) -> Vec<Value> {
     let schema = Schema::builder()
-        .state(key("result"), Kind::list(Kind::Str))
+        .state_by_name(key("result"), Kind::list(Kind::Str))
         .build();
     let caller = GraphBuilder::new(schema.clone())
         .entry(nid("call"))

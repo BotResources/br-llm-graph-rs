@@ -26,7 +26,9 @@ fn set_count(value: i64) -> impl br_llm_graph::Node {
 }
 
 fn schema() -> Schema {
-    Schema::builder().state(key("count"), Kind::Int).build()
+    Schema::builder()
+        .state_by_name(key("count"), Kind::Int)
+        .build()
 }
 
 fn state() -> State {

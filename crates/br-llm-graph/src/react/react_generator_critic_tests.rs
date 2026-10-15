@@ -46,10 +46,10 @@ async fn given_generator_critic_graph_when_run_then_validates_after_one_iteratio
     }
 
     let schema = Schema::builder()
-        .state(k("chat"), Kind::Conversation)
-        .state(k("is_validated"), Kind::Bool)
-        .state(k("num_iter"), Kind::Int)
-        .config(k("base"), Kind::Str)
+        .state_by_name(k("chat"), Kind::Conversation)
+        .state_by_name(k("is_validated"), Kind::Bool)
+        .state_by_name(k("num_iter"), Kind::Int)
+        .config_by_name(k("base"), Kind::Str)
         .build();
 
     let generator = LlmNode {

@@ -182,11 +182,11 @@ impl GeneratorCritic {
         let critic = self.critic;
 
         let mut schema = Schema::builder()
-            .state(names.conversation.clone(), Kind::Conversation)
-            .state(names.generator_history.clone(), Kind::Conversation)
-            .state(names.answer.clone(), Kind::Str)
-            .state(names.validated.clone(), Kind::Bool)
-            .state(names.generations.clone(), Kind::Int);
+            .state_by_name(names.conversation.clone(), Kind::Conversation)
+            .state_by_name(names.generator_history.clone(), Kind::Conversation)
+            .state_by_name(names.answer.clone(), Kind::Str)
+            .state_by_name(names.validated.clone(), Kind::Bool)
+            .state_by_name(names.generations.clone(), Kind::Int);
         schema = declare_count(schema, &self.max_critiques);
         schema = declare_limit(schema, generator.tool_concurrency.as_ref());
         if let Some(round_limit) = &generator.round_limit {

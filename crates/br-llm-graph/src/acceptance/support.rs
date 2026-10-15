@@ -62,10 +62,10 @@ pub(crate) fn needed(n: usize) -> i64 {
 /// enough versions were written. Lower item numbers take longer.
 fn refine_loop(probe: &Arc<Probe>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("text"), Kind::Str)
-        .state(key("count"), Kind::Int)
-        .state(key("flag"), Kind::Bool)
-        .state(key("answer"), Kind::Str)
+        .state_by_name(key("text"), Kind::Str)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("flag"), Kind::Bool)
+        .state_by_name(key("answer"), Kind::Str)
         .build();
     let generate = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         Box::pin(async move {
@@ -128,10 +128,10 @@ fn refine_loop(probe: &Arc<Probe>) -> Arc<Graph> {
 /// loop. Input `item`; outputs `analysis` and `attempts`.
 fn wrapper(probe: &Arc<Probe>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("item"), Kind::Str)
-        .state(key("text"), Kind::Str)
-        .state(key("analysis"), Kind::Str)
-        .state(key("attempts"), Kind::Int)
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("text"), Kind::Str)
+        .state_by_name(key("analysis"), Kind::Str)
+        .state_by_name(key("attempts"), Kind::Int)
         .build();
     let counter = probe.clone();
     let prepare = FnNode::new(
@@ -174,14 +174,14 @@ fn wrapper(probe: &Arc<Probe>) -> Arc<Graph> {
 /// private keys of the loop.
 pub(crate) fn caller_schema() -> Schema {
     Schema::builder()
-        .state(key("items"), Kind::list(Kind::Str))
-        .state(key("item"), Kind::Str)
-        .state(key("analyses"), Kind::list(Kind::Str))
-        .state(key("attempts"), Kind::list(Kind::Int))
-        .state(key("failed_items"), Kind::list(Kind::Str))
-        .state(key("failures"), Kind::list(Kind::Str))
-        .state(key("count"), Kind::Int)
-        .state(key("flag"), Kind::Bool)
+        .state_by_name(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("analyses"), Kind::list(Kind::Str))
+        .state_by_name(key("attempts"), Kind::list(Kind::Int))
+        .state_by_name(key("failed_items"), Kind::list(Kind::Str))
+        .state_by_name(key("failures"), Kind::list(Kind::Str))
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("flag"), Kind::Bool)
         .build()
 }
 

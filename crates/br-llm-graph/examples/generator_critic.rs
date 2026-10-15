@@ -114,12 +114,12 @@ async fn main() {
     .expect("generator-critic graph");
 
     let schema = Schema::builder()
-        .state(key("question"), Kind::Str)
-        .state(key("answer"), Kind::Str)
-        .state(key("validated"), Kind::Bool)
-        .state(key("generations"), Kind::Int)
-        .state(key("outcome"), Kind::Str)
-        .config(key("review_request"), Kind::Str)
+        .state_by_name(key("question"), Kind::Str)
+        .state_by_name(key("answer"), Kind::Str)
+        .state_by_name(key("validated"), Kind::Bool)
+        .state_by_name(key("generations"), Kind::Int)
+        .state_by_name(key("outcome"), Kind::Str)
+        .config_by_name(key("review_request"), Kind::Str)
         .build();
     let call = SubGraph::call(duo)
         .input(

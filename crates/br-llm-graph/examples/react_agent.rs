@@ -45,9 +45,9 @@ async fn main() {
     .expect("agent graph");
 
     let schema = Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("answer"), Kind::Str)
-        .config(key("prompt"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("answer"), Kind::Str)
+        .config_by_name(key("prompt"), Kind::Str)
         .build();
     let call = SubGraph::call(agent)
         .input(key("history"), Input::From(key("chat")))

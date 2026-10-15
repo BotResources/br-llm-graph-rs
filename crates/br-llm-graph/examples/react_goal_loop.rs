@@ -31,10 +31,10 @@ struct Verdict {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let schema = Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("num_iter"), Kind::Int)
-        .state(key("achieved"), Kind::Bool)
-        .config(key("base"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("num_iter"), Kind::Int)
+        .state_by_name(key("achieved"), Kind::Bool)
+        .config_by_name(key("base"), Kind::Str)
         .build();
 
     let agent_client = scripted(vec![text_step("draft one"), text_step("draft two")]);

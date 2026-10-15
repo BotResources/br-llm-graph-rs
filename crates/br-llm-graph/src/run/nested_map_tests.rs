@@ -21,12 +21,12 @@ fn texts(values: &[&str]) -> Value {
 
 fn schema() -> Schema {
     Schema::builder()
-        .state(key("outers"), Kind::list(Kind::Str))
-        .state(key("outer"), Kind::Str)
-        .state(key("inners"), Kind::list(Kind::Str))
-        .state(key("inner"), Kind::Str)
-        .state(key("outs"), Kind::list(Kind::Str))
-        .state(key("log"), Kind::list(Kind::Str))
+        .state_by_name(key("outers"), Kind::list(Kind::Str))
+        .state_by_name(key("outer"), Kind::Str)
+        .state_by_name(key("inners"), Kind::list(Kind::Str))
+        .state_by_name(key("inner"), Kind::Str)
+        .state_by_name(key("outs"), Kind::list(Kind::Str))
+        .state_by_name(key("log"), Kind::list(Kind::Str))
         .build()
 }
 

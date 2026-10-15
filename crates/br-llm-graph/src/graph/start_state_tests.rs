@@ -59,9 +59,9 @@ fn given_no_signature_when_start_state_with_nothing_then_every_key_neutral() {
 #[test]
 fn given_explicit_default_when_start_state_then_key_starts_with_it() {
     let schema = Schema::builder()
-        .state_with_default(key("limit"), Kind::Int, Value::int(3))
-        .state(key("ratio"), Kind::Float)
-        .state(key("flag"), Kind::Bool)
+        .state_by_name_with_default(key("limit"), Kind::Int, Value::int(3))
+        .state_by_name(key("ratio"), Kind::Float)
+        .state_by_name(key("flag"), Kind::Bool)
         .build();
     let graph = graph_with(schema, &[]);
     let state = graph.start_state(Vec::new()).unwrap();

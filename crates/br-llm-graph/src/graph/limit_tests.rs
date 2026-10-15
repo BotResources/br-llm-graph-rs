@@ -10,8 +10,8 @@ fn key(name: &str) -> Key {
 
 fn schema() -> Schema {
     Schema::builder()
-        .config(key("width"), Kind::Int)
-        .config(key("label"), Kind::Str)
+        .config_by_name(key("width"), Kind::Int)
+        .config_by_name(key("label"), Kind::Str)
         .build()
 }
 

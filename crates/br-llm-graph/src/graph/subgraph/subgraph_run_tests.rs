@@ -83,11 +83,11 @@ async fn given_two_calls_appending_when_run_then_both_answers_appended_and_the_c
 /// calls the refinement loop on it. Input `text`, output `answer`.
 fn wrapper_graph() -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("text"), Kind::Str)
-        .state(key("prepared"), Kind::Str)
-        .state(key("answer"), Kind::Str)
-        .state(key("count"), Kind::Int)
-        .config(key("rounds"), Kind::Int)
+        .state_by_name(key("text"), Kind::Str)
+        .state_by_name(key("prepared"), Kind::Str)
+        .state_by_name(key("answer"), Kind::Str)
+        .state_by_name(key("count"), Kind::Int)
+        .config_by_name(key("rounds"), Kind::Int)
         .build();
     let prepare = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         let prepared = s.str(&key("text")).map(str::to_uppercase);
@@ -171,7 +171,9 @@ impl std::fmt::Display for Broken {
 impl Error for Broken {}
 
 fn failing_child() -> Arc<Graph> {
-    let schema = Schema::builder().state(key("answer"), Kind::Str).build();
+    let schema = Schema::builder()
+        .state_by_name(key("answer"), Kind::Str)
+        .build();
     let fail = FnNode::new(|_s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         Box::pin(async { Err(Box::new(Broken) as crate::graph::NodeError) })
     });

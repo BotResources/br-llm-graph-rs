@@ -17,8 +17,8 @@ use crate::update::Update;
 /// `seen`) and `b` run together. `b` fails in round 2 while `failing` holds.
 fn two_rounds(failing: &Arc<AtomicBool>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("seen"), Kind::list(Kind::Str))
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("seen"), Kind::list(Kind::Str))
         .build();
     let tick = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         let count = s.int(&key("count")).map(|count| count + 1);
@@ -83,7 +83,7 @@ async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_
  {
     let failing = Arc::new(AtomicBool::new(true));
     let schema = Schema::builder()
-        .state(key("result"), Kind::list(Kind::Str))
+        .state_by_name(key("result"), Kind::list(Kind::Str))
         .build();
     let call = SubGraph::call(two_rounds(&failing)).output(key("seen"), Output::Set(key("result")));
     let caller = GraphBuilder::new(schema.clone())
@@ -126,7 +126,7 @@ async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_
 async fn given_stale_entries_below_a_call_when_it_runs_then_they_are_ignored_and_cleared() {
     let failing = Arc::new(AtomicBool::new(true));
     let schema = Schema::builder()
-        .state(key("result"), Kind::list(Kind::Str))
+        .state_by_name(key("result"), Kind::list(Kind::Str))
         .build();
     let call = SubGraph::call(two_rounds(&failing)).output(key("seen"), Output::Set(key("result")));
     let caller = GraphBuilder::new(schema.clone())
