@@ -1,6 +1,9 @@
 mod faults;
 mod repair;
 mod store;
+mod store_port;
+mod store_repair_tests;
+mod store_test_support;
 mod store_tests;
 mod transcript;
 
