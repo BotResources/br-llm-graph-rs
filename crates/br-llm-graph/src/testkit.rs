@@ -36,6 +36,11 @@ impl SeqIds {
             }
         }
     }
+
+    /// The requests answered so far, in the order they were first made.
+    pub fn requests(&self) -> Vec<IdRequest> {
+        self.given.lock().unwrap().clone()
+    }
 }
 
 impl IdSource for SeqIds {
