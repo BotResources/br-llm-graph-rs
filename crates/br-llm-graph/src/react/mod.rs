@@ -1,5 +1,7 @@
 mod critique;
 mod generator_critic;
+mod generator_critic_nodes;
+mod generator_critic_routing;
 mod helpers;
 mod hook;
 mod llm_call;

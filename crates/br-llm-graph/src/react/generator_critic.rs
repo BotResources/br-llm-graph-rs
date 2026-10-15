@@ -1,25 +1,21 @@
 use std::sync::Arc;
 
 use br_llm_clients_core::ReasoningLevel;
-use br_llm_messages::{Author, Conversation, Entry, Step, Turn};
 
 use crate::error::GraphError;
-use crate::graph::{
-    Always, CheckSite, Context, Count, FnEdge, Graph, GraphBuilder, Node, NodeFuture, Target,
-};
+use crate::graph::{Always, Count, FnEdge, Graph, GraphBuilder, Node, Target};
 use crate::react::critique::{CritiqueNode, EMPTY_ANSWER_CRITIQUE, REVIEW_REQUEST};
-use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
+use crate::react::generator_critic_nodes::{FinishNode, Prepare, PublishNode, RouteNode};
+use crate::react::generator_critic_routing::Router;
 use crate::react::llm_node::LlmNode;
 use crate::react::react_agent::{
     declare_count, declare_input, declare_limit, declare_sources, round_limit_flag,
 };
 use crate::react::react_loop::ReactLoop;
-use crate::react::round_limit::closes_on_limit;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::source::Source;
 use crate::react::verdict::VerdictForm;
-use crate::state::{Config, Kind, Schema, State, Value};
-use crate::update::Update;
+use crate::state::{Kind, Schema};
 use crate::value::{EndLabel, Key, NodeId};
 
 /// A generator and a critic writing in one shared history, as a graph.
@@ -154,80 +150,6 @@ impl Names {
             critique: NodeId::new("critique")?,
             finish: NodeId::new("finish")?,
         })
-    }
-}
-
-/// Where the run goes once the critic has seen an answer, or before.
-#[derive(Clone)]
-struct Router {
-    conversation: Key,
-    validated: Key,
-    generator: Author,
-    critic: Author,
-    max_critiques: Count,
-    final_generation: bool,
-    generate: NodeId,
-    critique: NodeId,
-    finish: NodeId,
-}
-
-impl Router {
-    /// On entry: a generator answer last goes to the critic, a critique (a
-    /// turn of the critic) last is routed as after a rejection, anything else
-    /// (the opening input, another author's turn, a turn without author, an
-    /// empty history) goes to the generator.
-    fn entry(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
-        match state.conversation(&self.conversation)?.entries().last() {
-            Some(Entry::Turn(turn)) if turn.author() == Some(&self.generator) => {
-                self.after_answer(state, config)
-            }
-            Some(Entry::Turn(turn)) if turn.author() == Some(&self.critic) => {
-                self.after_rejection(state, config)
-            }
-            Some(Entry::Turn(_) | Entry::UserInput(_)) | None => {
-                Ok(vec![Target::Node(self.generate.clone())])
-            }
-        }
-    }
-
-    fn after_answer(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
-        let generations = self.generations(state)?;
-        let max = self.max_critiques.resolve(config)?;
-        let next = if generations > max {
-            &self.finish
-        } else {
-            &self.critique
-        };
-        Ok(vec![Target::Node(next.clone())])
-    }
-
-    fn after_critique(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
-        if state.bool(&self.validated)? {
-            return Ok(vec![Target::Node(self.finish.clone())]);
-        }
-        self.after_rejection(state, config)
-    }
-
-    /// The generator answers again while fewer than `max_critiques` answers
-    /// were given, once more (unassessed) at exactly `max_critiques` when
-    /// `final_generation`; beyond that the run finishes, as when a resumed
-    /// call reads a smaller budget.
-    fn after_rejection(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
-        let generations = self.generations(state)?;
-        let max = self.max_critiques.resolve(config)?;
-        let next = if generations < max || (self.final_generation && generations == max) {
-            &self.generate
-        } else {
-            &self.finish
-        };
-        Ok(vec![Target::Node(next.clone())])
-    }
-
-    fn generations(&self, state: &State) -> Result<usize, GraphError> {
-        Ok(since_last_input(state.conversation(&self.conversation)?)
-            .iter()
-            .filter(|entry| authored_by(entry, &self.generator))
-            .count())
     }
 }
 
@@ -436,154 +358,5 @@ impl GeneratorCritic {
             )
             .build()?;
         Ok(Arc::new(graph))
-    }
-}
-
-fn since_last_input(conversation: &Conversation) -> &[Entry] {
-    let entries = conversation.entries();
-    let start = entries
-        .iter()
-        .rposition(|entry| matches!(entry, Entry::UserInput(_)))
-        .map_or(0, |index| index + 1);
-    entries.get(start..).unwrap_or_default()
-}
-
-fn authored_by(entry: &Entry, author: &Author) -> bool {
-    match entry {
-        Entry::Turn(turn) => turn.author() == Some(author),
-        Entry::UserInput(_) => false,
-    }
-}
-
-/// The caller's `prepare` node, run as it is.
-struct Prepare(Box<dyn Node>);
-
-impl Node for Prepare {
-    fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
-        self.0.run(state, config, ctx)
-    }
-
-    fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
-        self.0.check(schema, site)
-    }
-}
-
-/// Starts `generator_history` from `conversation` when it is empty.
-struct RouteNode {
-    conversation: Key,
-    generator_history: Key,
-}
-
-impl Node for RouteNode {
-    fn run<'a>(
-        &'a self,
-        state: &'a State,
-        _config: &'a Config,
-        _ctx: &'a Context,
-    ) -> NodeFuture<'a> {
-        Box::pin(async move {
-            if !state
-                .conversation(&self.generator_history)?
-                .entries()
-                .is_empty()
-            {
-                return Ok(Vec::new());
-            }
-            Ok(vec![Update::Set {
-                key: self.generator_history.clone(),
-                value: state.get(&self.conversation)?.clone(),
-            }])
-        })
-    }
-}
-
-/// Appends the final step of the generator's last turn to `conversation`, as
-/// a turn of the generator under the same id.
-struct PublishNode {
-    conversation: Key,
-    generator_history: Key,
-    author: Author,
-}
-
-impl Node for PublishNode {
-    fn run<'a>(
-        &'a self,
-        state: &'a State,
-        _config: &'a Config,
-        _ctx: &'a Context,
-    ) -> NodeFuture<'a> {
-        Box::pin(async move {
-            let history = state.conversation(&self.generator_history)?;
-            let Some(turn) = last_turn_by_author(history, &self.author) else {
-                return Ok(Vec::new());
-            };
-            let Some(step) = final_step(turn) else {
-                return Ok(Vec::new());
-            };
-            Ok(vec![Update::PushTurn {
-                key: self.conversation.clone(),
-                turn: Turn::new(turn.id().clone(), Some(self.author.clone()), step.clone()),
-            }])
-        })
-    }
-}
-
-/// The generator's last answer since the last user input: its index in
-/// `conversation` and its final step.
-pub(crate) fn last_answer<'a>(
-    conversation: &'a Conversation,
-    generator: &Author,
-) -> Option<(usize, &'a Step)> {
-    let entries = conversation.entries();
-    let start = entries.len() - since_last_input(conversation).len();
-    entries
-        .iter()
-        .enumerate()
-        .skip(start)
-        .rev()
-        .find_map(|(index, entry)| match entry {
-            Entry::Turn(turn) if turn.author() == Some(generator) => {
-                final_step(turn).map(|step| (index, step))
-            }
-            Entry::Turn(_) | Entry::UserInput(_) => None,
-        })
-}
-
-/// Sets `answer` and `nb_generations` from `conversation`.
-struct FinishNode {
-    conversation: Key,
-    answer: Key,
-    generations: Key,
-    generator: Author,
-}
-
-impl Node for FinishNode {
-    fn run<'a>(
-        &'a self,
-        state: &'a State,
-        _config: &'a Config,
-        _ctx: &'a Context,
-    ) -> NodeFuture<'a> {
-        Box::pin(async move {
-            let conversation = state.conversation(&self.conversation)?;
-            let generations = since_last_input(conversation)
-                .iter()
-                .filter(|entry| authored_by(entry, &self.generator))
-                .count();
-            let answer = match last_answer(conversation, &self.generator) {
-                Some((_, step)) if !closes_on_limit(step) => answer_text(step),
-                Some(_) | None => String::new(),
-            };
-            Ok(vec![
-                Update::Set {
-                    key: self.answer.clone(),
-                    value: Value::str(answer),
-                },
-                Update::Set {
-                    key: self.generations.clone(),
-                    value: Value::int(i64::try_from(generations).unwrap_or(i64::MAX)),
-                },
-            ])
-        })
     }
 }

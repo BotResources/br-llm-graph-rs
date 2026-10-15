@@ -11,7 +11,7 @@ use br_llm_messages::{
 
 use crate::error::GraphError;
 use crate::graph::{Context, Node, NodeFuture};
-use crate::react::generator_critic::last_answer;
+use crate::react::generator_critic_routing::last_answer;
 use crate::react::helpers::{answer_text, complete, final_step, system_text, wire};
 use crate::react::round_limit::closes_on_limit;
 use crate::react::source::Source;
