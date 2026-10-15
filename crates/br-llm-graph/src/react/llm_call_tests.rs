@@ -6,6 +6,7 @@ use std::sync::Arc;
 use br_llm_clients_core::{
     ClientError, OutputMode, Parameter, ParameterKind, Parameters, StructuredShape,
 };
+use br_llm_clients_mock::{Chunking, derive_events};
 use br_llm_messages::{AssistantBlock, MessageError, Step, StopReason, Text};
 use serde_json::json;
 
@@ -238,7 +239,12 @@ async fn given_a_streamed_answer_when_the_call_runs_then_the_observer_gets_each_
         finished(run_in(&single(call), state_with("doc", &[]), &ctx).await);
 
         let events = recorder.events();
-        assert!(!events.is_empty());
+        let derived = derive_events(&text_step("answer"), &Chunking::none()).unwrap();
+        assert_eq!(
+            events.len(),
+            derived.events().len(),
+            "every event of the reply reaches the observer, the finish included"
+        );
         assert!(
             events
                 .iter()
