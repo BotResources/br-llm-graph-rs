@@ -139,39 +139,6 @@ async fn given_a_hook_that_fails_when_the_call_is_pending_then_the_node_fails_wi
 }
 
 #[tokio::test]
-async fn given_hooks_that_fail_on_two_calls_when_they_are_pending_then_the_first_in_call_order_is_returned()
- {
-    let gauge = Arc::new(Gauge::default());
-    let late = GuardedTool::new("late", Some(Behaviour::Fail("late")), &gauge);
-    let early = GuardedTool::new("early", Some(Behaviour::Fail("early")), &gauge);
-    let graph = tool_graph(vec![late.clone(), early.clone()], None, false);
-
-    let failure = run_tools(
-        &graph,
-        pending(vec![
-            call("c1", "early", json!({ "name": "early" })),
-            call("c2", "late", json!({ "name": "late" })),
-        ]),
-    )
-    .await
-    .err()
-    .unwrap();
-
-    let GraphError::NodeFailed {
-        source: NodeFault::Returned(error),
-        ..
-    } = &failure.error
-    else {
-        panic!("expected the tool node to fail");
-    };
-    assert_eq!(
-        error.downcast_ref::<PolicyDown>().map(|down| down.0),
-        Some("early")
-    );
-    assert_eq!(late.calls() + early.calls(), 0);
-}
-
-#[tokio::test]
 async fn given_a_call_naming_a_tool_that_is_not_enabled_when_it_is_pending_then_its_hook_is_not_called()
  {
     let gauge = Arc::new(Gauge::default());

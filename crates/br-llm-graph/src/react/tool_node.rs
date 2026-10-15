@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use br_llm_messages::{Author, Text, ToolCall, ToolName, ToolResult, ToolResultBlock, TurnId};
 use futures_util::future::join_all;
@@ -29,8 +30,13 @@ use crate::value::Key;
 /// A call is judged by its tool's hook, when there is one, after the
 /// `enabled` check, inside its concurrency slot, before its tool runs. A
 /// refused call is answered with an error result holding the reason and is
-/// not executed; an error of a hook fails the node, once every call has
-/// ended, with the first such error in call order.
+/// not executed. An error of a hook fails the node and that call is not
+/// executed: no call that has not started (taken its slot) is started
+/// afterwards, the calls already started, judging or running, finish, and
+/// the node's results are dropped. The error returned is the first, in call
+/// order, of the hooks that failed. A failed node records nothing, so a
+/// resumed run judges and runs its calls again, with the same call ids: the
+/// effects of tools are at-least-once.
 ///
 /// At most `max_concurrency` calls run at once (every call at once when
 /// `None`); the results keep the call order. The tool nodes of one ReAct loop
@@ -49,8 +55,13 @@ pub(crate) struct ToolNode {
     pub(crate) gates: Arc<SharedGates>,
 }
 
-/// How one enabled call is answered.
+/// How one owned call is answered.
 enum Answer {
+    /// The call names a tool the `enabled` key does not hold.
+    NotEnabled,
+    /// A hook of another call failed before this one started: it was not
+    /// started.
+    NotStarted,
     /// The tool ran and gave this outcome.
     Ran(Result<ToolOutput, ToolError>),
     /// The hook refused the call, with this reason.
@@ -116,32 +127,44 @@ impl ToolNode {
             None => None,
         };
         let gate = lease.as_ref().map(|lease| lease.gate());
-        let calls = selected.iter().filter_map(|(call, tool)| {
-            tool.map(|tool| async move {
-                let _pass = match gate {
-                    Some(gate) => Some(gate.enter().await),
-                    None => None,
-                };
-                answer(tool.as_ref(), call, state, config).await
-            })
-        });
-        let mut answers = join_all(calls).await.into_iter();
+        // Set by the first hook that fails: no call starts after it.
+        let failed = AtomicBool::new(false);
+        let failed = &failed;
+        let answers = join_all(selected.iter().map(|(call, tool)| async move {
+            let Some(tool) = tool else {
+                return Answer::NotEnabled;
+            };
+            if failed.load(Ordering::SeqCst) {
+                return Answer::NotStarted;
+            }
+            let _pass = match gate {
+                Some(gate) => Some(gate.enter().await),
+                None => None,
+            };
+            if failed.load(Ordering::SeqCst) {
+                return Answer::NotStarted;
+            }
+            let answer = answer(tool.as_ref(), call, state, config).await;
+            if matches!(answer, Answer::HookFailed(_)) {
+                failed.store(true, Ordering::SeqCst);
+            }
+            answer
+        }))
+        .await;
         drop(lease);
 
         let mut updates = Vec::new();
-        for (call, tool) in selected {
-            if tool.is_none() {
-                let text = format!(
-                    "Tool {} is not enabled for this run: this call was not executed.",
-                    call.name
-                );
-                updates.push(error_result(&self.key, &turn_id, call, &text, ""));
-                continue;
-            }
-            let Some(answer) = answers.next() else {
-                break;
-            };
+        for ((call, _), answer) in selected.iter().zip(answers) {
             match answer {
+                Answer::NotEnabled => {
+                    let text = format!(
+                        "Tool {} is not enabled for this run: this call was not executed.",
+                        call.name
+                    );
+                    updates.push(error_result(&self.key, &turn_id, call, &text, ""));
+                }
+                // Only after a hook failed, whose error this loop returns.
+                Answer::NotStarted => {}
                 Answer::Ran(Ok(output)) => {
                     let result = ToolResult::new(
                         call.id.clone(),

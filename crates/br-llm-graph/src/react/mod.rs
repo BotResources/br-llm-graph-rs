@@ -65,6 +65,8 @@ mod react_duplicate_tool_tests;
 #[cfg(test)]
 mod react_generator_critic_tests;
 #[cfg(test)]
+mod react_hook_failure_tests;
+#[cfg(test)]
 mod react_hook_slot_tests;
 #[cfg(test)]
 mod react_hook_support;

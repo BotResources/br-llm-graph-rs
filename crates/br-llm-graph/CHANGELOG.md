@@ -49,9 +49,15 @@ instead, and `LlmCall` makes one model call whose answer is data.
   hook), inside its slot of the tool concurrency limit. A refused call is not
   executed: it is answered with an error result holding the reason (`tool
   call refused` when blank), and the turn goes on. An error of a hook fails
-  the tool node, as returned (the first in call order, once every call has
-  ended), and that call is not executed. A hook returns no update. Hooks are
-  the host's: the graph ships none.
+  the tool node and that call is not executed: no call of the node that has
+  not started is started afterwards, the calls already started finish, the
+  node's results are dropped, and the error returned, as the hook returned
+  it, is the first in call order of the hooks that failed. A failed node
+  records nothing, so a resumed run judges and runs its calls again, under
+  the same call ids: tool effects are at-least-once, and an approval hook
+  memoises by call id. A hook returns no update. Hooks are the host's: the
+  graph ships none; `Hook`'s documentation lists what a hook must allow for
+  (an error is not a refusal, cancel-safety, the slot a judgment holds).
 - `Judgment` and `LlmRequest` are `#[non_exhaustive]`: a host builds their
   variants, and a `match` on them outside the crate needs a wildcard arm.
 - `GraphError::Request(BuildError)`: br-llm-clients-core refused to build the

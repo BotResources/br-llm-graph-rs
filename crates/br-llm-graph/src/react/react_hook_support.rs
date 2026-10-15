@@ -58,6 +58,12 @@ pub(crate) enum Behaviour {
     Slow {
         yields: usize,
     },
+    /// Fails every call after `yields` turns of the executor, with
+    /// `PolicyDown(name)`.
+    SlowFail {
+        yields: usize,
+        name: &'static str,
+    },
 }
 
 /// What a hook was called with: the call's id, its arguments, the length of
@@ -112,6 +118,13 @@ impl Hook for TestHook {
                     return Err(PolicyDown(name).into());
                 }
                 Behaviour::Fail(_) => Judgment::Accept,
+                Behaviour::SlowFail { yields, name } => {
+                    for _ in 0..*yields {
+                        tokio::task::yield_now().await;
+                    }
+                    self.gauge.leave();
+                    return Err(PolicyDown(name).into());
+                }
                 Behaviour::Slow { yields } => {
                     for _ in 0..*yields {
                         tokio::task::yield_now().await;
@@ -133,13 +146,15 @@ impl Hook for TestHook {
     }
 }
 
-/// A tool counting its calls, guarded by `hook` when it has one. A call
-/// with `{"yields": n}` takes n turns of the executor.
+/// A tool counting the calls it starts and those it ends, guarded by `hook`
+/// when it has one. A call with `{"yields": n}` takes n turns of the
+/// executor.
 pub(crate) struct GuardedTool {
     spec: ToolSpec,
     hook: Option<TestHook>,
     gauge: Arc<Gauge>,
     calls: AtomicUsize,
+    finished: AtomicUsize,
 }
 
 impl GuardedTool {
@@ -153,11 +168,17 @@ impl GuardedTool {
             }),
             gauge: gauge.clone(),
             calls: AtomicUsize::new(0),
+            finished: AtomicUsize::new(0),
         })
     }
 
     pub(crate) fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
+    }
+
+    /// The calls whose tool ran to its end.
+    pub(crate) fn finished(&self) -> usize {
+        self.finished.load(Ordering::SeqCst)
     }
 
     pub(crate) fn seen(&self) -> Vec<Seen> {
@@ -192,6 +213,7 @@ impl Tool for GuardedTool {
                 tokio::task::yield_now().await;
             }
             self.gauge.leave();
+            self.finished.fetch_add(1, Ordering::SeqCst);
             Ok(ToolOutput::text(vec![ToolResultBlock::text(Text::new(
                 format!("{} ran", self.spec.name()),
             )?)]))
