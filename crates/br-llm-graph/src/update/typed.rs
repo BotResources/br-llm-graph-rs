@@ -82,3 +82,7 @@ impl StateKey<Conversation> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "typed_tests.rs"]
+mod tests;

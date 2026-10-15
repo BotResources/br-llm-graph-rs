@@ -161,3 +161,7 @@ impl<T> From<StateKey<T>> for Key {
         key.key
     }
 }
+
+#[cfg(test)]
+#[path = "typed_key_tests.rs"]
+mod tests;

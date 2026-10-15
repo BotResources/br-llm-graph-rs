@@ -184,3 +184,7 @@ pub(crate) fn read_as<'a, T: ValueType>(
     }
     T::read(value).ok_or_else(mismatch)
 }
+
+#[cfg(test)]
+#[path = "value_type_tests.rs"]
+mod tests;
