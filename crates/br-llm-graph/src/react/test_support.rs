@@ -1,10 +1,7 @@
 use std::collections::BTreeMap;
-use std::sync::LazyLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use br_llm_clients_core::{
-    CacheRequirement, ClientError, ClientRequest, ClientSettings, MaxOutputTokens, Parameters,
-    ReasoningLevel, ToolSpec,
+    CacheRequirement, ClientError, ClientRequest, ClientSettings, MaxOutputTokens, ReasoningLevel,
 };
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_messages::{
@@ -14,9 +11,10 @@ use br_llm_messages::{
 use serde_json::{Value as Json, json};
 
 pub(crate) use crate::react::test_clients::{LaxClient, StreamRecorder};
-use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+pub(crate) use crate::react::test_tools::{
+    EchoTool, ScopeTool, StrictTool, TallyTool, WriteFileTool, spec,
+};
 use crate::state::{Config, Kind, Schema, State, Value};
-use crate::update::Update;
 use crate::value::Key;
 
 pub(crate) fn author() -> Author {
@@ -226,139 +224,6 @@ pub(crate) fn tool_names(request: &ClientRequest) -> Vec<String> {
         .iter()
         .map(|spec| spec.name().as_str().to_owned())
         .collect()
-}
-
-/// The spec of a test tool without parameters.
-pub(crate) fn spec(name: &str) -> ToolSpec {
-    ToolSpec::new(
-        ToolName::new(name).unwrap(),
-        format!("the {name} tool"),
-        Parameters::default(),
-    )
-    .unwrap()
-}
-
-pub(crate) struct EchoTool;
-
-impl Tool for EchoTool {
-    fn spec(&self) -> &ToolSpec {
-        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("echo"));
-        &SPEC
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("echoed").unwrap(),
-            )]))
-        })
-    }
-}
-
-pub(crate) struct TallyTool;
-
-impl Tool for TallyTool {
-    fn spec(&self) -> &ToolSpec {
-        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("tally"));
-        &SPEC
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async {
-            Ok(
-                ToolOutput::text(vec![ToolResultBlock::text(Text::new("tallied").unwrap())])
-                    .with_updates(vec![Update::Append {
-                        key: key("log"),
-                        value: Value::str("tallied"),
-                    }]),
-            )
-        })
-    }
-}
-
-/// Answers with the value of the string state key `scope`.
-pub(crate) struct ScopeTool;
-
-impl Tool for ScopeTool {
-    fn spec(&self) -> &ToolSpec {
-        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("scope"));
-        &SPEC
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async move {
-            let scope = state.str(&key("scope"))?;
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(Text::new(
-                format!("scope is {scope}"),
-            )?)]))
-        })
-    }
-}
-
-/// Counts its calls.
-#[derive(Default)]
-pub(crate) struct WriteFileTool {
-    pub(crate) calls: AtomicUsize,
-}
-
-impl Tool for WriteFileTool {
-    fn spec(&self) -> &ToolSpec {
-        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("write_file"));
-        &SPEC
-    }
-    fn call<'a>(
-        &'a self,
-        _arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async {
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("written").unwrap(),
-            )]))
-        })
-    }
-}
-
-pub(crate) struct StrictTool;
-
-impl Tool for StrictTool {
-    fn spec(&self) -> &ToolSpec {
-        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("strict"));
-        &SPEC
-    }
-    fn call<'a>(
-        &'a self,
-        arguments: Json,
-        _state: &'a State,
-        _config: &'a Config,
-    ) -> ToolFuture<'a> {
-        Box::pin(async move {
-            let _parsed: StrictArgs = serde_json::from_value(arguments)?;
-            Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("ok").unwrap(),
-            )]))
-        })
-    }
-}
-
-#[derive(serde::Deserialize)]
-struct StrictArgs {
-    #[allow(dead_code)]
-    n: i64,
 }
 
 /// The error a node returned, read back as a `GraphError`.

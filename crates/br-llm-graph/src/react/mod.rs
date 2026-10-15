@@ -72,6 +72,8 @@ mod react_tool_concurrency_tests;
 mod test_clients;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod test_tools;
 
 pub use generator_critic::GeneratorCritic;
 pub use helpers::{complete, pending_calls, structured, wire};
