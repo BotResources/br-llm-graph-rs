@@ -1,3 +1,7 @@
+mod thread_id;
+
+pub use thread_id::ThreadId;
+
 pub(crate) fn is_identifier(value: &str) -> bool {
     let mut chars = value.chars();
     match chars.next() {

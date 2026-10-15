@@ -40,6 +40,10 @@ pub enum GraphError {
         value: String,
     },
     FloatNotFinite,
+    /// A text that is not a UUIDv7 written as its text, given as a thread id.
+    ThreadId {
+        value: String,
+    },
     MissingKey {
         key: Key,
     },
@@ -239,6 +243,12 @@ impl std::fmt::Display for GraphError {
                 )
             }
             GraphError::FloatNotFinite => f.write_str("a float value must be finite"),
+            GraphError::ThreadId { value } => {
+                write!(
+                    f,
+                    "{value:?} is not a thread id: a UUIDv7 written as its text"
+                )
+            }
             GraphError::MissingKey { key } => write!(f, "key {key} is declared but missing"),
             GraphError::UnknownKey { key } => write!(f, "key {key} is not declared in the schema"),
             GraphError::KindMismatch {
@@ -462,6 +472,7 @@ impl std::error::Error for GraphError {
             GraphError::InvalidNode { source, .. } => Some(source.as_ref()),
             GraphError::Identifier { .. }
             | GraphError::FloatNotFinite
+            | GraphError::ThreadId { .. }
             | GraphError::MissingKey { .. }
             | GraphError::UnknownKey { .. }
             | GraphError::KindMismatch { .. }

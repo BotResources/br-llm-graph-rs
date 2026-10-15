@@ -53,4 +53,4 @@ pub use run::{
 pub use session::{Ended, Session, Start};
 pub use state::{Config, Finite, Kind, SCHEMA_VERSION, Schema, SchemaBuilder, State, Value};
 pub use update::Update;
-pub use value::{EndLabel, Key, NodeId};
+pub use value::{EndLabel, Key, NodeId, ThreadId};
