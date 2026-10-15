@@ -1,17 +1,12 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use br_llm_messages::TurnId;
-
+use crate::graph::ids::IdSource;
 use crate::observe::Observer;
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
 use crate::run::{PendingEntry, PendingWrites};
 use crate::state::Value;
 use crate::update::Update;
 use crate::value::NodeId;
-
-pub trait IdSource: Send + Sync {
-    fn turn_id(&self) -> TurnId;
-}
 
 /// What the engine hands a node besides state and configuration: the
 /// observer, the id source, where the node runs (run id and occurrence), and
