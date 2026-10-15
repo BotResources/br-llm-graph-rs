@@ -1,12 +1,14 @@
 //! The system text of the model-call step: the texts of its sources, in
 //! order, joined by a blank line, and how each kind of source resolves.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::GraphError;
 use crate::react::react_llm_tests::{ctx, llm, run_on, single};
 use crate::react::source::Source;
 use crate::react::test_support::*;
+use crate::state::{Config, Kind, Schema, State, Value};
 
 #[tokio::test]
 async fn given_multiple_system_sources_when_llm_runs_then_joined_by_blank_line() {
@@ -83,4 +85,31 @@ fn given_each_kind_of_source_when_resolved_then_one_text() {
         failing.resolve(&state, &config),
         Err(GraphError::UnknownKey { .. })
     ));
+}
+
+#[test]
+fn given_a_source_key_holding_another_kind_when_resolved_then_kind_mismatch() {
+    let schema = Schema::builder()
+        .state(key("count"), Kind::Int)
+        .state(key("counts"), Kind::list(Kind::Int))
+        .build();
+    let state = State::new(
+        schema.clone(),
+        BTreeMap::from([
+            (key("count"), Value::int(3)),
+            (key("counts"), Value::list(vec![Value::int(1)])),
+        ]),
+    )
+    .unwrap();
+    let config = Config::new(&schema, BTreeMap::new()).unwrap();
+    for name in ["count", "counts"] {
+        assert!(
+            matches!(
+                Source::State(key(name)).resolve(&state, &config),
+                Err(GraphError::KindMismatch { key: found, expected: Kind::Str, found: "int" })
+                    if found == key(name)
+            ),
+            "{name}: a string, or a list holding only strings"
+        );
+    }
 }

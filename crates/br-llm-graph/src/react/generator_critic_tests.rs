@@ -233,16 +233,33 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
 
 #[test]
 fn given_both_seats_with_one_author_when_built_then_same_author() {
+    // Two authors are one author when their ids are equal, whatever their
+    // names (br-llm-messages).
+    let renamed = br_llm_messages::Author::new("writer", "Editor in chief").unwrap();
+    for author in [writer(), renamed] {
+        let built = GeneratorCritic::new(
+            generator(&mock(Vec::new())),
+            CriticSeat {
+                author,
+                ..critic(&mock(Vec::new()))
+            },
+            Count::Fixed(1),
+        )
+        .graph();
+        assert!(matches!(built, Err(GraphError::SameAuthor { .. })));
+    }
+    // Positive control: one name, two ids, two authors.
+    let namesake = br_llm_messages::Author::new("another", "writer").unwrap();
     let built = GeneratorCritic::new(
         generator(&mock(Vec::new())),
         CriticSeat {
-            author: writer(),
+            author: namesake,
             ..critic(&mock(Vec::new()))
         },
         Count::Fixed(1),
     )
     .graph();
-    assert!(matches!(built, Err(GraphError::SameAuthor { .. })));
+    assert!(built.is_ok());
 }
 
 #[tokio::test]

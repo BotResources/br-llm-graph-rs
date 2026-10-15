@@ -4,12 +4,14 @@
 //!
 //! A conforming client never gives a step without text, tool call or
 //! structured value: it refuses it (`ReplyUnusable`), and the generation
-//! fails. The steps holding only thinking come from `LaxClient`, which
-//! serves them as they are.
+//! fails. A step holding only thinking comes from `LaxClient`, which serves
+//! it as it is, or from a history the host gives back.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use br_llm_clients_core::ClientError;
+use br_llm_messages::{Turn, TurnId};
 use serde_json::json;
 
 use crate::error::GraphError;
@@ -160,4 +162,49 @@ async fn given_a_reply_holding_only_thinking_from_a_conforming_client_when_the_g
     );
     assert_eq!(shape_of(&state, "conversation"), ["user"]);
     assert!(requests(&critic_client).is_empty());
+}
+
+#[tokio::test]
+async fn given_histories_ending_on_an_answer_holding_only_thinking_when_called_again_then_it_is_rejected_without_the_critic()
+ {
+    // A conforming client on both seats: the empty answer is a stored one.
+    let mut conversation = question("explain");
+    conversation
+        .push_turn(Turn::new(
+            TurnId::new("g1").unwrap(),
+            Some(writer()),
+            thinking_only_step(),
+        ))
+        .unwrap();
+    let generator_client = mock(vec![text_step("full")]);
+    let critic_client = mock(vec![verdict(true, "")]);
+    let graph = GeneratorCritic::new(
+        generator(&generator_client),
+        critic(&critic_client),
+        Count::Fixed(2),
+    )
+    .graph()
+    .unwrap();
+
+    let state = ended(
+        call_with(&graph, conversation.clone(), conversation, BTreeMap::new()).await,
+        "validated",
+    );
+
+    let expected = [
+        "user".to_owned(),
+        "writer:".to_owned(),
+        empty_critique(),
+        "writer:full".to_owned(),
+    ];
+    assert_eq!(shape_of(&state, "conversation"), expected);
+    assert_eq!(shape_of(&state, "generator_history"), expected);
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
+    assert_eq!(state.str(&key("answer")).unwrap(), "full");
+    assert_eq!(
+        requests(&critic_client).len(),
+        1,
+        "the critic judges only the full answer"
+    );
+    assert_eq!(requests(&generator_client).len(), 1);
 }

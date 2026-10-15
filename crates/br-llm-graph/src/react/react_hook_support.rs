@@ -60,12 +60,16 @@ pub(crate) enum Behaviour {
     },
 }
 
+/// What a hook was called with: the call's id, its arguments, the length of
+/// the state key `log` and the configuration key `base`.
+pub(crate) type Seen = (String, Json, String, String);
+
 /// A host's hook: judges each call as its behaviour says, keeps what it was
 /// called with, and takes the gauge from its start (the tool leaves it).
 pub(crate) struct TestHook {
     behaviour: Behaviour,
     gauge: Arc<Gauge>,
-    seen: Mutex<Vec<(String, Json, String)>>,
+    seen: Mutex<Vec<Seen>>,
 }
 
 /// The error of a failing hook: a type of the host's.
@@ -86,15 +90,18 @@ impl Hook for TestHook {
         id: &'a ToolCallId,
         arguments: &'a Json,
         state: &'a State,
-        _config: &'a Config,
+        config: &'a Config,
     ) -> HookFuture<'a> {
         Box::pin(async move {
             self.gauge.enter();
             let scope = state.list(&key("log"))?.len().to_string();
-            self.seen
-                .lock()
-                .unwrap()
-                .push((id.as_str().to_owned(), arguments.clone(), scope));
+            let base = config.str(&key("base"))?.to_owned();
+            self.seen.lock().unwrap().push((
+                id.as_str().to_owned(),
+                arguments.clone(),
+                scope,
+                base,
+            ));
             let judgment = match &self.behaviour {
                 Behaviour::Accept => Judgment::Accept,
                 Behaviour::Refuse(reason) => Judgment::Refuse {
@@ -153,7 +160,7 @@ impl GuardedTool {
         self.calls.load(Ordering::SeqCst)
     }
 
-    pub(crate) fn seen(&self) -> Vec<(String, Json, String)> {
+    pub(crate) fn seen(&self) -> Vec<Seen> {
         self.hook
             .as_ref()
             .map(|hook| hook.seen.lock().unwrap().clone())

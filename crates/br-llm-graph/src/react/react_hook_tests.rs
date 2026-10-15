@@ -32,9 +32,10 @@ async fn given_a_hook_that_accepts_when_the_call_is_pending_then_the_tool_runs()
         [(
             "c1".to_owned(),
             json!({ "path": "notes/a" }),
-            "1".to_owned()
+            "1".to_owned(),
+            "You are a helpful agent.".to_owned()
         )],
-        "the hook is called with the call's id, its arguments and the state"
+        "the hook is called with the call's id, its arguments, the state and the configuration"
     );
 }
 
