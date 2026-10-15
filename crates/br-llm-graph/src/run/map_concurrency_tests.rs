@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Context, Graph, GraphBuilder, Limit, Map, Node, NodeFuture};
 use crate::observe::NoopObserver;
-use crate::run::inbox::channel;
+use crate::run::control::channel;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;

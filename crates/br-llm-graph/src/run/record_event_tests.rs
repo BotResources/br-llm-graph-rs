@@ -8,7 +8,7 @@ use crate::graph::{Context, FnNode, Graph, GraphBuilder, ItemFailure, Map, NodeF
 use crate::observe::Observer;
 use crate::origin::Origin;
 use crate::run::PendingEntry;
-use crate::run::inbox::{Sender, channel};
+use crate::run::control::{Sender, channel};
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;

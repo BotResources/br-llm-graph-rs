@@ -5,8 +5,8 @@ use futures_util::future::join;
 
 use crate::graph::{Context, Graph, GraphBuilder, Limit, Map};
 use crate::observe::NoopObserver;
+use crate::run::control::channel;
 use crate::run::gates::{GatedBody, Gates};
-use crate::run::inbox::channel;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;

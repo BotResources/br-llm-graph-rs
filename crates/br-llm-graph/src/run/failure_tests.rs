@@ -5,7 +5,7 @@ use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Always, Context, FnNode, GraphBuilder, NodeFuture};
 use crate::observe::NoopObserver;
-use crate::run::inbox::channel;
+use crate::run::control::channel;
 use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::{Config, State};

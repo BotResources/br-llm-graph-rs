@@ -7,7 +7,7 @@ use futures_util::{FutureExt, StreamExt};
 
 use crate::error::NodeFault;
 use crate::graph::{Context, Graph, Node, NodeError};
-use crate::run::inbox::{Inbox, Message};
+use crate::run::control::{Inbox, Message};
 use crate::state::{Config, State};
 use crate::update::Update;
 use crate::value::{Key, NodeId};

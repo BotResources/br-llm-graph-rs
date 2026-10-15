@@ -1,6 +1,6 @@
 mod checkpoint;
+mod control;
 mod cursor;
-mod inbox;
 mod outcome;
 mod pending;
 #[path = "loop.rs"]
@@ -40,9 +40,9 @@ mod superstep_resume_tests;
 pub(crate) mod test_support;
 
 pub use checkpoint::Checkpoint;
+pub(crate) use control::Message;
+pub use control::{Inbox, Sender, channel};
 pub use cursor::Cursor;
-pub(crate) use inbox::Message;
-pub use inbox::{Inbox, Sender, channel};
 pub use outcome::{Outcome, RunFailure};
 pub use pending::{PendingEntry, PendingWrites};
 pub use runner::run;

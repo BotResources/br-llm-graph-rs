@@ -4,7 +4,7 @@ use crate::graph::{Context, FnNode, Graph, GraphBuilder, Node, NodeFuture};
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
 use crate::run::Cursor;
-use crate::run::inbox::channel;
+use crate::run::control::channel;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::graph::{Always, Context, GraphBuilder};
 use crate::observe::NoopObserver;
-use crate::run::inbox::channel;
+use crate::run::control::channel;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;
