@@ -25,6 +25,11 @@ use crate::state::{Config, State};
 
 /// The refusal of a limit of `max`, as the limit node writes it.
 fn refusal(max: usize) -> String {
+    refusal_naming(&max.to_string())
+}
+
+/// The refusal's text with `max` between its head and its tail.
+fn refusal_naming(max: &str) -> String {
     format!(
         "Tool round limit reached ({max}): this call was not executed. Reply without calling tools."
     )
@@ -109,9 +114,11 @@ async fn given_rounds_past_the_limit_that_are_not_all_exact_refusals_when_the_re
  {
     let one = refusal(1);
     let prefix = "Tool round limit reached (1): this call was not executed.";
+    let not_a_number = refusal_naming("one");
     for round in [
         vec![(one.as_str(), false)],
         vec![(prefix, true)],
+        vec![(not_a_number.as_str(), true)],
         vec![(one.as_str(), true), ("echoed", false)],
         vec![("echoed", false)],
     ] {
