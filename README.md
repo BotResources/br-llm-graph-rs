@@ -1,9 +1,9 @@
 # br-llm-graph
 
-LangGraph-like orchestration over br-llm-messages: a typed key/value state, async nodes, sync edges, supersteps with fan-out and join, a react loop. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: a typed key/value state, async nodes, sync edges, supersteps with fan-out and join, a node that makes one model call, a react loop. The model is a `Client` of br-llm-clients-core the host gives; the tools, and the hooks that judge their calls, are the host's. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
 
 ```toml
-br-llm-graph = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-llm-graph", tag = "br-llm-graph/v0.3.0", version = "0.3.0" }
+br-llm-graph = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-llm-graph", tag = "br-llm-graph/v0.4.0", version = "0.4.0" }
 ```
 
 Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The pull request that bumps `crates/br-llm-graph/Cargo.toml` (with a plain `## X.Y.Z` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/br-llm-graph-<major>.<minor>` line) the release workflow asks the registry again, tags `br-llm-graph/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.

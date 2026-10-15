@@ -9,11 +9,135 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-15
+
+Breaking: the model is a `Client` of br-llm-clients-core 0.3, and the graph
+builds on br-llm-messages 0.4. The graph's own model port, the thinking
+switches and the safe flag of a tool are gone; a tool may carry a hook
+instead, and `LlmCall` makes one model call whose answer is data.
+
+### Added
+
+- Dependency on br-llm-clients-core 0.3 (git tag
+  `br-llm-clients-core/v0.3.0`). The tests and the examples run on
+  br-llm-clients-mock 0.3, a development dependency: nothing of it appears in
+  the public API. The mock is taken from the release tag of
+  br-llm-clients-core, which names the same commit as its own tag, so that it
+  implements the very `Client` the graph holds (a second tag of one
+  repository is a second source, hence a second br-llm-clients-core).
+- `LlmCall { client, system, request, output_mode, output }`: a node that
+  makes one model call and gives back its answer as data. `request` is an
+  `LlmRequest`: `Text(Source)`, sent as one user message holding its text (a
+  text that resolves blank fails the node with `Message` before any call), or
+  `Conversation { key, author }`, the conversation key rendered for `author`
+  (for images or earlier turns). The system text is the text of `system`; a
+  blank text gives no system text. The request declares no tools and sends
+  `output_mode`. The answer, the JSON text of the reply's structured block
+  when it has one, else its text blocks joined verbatim, is written through
+  `output` (`Output::Set` to a string state key, `Output::Append` to a list of
+  strings); nothing else is written, the call keeps no conversation. Its
+  stream events reach the observer with the conversation key, or the output
+  key for a text request. As the body of a `Map`, an `Append` output makes one
+  model call per item, at most the map's concurrency limit at once, the
+  answers appended in item order; a `Set` output is refused there
+  (`MapBodySet`). At build it checks the keys its sources read
+  (`SourceKeyMismatch`), its conversation key (`UnknownKey`, `KindMismatch`)
+  and its output key, refused with the error writing a string through it
+  would give (`UnknownKey`, `KindMismatch`, `AppendNotList`).
+- `Hook` (`judge(id, arguments, state, config) -> HookFuture`), `Judgment`
+  (`Accept`, `Refuse { reason }`), `HookFuture` and `HookError`, and
+  `Tool::hook()` (`Option<&dyn Hook>`, `None` by default): the judgment of
+  one tool call before its tool runs. A call is judged after the `enabled`
+  key check (a call naming a tool that is not enabled is answered without its
+  hook), inside its slot of the tool concurrency limit. A refused call is not
+  executed: it is answered with an error result holding the reason (`tool
+  call refused` when blank), and the turn goes on. An error of a hook fails
+  the tool node, as returned (the first in call order, once every call has
+  ended), and that call is not executed. A hook returns no update. Hooks are
+  the host's: the graph ships none.
+- `GraphError::Request(BuildError)`: br-llm-clients-core refused to build the
+  request of a model call; the `BuildError` is the error's source.
+- `GraphError::VerdictShapeMismatch { reason }`, which replaces
+  `VerdictSchemaMismatch`: an override without a reader whose shape does not
+  hold `is_valid` (boolean) and `message` (string), both required.
+- `From<ClientError>` and `From<BuildError>` for `GraphError` (`Model`,
+  `Request`).
+- `Output` (of `SubGraph`) is also where an `LlmCall` writes its answer.
+- Examples `llm_call` (an `LlmCall` as a map body, then one over the
+  results) and `tool_hook` (a host-written hook guarding `write_file`).
+
+### Changed
+
+- **Breaking:** br-llm-messages 0.4 (tag `br-llm-messages/v0.4.0`): an
+  `Author` is an id and a name, and the stricter rules of 0.4 on tool names,
+  tool call ids and tool results apply to every conversation of a state.
+  Stored states whose conversations carry the schema `br-llm-messages/1` no
+  longer load. The display of `Update::PushTurn` names the turn by its id (a
+  turn no longer displays itself).
+- **Breaking:** a model is a `br_llm_clients_core::Client`, given by the
+  host: `ReactAgent::client`, `GeneratorSeat::client` and
+  `CriticSeat::client` (formerly `model`), and `CriticSeat::new(author,
+  client, system)`. The settings of a client, its level of reasoning
+  included, are fixed when the host builds it; the graph never sets them and
+  reads only the `ReasoningLevel` of the critic's client.
+- **Breaking:** `complete(client, &request, ctx, key)` calls a `&dyn Client`
+  with a `&ClientRequest` and a sink that sends each stream event to the
+  observer, under the calling node's occurrence and the conversation key
+  `key`; the call's report is not kept. A model call sends the system text,
+  the wire messages, the declared tools and the output mode; a refused request
+  fails the node with `Request`, an error of the client with `Model`.
+- **Breaking:** `GraphError::Model` carries the `ClientError`
+  (`Model(ClientError)`, formerly `Model { message }`), its source.
+- **Breaking:** `Tool::spec` gives a `&br_llm_clients_core::ToolSpec` (the
+  typed tool vocabulary of core: a name, a description and parameters).
+- **Breaking:** `ReactAgent::output` and `GeneratorSeat::output` are a core
+  `OutputMode` (`Plain`, `Structured(StructuredShape)`), formerly the graph's
+  `OutputMode::Text` / `Structured { schema }`.
+- **Breaking:** `OnLimit::Continue` calls the model once more with its tools
+  still declared (core has no setting that forbids tool calls); a reply that
+  still calls tools fails the run with `ToolLimitReached`, as before.
+- **Breaking:** the critic's default verdict is the core structured shape
+  `verdict` with the parameters `thinking` (string), `is_valid` (boolean) and
+  `message` (string), in that order, all required. `thinking` is present
+  exactly when the `ReasoningLevel` of the critic's client is `Off`: it gives
+  a critic that does not reason natively room to reason before judging. Its
+  description, when the shape has no `thinking`, is not in use: a state or
+  configuration key it reads is not declared. `VerdictOverride { shape,
+  reader }` sends the caller's `StructuredShape` (formerly a JSON `schema`).
+- A system text that resolves blank (empty or whitespace only) is sent as no
+  system text, by the model-call step of the ReAct loop, by the critic and by
+  `LlmCall`: a core system prompt is a `Text`, which refuses a blank text.
+- With a conforming client, a reply that holds nothing but thinking is
+  refused by the client (`ReplyUnusable`) and fails the generation with
+  `Model`; a critic reply without a structured block is refused by the client
+  (`MalformedResponse`) and fails the critique with `Model`. The graph's
+  empty-answer and `Structured` rules are unchanged and apply to the steps a
+  client gives.
+- The crate description names br-llm-clients-core.
+
 ### Removed
 
-- `LlmNode` is no longer public: it is the model-call step of the ReAct loop
-  inside `ReactAgent` and `GeneratorCritic`. `Source` and `SourceFn` stay
-  public.
+- **Breaking:** the graph's model port: `Model`, `ModelFuture`, `ModelError`,
+  `Request`, `ToolSpec`, `OutputMode`, `ToolCalls` (`Allowed`, `Forbidden`)
+  and `StreamSink`. Use those of br-llm-clients-core: `Client`,
+  `ClientRequest`, `ToolSpec`, `OutputMode` and `StructuredShape`,
+  `StreamSink`, `ClientError`, `BuildError`.
+- **Breaking:** `Switch` and `GraphError::SwitchKeyMismatch`, with the
+  thinking switch of the model-call step, of `ReactAgent` and of both seats.
+  A node or a seat that needs another model or another level of reasoning is
+  given another client.
+- **Breaking:** `CriticSeat::reasoning_field`: the `thinking` parameter of the
+  verdict follows the level of reasoning of the critic's client.
+- **Breaking:** `GraphError::VerdictSchemaMismatch` (see
+  `VerdictShapeMismatch`).
+- **Breaking:** `Tool::safe` and `pending_unsafe_calls`: the optional hook
+  replaces them.
+- **Breaking:** `ToolNode` is no longer public: it is the tool execution of
+  the ReAct loop inside `ReactAgent` and `GeneratorCritic`. `Tool`, `Source`,
+  `RoundLimit` and `OnLimit` stay public.
+- **Breaking:** `LlmNode` is no longer public: it is the model-call step of
+  the ReAct loop inside `ReactAgent` and `GeneratorCritic`. `Source` and
+  `SourceFn` stay public.
 
 ## 0.3.0 - 2026-10-13
 
