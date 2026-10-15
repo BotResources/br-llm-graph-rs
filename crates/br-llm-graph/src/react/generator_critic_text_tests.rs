@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use br_llm_messages::{Conversation, Step, Text, WireMessage, WireUserBlock};
+use br_llm_messages::{Conversation, Step, WireMessage};
 
 use crate::error::GraphError;
 use crate::graph::{Count, Graph};
@@ -19,7 +19,7 @@ use crate::value::Key;
 
 /// A new call on `question("explain")` with the given extra inputs and
 /// configuration.
-async fn run_with(
+pub(crate) async fn run_with(
     graph: &Graph,
     extra: Vec<(Key, Value)>,
     config: BTreeMap<Key, Value>,
@@ -41,7 +41,7 @@ async fn run_with(
     run(graph, &config, state, None, &ctx(), &mut inbox).await
 }
 
-fn wrapped(answer: &str, request: &str) -> WireMessage {
+pub(crate) fn wrapped(answer: &str, request: &str) -> WireMessage {
     let mut text = format!("<generator_response>\n{answer}\n</generator_response>");
     if !request.is_empty() {
         text.push_str("\n\n");
@@ -50,13 +50,13 @@ fn wrapped(answer: &str, request: &str) -> WireMessage {
     user_message(&text)
 }
 
-fn opening() -> WireMessage {
+pub(crate) fn opening() -> WireMessage {
     user_message("<message role=\"user\">explain</message>")
 }
 
 /// The generator seat on a `LaxClient` serving `steps`: a step holding only
 /// thinking, which a conforming client refuses, reaches the graph.
-fn lax_generator(steps: Vec<Step>) -> GeneratorSeat {
+pub(crate) fn lax_generator(steps: Vec<Step>) -> GeneratorSeat {
     GeneratorSeat {
         client: Arc::new(LaxClient::new(steps)),
         ..generator(&mock(Vec::new()))
@@ -198,130 +198,6 @@ fn given_a_source_key_that_is_already_a_key_of_the_graph_when_built_then_key_col
         config,
         Err(GraphError::KeyCollision { key: ref found }) if *found == key("rounds")
     ));
-}
-
-#[tokio::test]
-async fn given_an_empty_answer_then_a_full_one_when_the_critic_judges_then_the_empty_one_is_left_out_of_its_view()
- {
-    let critic_client = mock(vec![verdict(true, "")]);
-    let graph = GeneratorCritic {
-        empty_answer_critique: Some(Source::State(key("nudge"))),
-        ..GeneratorCritic::new(
-            lax_generator(vec![thinking_only_step(), text_step("full")]),
-            critic(&critic_client),
-            Count::Fixed(2),
-        )
-    }
-    .graph()
-    .unwrap();
-    let state = ended(
-        run_with(
-            &graph,
-            vec![(key("nudge"), Value::str("Say something."))],
-            BTreeMap::new(),
-        )
-        .await,
-        "validated",
-    );
-    assert_eq!(
-        shape_of(&state, "conversation"),
-        ["user", "writer:", "reviewer:Say something.", "writer:full"]
-    );
-    let merged = WireMessage::User {
-        content: vec![
-            WireUserBlock::Text {
-                text: Text::new("<message role=\"user\">explain</message>").unwrap(),
-            },
-            WireUserBlock::Text {
-                text: Text::new(
-                    "<message author=\"reviewer\" role=\"agent\">Say something.</message>",
-                )
-                .unwrap(),
-            },
-        ],
-    };
-    assert_eq!(
-        requests(&critic_client)[0].messages(),
-        [
-            merged,
-            wrapped("full", "Please evaluate the generator's response above.")
-        ]
-    );
-}
-
-#[tokio::test]
-async fn given_a_generation_cut_by_the_round_limit_then_a_full_one_when_the_critic_judges_then_the_cut_one_is_left_out_of_its_view()
- {
-    let generator_client = mock(vec![
-        tool_call_step("c1", "echo", serde_json::json!({})),
-        tool_call_step("c2", "echo", serde_json::json!({})),
-        text_step("full"),
-    ]);
-    let critic_client = mock(vec![verdict(true, "")]);
-    let graph = GeneratorCritic::new(
-        cut_generator(&generator_client),
-        critic(&critic_client),
-        Count::Fixed(2),
-    )
-    .graph()
-    .unwrap();
-    ended(call(&graph, question("explain")).await, "validated");
-    let merged = WireMessage::User {
-        content: vec![
-            WireUserBlock::Text {
-                text: Text::new("<message role=\"user\">explain</message>").unwrap(),
-            },
-            WireUserBlock::Text {
-                text: Text::new(
-                    "<message author=\"reviewer\" role=\"agent\">The answer was empty. Write a complete answer.</message>",
-                )
-                .unwrap(),
-            },
-        ],
-    };
-    assert_eq!(
-        requests(&critic_client)[0].messages(),
-        [
-            merged,
-            wrapped("full", "Please evaluate the generator's response above.")
-        ]
-    );
-}
-
-#[tokio::test]
-async fn given_an_empty_answer_critique_that_resolves_blank_when_an_empty_answer_is_rejected_then_the_default_text()
- {
-    for nudge in ["", "  \n"] {
-        let critic_client = mock(vec![verdict(true, "")]);
-        let graph = GeneratorCritic {
-            empty_answer_critique: Some(Source::State(key("nudge"))),
-            ..GeneratorCritic::new(
-                lax_generator(vec![thinking_only_step(), text_step("full")]),
-                critic(&critic_client),
-                Count::Fixed(2),
-            )
-        }
-        .graph()
-        .unwrap();
-        let state = ended(
-            run_with(
-                &graph,
-                vec![(key("nudge"), Value::str(nudge))],
-                BTreeMap::new(),
-            )
-            .await,
-            "validated",
-        );
-        assert_eq!(
-            shape_of(&state, "conversation"),
-            [
-                "user",
-                "writer:",
-                "reviewer:The answer was empty. Write a complete answer.",
-                "writer:full"
-            ]
-        );
-    }
 }
 
 #[tokio::test]

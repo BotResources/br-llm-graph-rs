@@ -17,6 +17,8 @@ mod tool_node;
 mod verdict;
 
 #[cfg(test)]
+mod generator_critic_caller_tests;
+#[cfg(test)]
 mod generator_critic_empty_tests;
 #[cfg(test)]
 mod generator_critic_entry_tests;
@@ -34,6 +36,8 @@ mod generator_critic_text_tests;
 mod generator_critic_tools_tests;
 #[cfg(test)]
 mod generator_critic_verdict_tests;
+#[cfg(test)]
+mod generator_critic_view_tests;
 #[cfg(test)]
 mod llm_call_check_tests;
 #[cfg(test)]
