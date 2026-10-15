@@ -49,6 +49,12 @@ mod llm_call_support;
 #[cfg(test)]
 mod llm_call_tests;
 #[cfg(test)]
+mod react_agent_build_tests;
+#[cfg(test)]
+mod react_agent_caller_tests;
+#[cfg(test)]
+mod react_agent_support;
+#[cfg(test)]
 mod react_agent_tests;
 #[cfg(test)]
 mod react_background_task_tests;
