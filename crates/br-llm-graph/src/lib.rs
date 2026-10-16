@@ -155,6 +155,8 @@
 #[cfg(test)]
 mod acceptance;
 #[cfg(doctest)]
+mod describe_write_only;
+#[cfg(doctest)]
 mod non_exhaustive;
 #[cfg(doctest)]
 mod tails;

@@ -134,3 +134,14 @@ impl NodeDescription {
         }
     }
 }
+
+#[cfg(test)]
+mod describe_call_tests;
+#[cfg(test)]
+mod describe_map_tests;
+#[cfg(test)]
+mod describe_tests;
+#[cfg(test)]
+mod realizing_tests;
+#[cfg(test)]
+pub(crate) mod test_support;
