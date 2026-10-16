@@ -38,11 +38,41 @@ pub const DESCRIPTION_VERSION: &str = "br-llm-graph-description/1";
 /// What a built graph says of itself (`Graph::describe`). Two builds from
 /// the same parts give equal descriptions, in the same order.
 ///
-/// Its JSON is `{"description_version", "entry", "signature", "schema",
-/// "nodes"}`; a node is `{"id", "kind", "realizes"?, "join"?, "edge", ...}`
-/// with the fields of its kind, an edge `{"targets": [{"node"} | {"end"}]}`
-/// or `{"undeclared": true}`, a nested graph a description without its
-/// version. It is written, never reloaded: it implements `Serialize` only.
+/// It is written, never reloaded: it implements `Serialize` only. Its JSON
+/// is `{"description_version", "entry", "signature", "schema", "nodes"}`,
+/// `signature` and `schema` in their own JSON shapes (an agent's private
+/// keys are not part of the schema). A nested graph is the same object
+/// without `description_version`.
+///
+/// A node of `nodes` is `{"id", "kind", "realizes"?, "join"?, "edge", ...}`,
+/// its fields in that order, then the fields of its kind:
+///
+/// - `realizes`: its realizes labels, in the order given; omitted when it
+///   has none.
+/// - `join`: `true` for a node registered as a join whose kind is not
+///   `join`; omitted otherwise.
+/// - `edge`: `{"targets": [...]}` with `{"node": id}` and `{"end": label}`
+///   items, in the order declared, each once; or `{"undeclared": true}`.
+///
+/// A field marked `?` is omitted when empty or absent. The fields of each
+/// kind, in the order written:
+///
+/// | Kind | Fields |
+/// |---|---|
+/// | `node`, `join` | none; a host's node may give its own kind label instead, and `"graph"?`, the description of a graph it runs |
+/// | `call` | `"inputs"?`, `"config"?`: `[{"child", "source"}]`, the source `{"from": key}`, `{"config": key}` or `{"const": kind}`; `"outputs"?`: `[{"child", "target"}]`, the target `{"set": key}` or `{"append": key}`; `"end_label"?`: a target; `"on_failure"`: `"propagate"` or `{"capture": [{"target", "source"}]}`, a capture's source also `{"reason": true}`; `"graph"`: the graph it runs |
+/// | `react_agent`, `generator_critic` | a call of an agent's graph: the fields of `call` |
+/// | `map` | `"list"`, `"item"`, `"max_concurrency"?`, `"on_item_failure"`: `"finish"`, `"fail_fast"` or `{"capture": [...]}`; `"body"`: its body, a node without `id`, `join` and `edge` |
+/// | `llm_call` | `"model"`, `"system"`; `"request"`: `{"text": subject}`, `{"conversation": key, "author": {"id", "name"}}` or `{"history": subject}`; `"output"`: a target |
+/// | `model_call` | `"author"`: `{"id", "name"}`; `"model"`, `"system"`, `"history"`; `"tools"?`: tool names; `"enabled"?`; `"tool_concurrency"?`; `"round_limit"?`: `{"max_rounds", "on_limit"}`, `on_limit` `"error"`, `{"continue": {"node", "flag"}}` or `{"end": {"node", "flag"}}`. The critic's adds `"max_critiques"`, `"final_generation"`, `"verdict_retries"`, `"review_request"`, `"verdict"` (`"default"` or `"override"`) |
+/// | `tools` | `"tools"`: the names of the tools it runs |
+///
+/// A subject (`model`, `system`, `history`, a request's text...) is written
+/// `"fixed"`, `"ready_made"` or `"function"`, never its value; a `Limit` or
+/// a `Count` `{"fixed": n}` or `{"config": key}`. The generator-critic's
+/// `check` is a `node` holding `"revision_limit"`, `"rule_check"?` and
+/// `"empty_answer_critique"`. `graph` nests a whole graph (a call's, a host
+/// node's); `body` is one node (a map's).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphDescription {
     pub(crate) entry: NodeId,
