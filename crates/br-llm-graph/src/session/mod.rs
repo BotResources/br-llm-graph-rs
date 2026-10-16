@@ -241,5 +241,8 @@ impl Session {
 }
 
 #[cfg(test)]
+#[path = "serve_tests.rs"]
+mod serve_tests;
+#[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;

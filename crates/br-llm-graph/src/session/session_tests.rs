@@ -1,22 +1,17 @@
+//! A session run once at a time: relaunched from its entry after an end,
+//! resumed from a checkpoint, refused on another schema.
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
-
 use super::*;
 use crate::graph::{Always, FnNode, Graph, GraphBuilder, NodeFuture};
-use crate::observe::NoopObserver;
 use crate::run::Outcome;
 use crate::run::test_support::*;
 use crate::state::Value;
-use crate::testkit::SeqIds;
 use crate::update::Update;
 
-fn ctx() -> Context {
-    Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
-}
-
-fn linear_graph() -> Arc<Graph> {
+pub(super) fn linear_graph() -> Arc<Graph> {
     Arc::new(
         GraphBuilder::new(schema())
             .entry(nid("a"))
@@ -27,16 +22,6 @@ fn linear_graph() -> Arc<Graph> {
             .build()
             .unwrap(),
     )
-}
-
-fn input(body: &str) -> UserInput {
-    UserInput::new(
-        InputId::new(format!("i-{body}")).unwrap(),
-        UserSource::Human,
-        None,
-        vec![UserBlock::text(Text::new(body).unwrap())],
-    )
-    .unwrap()
 }
 
 #[tokio::test]
@@ -81,80 +66,6 @@ async fn given_unknown_node_checkpoint_when_resumed_then_refused() {
         crate::run::Cursor::new(vec![nid("ghost")], Vec::new()),
     );
     assert!(Session::resume(linear_graph(), config(), checkpoint, ctx()).is_err());
-}
-
-#[tokio::test]
-async fn given_serve_on_input_when_input_arrives_then_runs_then_cancel_ends() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
-    let sender = session.sender();
-    let handle = tokio::spawn(session.serve(Start::OnInput));
-    sender.send(key("chat"), input("go"));
-    sender.cancel();
-    let ended = handle.await.unwrap();
-    let Ended::Cancelled { checkpoint } = ended else {
-        panic!("expected cancelled");
-    };
-    assert_eq!(checkpoint.state.int(&key("count")).unwrap(), 0);
-    assert_eq!(
-        checkpoint
-            .state
-            .conversation(&key("chat"))
-            .unwrap()
-            .entries()
-            .len(),
-        1
-    );
-}
-
-#[tokio::test]
-async fn given_serve_now_when_started_then_runs_then_relaunches_after_end() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
-    let sender = session.sender();
-    let handle = tokio::spawn(session.serve(Start::Now));
-    tokio::task::yield_now().await;
-    sender.send(key("chat"), input("again"));
-    tokio::task::yield_now().await;
-    sender.cancel();
-    let ended = handle.await.unwrap();
-    let Ended::Cancelled { checkpoint } = ended else {
-        panic!("expected cancelled");
-    };
-    assert_eq!(checkpoint.state.int(&key("count")).unwrap(), 5);
-    assert_eq!(
-        checkpoint
-            .state
-            .conversation(&key("chat"))
-            .unwrap()
-            .entries()
-            .len(),
-        1
-    );
-}
-
-#[tokio::test]
-async fn given_serve_on_input_when_second_input_after_end_then_relaunches() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
-    let sender = session.sender();
-    let handle = tokio::spawn(session.serve(Start::OnInput));
-    sender.send(key("chat"), input("first"));
-    tokio::task::yield_now().await;
-    sender.send(key("chat"), input("second"));
-    tokio::task::yield_now().await;
-    sender.cancel();
-    let ended = handle.await.unwrap();
-    let Ended::Cancelled { checkpoint } = ended else {
-        panic!("expected cancelled");
-    };
-    assert_eq!(checkpoint.state.int(&key("count")).unwrap(), 5);
-    assert_eq!(
-        checkpoint
-            .state
-            .conversation(&key("chat"))
-            .unwrap()
-            .entries()
-            .len(),
-        2
-    );
 }
 
 #[tokio::test]
@@ -221,31 +132,6 @@ async fn given_control_input_on_non_conversation_key_when_served_then_failed() {
         error,
         crate::error::GraphError::NotConversation { .. }
     ));
-}
-
-#[tokio::test]
-async fn given_paused_session_when_input_then_stays_paused_until_resume() {
-    let session = Session::new(linear_graph(), config(), base_state(), ctx()).unwrap();
-    let sender = session.sender();
-    let handle = tokio::spawn(session.serve(Start::OnInput));
-    sender.pause();
-    sender.send(key("chat"), input("while paused"));
-    sender.resume();
-    sender.cancel();
-    let ended = handle.await.unwrap();
-    let Ended::Cancelled { checkpoint } = ended else {
-        panic!("expected cancelled");
-    };
-    assert_eq!(
-        checkpoint
-            .state
-            .conversation(&key("chat"))
-            .unwrap()
-            .entries()
-            .len(),
-        1
-    );
-    assert_eq!(checkpoint.state.int(&key("count")).unwrap(), 0);
 }
 
 fn failing_map(calls: &Arc<crate::run::counted::Counted>) -> Arc<Graph> {
