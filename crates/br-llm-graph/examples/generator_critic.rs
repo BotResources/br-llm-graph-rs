@@ -112,6 +112,9 @@ async fn main() {
         "Explain supersteps.",
     )])));
     let duo = GeneratorCritic {
+        // `question_id` is also an extra input, for the generator's tools: the
+        // system text reads the same input, declared once.
+        inputs: vec![(key("question_id"), Kind::Str)],
         prepare: Some(Box::new(OpenQuestion { bank })),
         ..GeneratorCritic::new(generator, critic, Count::Fixed(3))
     }

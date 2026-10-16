@@ -103,6 +103,8 @@ async fn given_texts_of_every_kind_when_run_then_each_is_given_at_the_call() {
         ))
     });
     let graph = GeneratorCritic {
+        // The tools may read `topic` too: one input, declared once.
+        inputs: vec![(key("topic"), Kind::Str)],
         ..GeneratorCritic::new(
             GeneratorSeat {
                 system,
@@ -122,6 +124,10 @@ async fn given_texts_of_every_kind_when_run_then_each_is_given_at_the_call() {
     .graph()
     .unwrap();
     assert_eq!(graph.signature().inputs.get(&key("ask")), Some(&Kind::Str));
+    assert_eq!(
+        graph.signature().inputs.get(&key("topic")),
+        Some(&Kind::Str)
+    );
     assert_eq!(graph.schema().config.get(&key("tone")), Some(&Kind::Str));
     ended(
         run_with(
