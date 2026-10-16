@@ -7,10 +7,14 @@ use crate::value::{EndLabel, NodeId};
 /// What an edge names: a node to run in the next superstep, or an end label.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
-    /// A node of the graph; a node the graph does not hold fails the run
-    /// (`UnknownNode`).
+    /// A node of the graph. Returned by an undeclared edge, a node the graph
+    /// does not hold fails the run (`UnknownNode`). A declared edge's node
+    /// targets are checked at build (`EdgeToUnknownNode`), and a target it
+    /// returns without declaring it fails the run (`UndeclaredTarget`).
     Node(NodeId),
-    /// An end label: counted only when the superstep ends the run.
+    /// An end label: counted only when the superstep ends the run. A
+    /// declared edge that returns one it does not declare fails the run
+    /// (`UndeclaredTarget`).
     End(EndLabel),
 }
 
