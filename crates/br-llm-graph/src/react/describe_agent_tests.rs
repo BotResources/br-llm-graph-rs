@@ -211,6 +211,8 @@ fn given_a_call_of_a_react_agent_when_described_then_its_kind_is_react_agent_hol
         json!([{"child": "opening", "source": {"from": "question"}}])
     );
     let mut own = json(&agent_graph.describe());
-    own.as_object_mut().unwrap().remove("description_version");
+    own.as_object_mut()
+        .unwrap()
+        .shift_remove("description_version");
     assert_eq!(node["graph"], own);
 }

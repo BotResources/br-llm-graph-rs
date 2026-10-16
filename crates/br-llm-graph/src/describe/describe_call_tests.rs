@@ -87,10 +87,13 @@ fn given_a_call_when_described_then_it_holds_its_mappings_in_order_and_the_child
         .output_end_label(Output::Append(key("labels")));
     let node = described(call);
     let mut child = json(&child().describe());
-    child.as_object_mut().unwrap().remove("description_version");
-    assert_eq!(
-        node,
-        json!({
+    child
+        .as_object_mut()
+        .unwrap()
+        .shift_remove("description_version");
+    assert_written(
+        &node,
+        &json!({
             "id": "ask",
             "kind": "call",
             "edge": {"targets": [{"end": "done"}]},
@@ -109,7 +112,7 @@ fn given_a_call_when_described_then_it_holds_its_mappings_in_order_and_the_child
             "end_label": {"append": "labels"},
             "on_failure": "propagate",
             "graph": child
-        })
+        }),
     );
 }
 
@@ -133,14 +136,14 @@ fn given_a_capturing_call_when_described_then_each_capture_with_its_target_and_s
             CaptureSource::Const(Value::list(Vec::new())),
         ),
     ]));
-    assert_eq!(
-        described(call)["on_failure"],
-        json!({"capture": [
+    assert_written(
+        &described(call)["on_failure"],
+        &json!({"capture": [
             {"target": {"set": "error"}, "source": {"reason": true}},
             {"target": {"append": "errors"}, "source": {"from": "question"}},
             {"target": {"set": "result"}, "source": {"const": {"type": "str"}}},
             {"target": {"append": "batches"}, "source": {"const": {"type": "list"}}}
-        ]})
+        ]}),
     );
 }
 
@@ -158,4 +161,40 @@ fn given_a_call_of_a_plain_graph_when_described_then_its_kind_is_call_and_join_w
         (node["kind"].clone(), node["join"].clone()),
         (json!("call"), json!(true))
     );
+}
+
+#[test]
+fn given_empty_lists_mapped_as_fixed_values_when_described_then_each_takes_its_child_keys_kind() {
+    // A state key and a configuration key of the child share the name
+    // `tags`, with two list kinds: each mapping reads its own.
+    let schema = Schema::builder()
+        .state_by_name(key("tags"), Kind::list(Kind::Str))
+        .config_by_name(key("tags"), Kind::list(Kind::Int))
+        .build();
+    let child = GraphBuilder::new(schema)
+        .entry(nid("tag"))
+        .node(nid("tag"), panicking())
+        .edge(nid("tag"), Always(end("done")))
+        .input(key("tags"))
+        .build()
+        .unwrap();
+    let call = SubGraph::call(Arc::new(child))
+        .input(key("tags"), Input::Const(Value::list(Vec::new())))
+        .config(key("tags"), Input::Const(Value::list(Vec::new())));
+    let node = described(call);
+    assert_eq!(
+        node["inputs"],
+        json!([{"child": "tags", "source": {"const": {"type": "list", "element": {"type": "str"}}}}])
+    );
+    assert_eq!(
+        node["config"],
+        json!([{"child": "tags", "source": {"const": {"type": "list", "element": {"type": "int"}}}}])
+    );
+}
+
+#[test]
+fn given_a_description_of_a_call_when_nesting_a_graph_then_it_is_unchanged() {
+    let call = SubGraph::call(bare_child());
+    let described = crate::graph::Node::describe(&call);
+    assert_eq!(described.clone().nesting(child().describe()), described);
 }

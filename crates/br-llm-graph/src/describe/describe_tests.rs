@@ -42,9 +42,9 @@ fn graph() -> Graph {
 
 #[test]
 fn given_a_graph_when_described_then_it_holds_its_entry_signature_schema_and_nodes_in_order() {
-    assert_eq!(
-        json(&graph().describe()),
-        json!({
+    assert_written(
+        &json(&graph().describe()),
+        &json!({
             "description_version": "br-llm-graph-description/1",
             "entry": "zeta",
             "signature": {
@@ -66,7 +66,7 @@ fn given_a_graph_when_described_then_it_holds_its_entry_signature_schema_and_nod
                 {"id": "alpha", "kind": "join", "edge": {"targets": [{"end": "done"}]}},
                 {"id": "mid", "kind": "node", "edge": {"undeclared": true}}
             ]
-        })
+        }),
     );
 }
 
@@ -146,7 +146,7 @@ fn given_a_host_node_with_a_label_and_a_nested_description_when_described_then_b
     nested
         .as_object_mut()
         .unwrap()
-        .remove("description_version");
+        .shift_remove("description_version");
     assert_eq!(node["graph"], nested);
     assert!(node["graph"].get("description_version").is_none());
     assert!(node.get("join").is_none());

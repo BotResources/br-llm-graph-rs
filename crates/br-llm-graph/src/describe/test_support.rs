@@ -70,3 +70,15 @@ pub(crate) fn node_json(description: &GraphDescription, id: &str) -> Json {
         .unwrap_or_else(|| panic!("no node {id}"))
         .clone()
 }
+
+/// Asserts that `actual` is written as `expected`, field order included: a
+/// description writes its fields in a fixed order, which `Json` equality
+/// does not see (its maps compare as sets).
+pub(crate) fn assert_written(actual: &Json, expected: &Json) {
+    assert_eq!(actual, expected);
+    assert_eq!(
+        actual.to_string(),
+        expected.to_string(),
+        "the fields are written in another order"
+    );
+}

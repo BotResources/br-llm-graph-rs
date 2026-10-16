@@ -6,7 +6,7 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use serde_json::json;
 
-use crate::describe::test_support::node_json;
+use crate::describe::test_support::{assert_written, node_json};
 use crate::graph::{Always, GraphBuilder, Target};
 use crate::react::given::{History, Model, Prompt, Reads};
 use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
@@ -49,15 +49,15 @@ fn given_a_text_request_when_described_then_its_subjects_request_and_output_are_
     let request = LlmRequest::Text(Prompt::from_fn(Reads::new(), |_| {
         Ok("Summarize.".to_owned())
     }));
-    assert_eq!(
-        described(call(request, LlmOutput::Set(skey("note")))),
-        json!({
+    assert_written(
+        &described(call(request, LlmOutput::Set(skey("note")))),
+        &json!({
             "id": "summarize", "kind": "llm_call",
             "edge": {"targets": [{"end": "done"}]},
             "model": "fixed", "system": "ready_made",
             "request": {"text": "function"},
             "output": {"set": "note"}
-        })
+        }),
     );
 }
 
@@ -68,9 +68,9 @@ fn given_a_conversation_request_when_described_then_its_key_and_author_are_writt
         author: author(),
     };
     let node = described(call(request, LlmOutput::Append(skey("notes"))));
-    assert_eq!(
-        node["request"],
-        json!({"conversation": "chat", "author": {"id": "agent", "name": "agent"}})
+    assert_written(
+        &node["request"],
+        &json!({"conversation": "chat", "author": {"id": "agent", "name": "agent"}}),
     );
     assert_eq!(node["output"], json!({"append": "notes"}));
 }

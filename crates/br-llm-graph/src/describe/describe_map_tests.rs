@@ -40,9 +40,9 @@ fn typed_map(body: impl Node + 'static) -> Map {
 
 #[test]
 fn given_a_map_without_limit_when_described_then_it_holds_its_keys_policy_and_body() {
-    assert_eq!(
-        described(typed_map(noop().realizing(["Summarize"]))),
-        json!({
+    assert_written(
+        &described(typed_map(noop().realizing(["Summarize"]))),
+        &json!({
             "id": "each",
             "kind": "map",
             "edge": {"targets": [{"end": "done"}]},
@@ -50,7 +50,7 @@ fn given_a_map_without_limit_when_described_then_it_holds_its_keys_policy_and_bo
             "item": "topic",
             "on_item_failure": "finish",
             "body": {"kind": "node", "realizes": ["Summarize"]}
-        })
+        }),
     );
 }
 

@@ -7,7 +7,7 @@ use std::sync::{Arc, LazyLock};
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use serde_json::{Value as Json, json};
 
-use crate::describe::test_support::json;
+use crate::describe::test_support::{assert_written, json};
 use crate::graph::{
     Always, FnEdge, FnNode, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Node, NodeFuture,
     Output, SubGraph, Target,
@@ -140,9 +140,9 @@ fn graph() -> Graph {
 #[test]
 fn given_a_node_a_map_a_call_and_an_agent_when_described_then_the_json_is_the_published_shape() {
     let list = json!({"type": "list", "element": {"type": "str"}});
-    assert_eq!(
-        json(&graph().describe()),
-        json!({
+    assert_written(
+        &json(&graph().describe()),
+        &json!({
             "description_version": "br-llm-graph-description/1",
             "entry": "plan",
             "signature": {
@@ -203,6 +203,6 @@ fn given_a_node_a_map_a_call_and_an_agent_when_described_then_the_json_is_the_pu
                               "tools": ["search", "fetch"]},
                              {"id": "answer", "kind": "node", "edge": {"targets": [{"end": "done"}]}}]}}
             ]
-        })
+        }),
     );
 }
