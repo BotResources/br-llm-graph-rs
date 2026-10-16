@@ -12,14 +12,14 @@ use std::sync::atomic::Ordering;
 
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
-    Config, Hook, HookFuture, Judgment, Model, Outcome, Prompt, ReactAgent, State, Tool,
-    ToolFuture, Value, control, run,
+    Config, Hook, HookFuture, Judgment, Model, Outcome, Prompt, ReactAgent, State, StateKey, Tool,
+    ToolFuture, control, run,
 };
 use br_llm_messages::{Author, Conversation, ToolCallId};
 use serde_json::{Value as Json, json};
 
 use common::tools::WriteFileTool;
-use common::{context, key, scripted_as_written, text_step, tool_call_step, user};
+use common::{context, opening, scripted_as_written, state_key, text_step, tool_call_step, user};
 
 /// Accepts a write under `notes/`, refuses any other.
 struct NotesOnly;
@@ -87,7 +87,8 @@ async fn main() {
         hook: NotesOnly,
     });
 
-    // Input `opening`; configuration none: the system text is fixed.
+    // Input `opening`, in memory; configuration none: the system text is
+    // fixed.
     let graph = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
         model: Model::client(client),
@@ -105,11 +106,11 @@ async fn main() {
     .graph()
     .expect("agent graph");
 
-    let mut chat = Conversation::new();
-    chat.push_input(user("Save a note on tides."))
-        .expect("an input id unique in the conversation");
+    let answer: StateKey<String> = state_key("answer");
     let state = graph
-        .start_state([(key("opening"), Value::conversation(chat))])
+        .start_state([state_key::<Conversation>("opening")
+            .given(opening([user("Save a note on tides.")]))
+            .expect("opening")])
         .expect("start state");
     let config = Config::new(graph.schema(), Default::default()).expect("config");
 
@@ -118,7 +119,7 @@ async fn main() {
         Ok(Outcome::Finished { state, .. }) => {
             println!(
                 "tool_hook: {} (the tool ran {} time)",
-                state.str(&key("answer")).expect("answer"),
+                state.get(&answer).expect("answer"),
                 write.tool.calls.load(Ordering::SeqCst)
             );
         }

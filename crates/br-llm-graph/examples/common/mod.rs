@@ -1,16 +1,23 @@
+//! What the examples share: an observer that prints, an id source, a thread
+//! store kept in memory, scripted clients and the messages they answer.
+
+pub mod store;
 pub mod tools;
+pub mod turn;
 
 use std::sync::Arc;
 
-use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
+use br_llm_clients_core::{
+    CacheRequirement, ClientError, ClientSettings, MaxOutputTokens, ReasoningLevel,
+};
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_graph::{
-    Context, Cursor, EndLabel, IdRequest, IdSource, Key, ModelNode, NoopObserver, Observer, Origin,
-    Prompt, Schema, State, ThreadId, Update,
+    ConfigKey, Context, Cursor, EndLabel, IdRequest, IdSource, Key, NoopObserver, Observer, Origin,
+    Schema, State, StateKey, ThreadId, Update, ValueType,
 };
 use br_llm_messages::{
-    AssistantBlock, InputId, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId,
-    ToolName, TurnId, UserBlock, UserInput, UserSource,
+    AssistantBlock, Conversation, InputId, ModelId, Step, StopReason, StreamEvent, Text, ToolCall,
+    ToolCallId, ToolName, TurnId, UserBlock, UserInput, UserSource,
 };
 use serde_json::Value as Json;
 
@@ -95,11 +102,28 @@ pub fn key(name: &str) -> Key {
     Key::new(name).expect("valid key")
 }
 
-/// The text the string configuration key `name` holds: the system text most
-/// of these examples read.
-pub fn config_text<N: ModelNode>(name: &str) -> Prompt<N> {
-    let mut keys = Schema::builder();
-    Prompt::from_config(&keys.config::<String>(name).expect("valid key"))
+/// The typed key of the state key `name` of a graph the example did not
+/// declare itself, such as an agent's (`opening`, `thread`, `answer`): a
+/// typed key is a name and the Rust type of its kind.
+pub fn state_key<T: ValueType>(name: &str) -> StateKey<T> {
+    Schema::builder().state(name).expect("valid key")
+}
+
+/// The typed key of the configuration key `name` of a graph the example did
+/// not declare itself.
+pub fn config_key<T: ValueType>(name: &str) -> ConfigKey<T> {
+    Schema::builder().config(name).expect("valid key")
+}
+
+/// A conversation of `inputs`, in order: an agent's `opening`.
+pub fn opening(inputs: impl IntoIterator<Item = UserInput>) -> Conversation {
+    let mut conversation = Conversation::new();
+    for input in inputs {
+        conversation
+            .push_input(input)
+            .expect("an input id unique in the conversation");
+    }
+    conversation
 }
 
 pub fn user(body: &str) -> UserInput {
@@ -188,6 +212,31 @@ pub fn scripted_at(reasoning: ReasoningLevel, steps: Vec<Step>) -> MockClient {
         );
     }
     builder.build()
+}
+
+/// A client whose first reply streams `after` events of `cut` then fails
+/// (`Unavailable`), then answers `steps` in order: a provider that drops a
+/// connection in the middle of a reply.
+pub fn scripted_cut(cut: Step, after: usize, steps: Vec<Step>) -> Arc<MockClient> {
+    let mut builder = MockClient::builder(
+        settings(ReasoningLevel::Medium),
+        Capabilities::new(CapabilitiesSpec::everything()).expect("capabilities"),
+    )
+    .reply(
+        Reply::cut(cut, after, ClientError::Unavailable { retry_after: None })
+            .rename_tool_call_ids("cut")
+            .build()
+            .expect("reply"),
+    );
+    for step in steps {
+        builder = builder.reply(
+            Reply::success(step)
+                .rename_tool_call_ids("call")
+                .build()
+                .expect("reply"),
+        );
+    }
+    Arc::new(builder.build())
 }
 
 /// A client answering `steps` in order, reasoning at a medium level.
