@@ -5,16 +5,18 @@ use br_llm_clients_core::{
 };
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_messages::{
-    AssistantBlock, Author, Conversation, ModelId, Step, StopReason, Text, ToolCall, ToolCallId,
-    ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
+    AssistantBlock, Author, Conversation, InputId, ModelId, Step, StopReason, Text, ToolCall,
+    ToolCallId, ToolName, ToolResultBlock, UserBlock, UserInput, UserSource,
 };
 use serde_json::{Value as Json, json};
 
+use crate::react::given::{ModelNode, Prompt};
+pub(crate) use crate::react::test_call::{TURN_RANK, first_turn, in_memory_call};
 pub(crate) use crate::react::test_clients::{LaxClient, StreamRecorder};
 pub(crate) use crate::react::test_tools::{
-    EchoTool, ScopeTool, StrictTool, TallyTool, WriteFileTool, spec,
+    EchoTool, ScopeTool, StrictTool, TallyTool, WriteFileTool, YieldingEcho, spec,
 };
-use crate::state::{Config, Kind, Schema, State, Value};
+use crate::state::{Config, ConfigKey, Kind, Schema, State, StateKey, Value, ValueType};
 use crate::value::Key;
 
 pub(crate) fn author() -> Author {
@@ -25,12 +27,28 @@ pub(crate) fn key(name: &str) -> Key {
     Key::new(name).unwrap()
 }
 
+/// The typed state key `name`, of the kind of `T`.
+pub(crate) fn skey<T: ValueType>(name: &str) -> StateKey<T> {
+    Schema::builder().state(name).unwrap()
+}
+
+/// The typed configuration key `name`, of the kind of `T`.
+pub(crate) fn ckey<T: ValueType>(name: &str) -> ConfigKey<T> {
+    Schema::builder().config(name).unwrap()
+}
+
+/// The text of the configuration key `base`, the agent's usual system text.
+pub(crate) fn base<N: ModelNode>() -> Prompt<N> {
+    Prompt::from_config(&ckey("base"))
+}
+
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("log"), Kind::list(Kind::Str))
-        .state(key("enabled"), Kind::list(Kind::Str))
-        .config(key("base"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name_with_default(key(TURN_RANK), Kind::Int, first_turn())
+        .state_by_name(key("log"), Kind::list(Kind::Str))
+        .state_by_name(key("enabled"), Kind::list(Kind::Str))
+        .config_by_name(key("base"), Kind::Str)
         .build()
 }
 
@@ -38,15 +56,18 @@ pub(crate) fn seeded_state() -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-hi").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("hi").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
+    values.insert(key(TURN_RANK), first_turn());
     values.insert(
         key("enabled"),
         Value::list(vec![Value::str("echo"), Value::str("tally")]),
@@ -110,13 +131,41 @@ pub(crate) fn calls_step(names: &[&str]) -> Step {
 
 /// Each tool result of a turn as `(tool, is_error, text)`, in order.
 pub(crate) fn results_of(turn: &br_llm_messages::Turn) -> Vec<(String, bool, String)> {
-    turn.items()
-        .iter()
-        .filter_map(|item| match item {
-            br_llm_messages::TurnItem::ToolResults(results) => Some(results.results()),
-            br_llm_messages::TurnItem::Step(_) => None,
-        })
-        .flatten()
+    described(
+        turn.items()
+            .iter()
+            .filter_map(|item| match item {
+                br_llm_messages::TurnItem::ToolResults(results) => Some(results.results()),
+                br_llm_messages::TurnItem::Step(_) => None,
+            })
+            .flatten(),
+    )
+}
+
+/// Each tool result `request` sends the model, as `(tool, is_error, text)`,
+/// in order.
+pub(crate) fn sent_results(request: &ClientRequest) -> Vec<(String, bool, String)> {
+    described(
+        request
+            .messages()
+            .iter()
+            .filter_map(|message| match message {
+                br_llm_messages::WireMessage::User { content } => Some(content),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|block| match block {
+                br_llm_messages::WireUserBlock::ToolResult(result) => Some(result),
+                _ => None,
+            }),
+    )
+}
+
+/// `results` as `(tool, is_error, text)`.
+fn described<'a>(
+    results: impl Iterator<Item = &'a br_llm_messages::ToolResult>,
+) -> Vec<(String, bool, String)> {
+    results
         .map(|result| {
             let text = result
                 .content

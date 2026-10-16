@@ -9,10 +9,9 @@ use serde_json::json;
 
 use crate::graph::{Always, GraphBuilder, Target};
 use crate::react::react_node_support::*;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{State, Value};
 use crate::value::EndLabel;
 
@@ -58,8 +57,8 @@ async fn given_a_tool_node_with_an_enabled_key_when_calls_name_a_tool_it_does_no
         )
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let Outcome::Finished { state, .. } = run(&graph, &config(), state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let Outcome::Finished { state, .. } = run(&graph, &config(), state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap()
@@ -88,7 +87,7 @@ async fn given_a_tool_node_with_an_enabled_key_when_calls_name_a_tool_it_does_no
 async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed() {
     let state = state_with_call(tool_call_step("c1", "echo", json!({})));
     let client = mock(vec![text_step("fresh")]);
-    let mut llm = llm_node(Arc::new(client.clone()), vec![Source::Config(key("base"))]);
+    let mut llm = llm_node(Arc::new(client.clone()), base());
     llm.tools = vec![Arc::new(EchoTool)];
     let graph = GraphBuilder::new(schema())
         .entry(nid("llm"))
@@ -99,8 +98,8 @@ async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed
         )
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&graph, &config(), state, None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap();
@@ -186,14 +185,14 @@ async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchang
         )
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let failure = run(
         &graph,
         &config(),
         state_with_call(step),
         None,
         &ctx(),
-        &mut inbox,
+        &mut channel,
     )
     .await
     .err()

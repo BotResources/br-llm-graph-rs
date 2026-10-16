@@ -4,9 +4,10 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::run::Outcome;
@@ -26,7 +27,7 @@ fn ctx() -> Context {
 async fn given_background_task_when_completion_arrives_then_relaunch_finishes() {
     use std::collections::BTreeMap;
 
-    use br_llm_messages::{Conversation, Entry, Text, UserBlock, UserInput, UserSource};
+    use br_llm_messages::{Conversation, Entry, InputId, Text, UserBlock, UserInput, UserSource};
     use serde_json::Value as Json;
 
     use crate::graph::{FnEdge, FnNode, NodeFuture};
@@ -69,9 +70,10 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     }
 
     let schema = Schema::builder()
-        .state(k("chat"), Kind::Conversation)
-        .state(k("pending_tasks"), Kind::list(Kind::Str))
-        .config(k("base"), Kind::Str)
+        .state_by_name(k("chat"), Kind::Conversation)
+        .state_by_name(k(TURN_RANK), Kind::Int)
+        .state_by_name(k("pending_tasks"), Kind::list(Kind::Str))
+        .config_by_name(k("base"), Kind::Str)
         .build();
 
     let client = Arc::new(mock(vec![
@@ -83,14 +85,17 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         spec: spec("start_task"),
         pending: k("pending_tasks"),
     });
-    let llm = LlmNode {
+    let llm = LlmNode::<ReactAgent> {
         key: k("chat"),
         author: author(),
-        client,
-        system: vec![Source::Config(k("base"))],
+        model: Model::client(client),
+        system: base(),
+        history: None,
         tools: vec![start_task.clone()],
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: in_memory_call(),
+        seat: None,
     };
     let react = ReactLoop {
         llm: nid("llm"),
@@ -98,6 +103,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         after: Target::Node(nid("gate")),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let gate = FnNode::new(|_s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         Box::pin(async { Ok(Vec::new()) })
@@ -136,15 +142,18 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-run-the-long-job").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("run the long job").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     let mut values = BTreeMap::new();
     values.insert(k("chat"), Value::conversation(chat));
     values.insert(k("pending_tasks"), Value::list(Vec::new()));
+    values.insert(k(TURN_RANK), first_turn());
     let state = State::new(schema, values).unwrap();
 
     let mut session = Session::new(graph, config, state, ctx()).unwrap();
@@ -160,6 +169,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     sender.send(
         k("chat"),
         UserInput::new(
+            InputId::new("i-task-1-finished").unwrap(),
             UserSource::runtime("task_done").unwrap(),
             None,
             vec![UserBlock::text(Text::new("task-1 finished").unwrap())],

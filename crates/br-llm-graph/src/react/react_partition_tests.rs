@@ -4,12 +4,13 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
-use crate::run::channel;
+use crate::run::control;
 use crate::run::run;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -23,15 +24,21 @@ fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-fn llm_node(client: Arc<dyn br_llm_clients_core::Client>, tools: Vec<Arc<dyn Tool>>) -> LlmNode {
-    LlmNode {
+fn llm_node(
+    client: Arc<dyn br_llm_clients_core::Client>,
+    tools: Vec<Arc<dyn Tool>>,
+) -> LlmNode<ReactAgent> {
+    LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client,
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(client),
+        system: base(),
+        history: None,
         tools,
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: in_memory_call(),
+        seat: None,
     }
 }
 
@@ -45,6 +52,7 @@ fn given_tool_not_covered_when_react_loop_added_then_refused() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -63,6 +71,7 @@ fn given_zero_tool_nodes_when_react_loop_added_then_tool_not_covered() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -84,6 +93,7 @@ fn given_tool_covered_twice_when_react_loop_added_then_refused() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -102,6 +112,7 @@ fn given_tool_node_tool_not_declared_when_react_loop_added_then_refused() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
     assert!(matches!(
@@ -120,17 +131,25 @@ async fn given_model_calls_unowned_tool_when_run_then_pending_unsatisfiable() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
         .unwrap()
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&graph, &config(), seeded_state(), None, &ctx(), &mut inbox)
-        .await
-        .err()
-        .unwrap();
+    let (_sender, mut channel) = control();
+    let failure = run(
+        &graph,
+        &config(),
+        seeded_state(),
+        None,
+        &ctx(),
+        &mut channel,
+    )
+    .await
+    .err()
+    .unwrap();
     assert!(matches!(
         failure.error,
         crate::error::GraphError::PendingToolUnsatisfiable { .. }
@@ -147,6 +166,7 @@ fn given_one_tool_node_listing_a_tool_twice_when_react_loop_added_then_tool_cove
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let error = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)

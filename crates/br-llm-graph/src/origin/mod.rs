@@ -10,15 +10,19 @@ use crate::value::NodeId;
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub struct Segment {
+    /// The node.
     pub node: NodeId,
+    /// The index of the item, for an item of a map.
     pub index: Option<usize>,
 }
 
 impl Segment {
+    /// The segment of `node`, without an index.
     pub fn node(node: NodeId) -> Self {
         Self { node, index: None }
     }
 
+    /// The segment of item `index` of `node`.
     pub fn item(node: NodeId, index: usize) -> Self {
         Self {
             node,
@@ -43,30 +47,46 @@ impl std::fmt::Display for Segment {
 pub struct OccurrenceKey(Vec<Segment>);
 
 impl OccurrenceKey {
+    /// The top level: no segment.
     pub fn root() -> Self {
         Self(Vec::new())
     }
 
+    /// The occurrence of `segments`, outermost first.
     pub fn new(segments: Vec<Segment>) -> Self {
         Self(segments)
     }
 
+    /// Its segments, outermost first.
     pub fn segments(&self) -> &[Segment] {
         &self.0
     }
 
+    /// Whether it is the top level.
     pub fn is_root(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// This occurrence followed by `segment`: a node of a called graph is
+    /// below the calling node (`call/x`).
     pub fn child(&self, segment: Segment) -> Self {
         let mut segments = self.0.clone();
         segments.push(segment);
         Self(segments)
     }
 
+    /// Whether `prefix` is this occurrence or one of its ancestors, segment by
+    /// segment.
     pub fn starts_with(&self, prefix: &OccurrenceKey) -> bool {
         self.0.starts_with(&prefix.0)
+    }
+
+    /// This key without its last segment: the occurrence of the run a node
+    /// of this occurrence runs in. The top level is its own parent.
+    pub(crate) fn parent(&self) -> Self {
+        let mut segments = self.0.clone();
+        segments.pop();
+        Self(segments)
     }
 
     /// The occurrence of item `index` of the node this key ends with: the
@@ -82,6 +102,9 @@ impl OccurrenceKey {
         Some(Self(segments))
     }
 
+    /// Parses the text form: segments separated by `/`, each a node id
+    /// optionally followed by `[index]`; the empty text is the top level.
+    /// Anything else is refused (`InvalidOccurrence`).
     pub fn parse(text: &str) -> Result<Self, GraphError> {
         if text.is_empty() {
             return Ok(Self::root());
@@ -145,7 +168,9 @@ impl<'de> serde::Deserialize<'de> for OccurrenceKey {
 }
 
 /// An opaque run identifier supplied by the host. The library only carries
-/// it; nested runs share the run identifier of their caller.
+/// it; nested runs share the run identifier of their caller. It names the
+/// requests of the id source (see `IdSource`): two runs at once of agents
+/// that write ids need distinct run ids.
 #[derive(
     Debug,
     Clone,
@@ -162,10 +187,12 @@ impl<'de> serde::Deserialize<'de> for OccurrenceKey {
 pub struct RunId(String);
 
 impl RunId {
+    /// The run id `value`.
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
 
+    /// Its text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -180,7 +207,10 @@ impl std::fmt::Display for RunId {
 /// The run and the occurrence an observer event comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct Origin {
+    /// The run: the host's id, shared by nested runs.
     pub run: RunId,
+    /// The occurrence: the run's for an event of the run loop (empty at top
+    /// level), the node's for an event a node emits.
     pub occurrence: OccurrenceKey,
 }
 

@@ -7,7 +7,7 @@ use futures_util::{FutureExt, StreamExt};
 
 use crate::error::NodeFault;
 use crate::graph::{Context, Graph, Node, NodeError};
-use crate::run::inbox::{Inbox, Message};
+use crate::run::control::{Command, Control};
 use crate::state::{Config, State};
 use crate::update::Update;
 use crate::value::{Key, NodeId};
@@ -31,7 +31,7 @@ pub(crate) async fn drive_superstep(
     config: &Config,
     ctx: &Context,
     active: &[NodeId],
-    inbox: &mut Inbox,
+    control: &mut Control,
 ) -> SuperstepOutput {
     let mut held_inputs: Vec<(Key, UserInput)> = Vec::new();
     let mut pause = false;
@@ -55,7 +55,7 @@ pub(crate) async fn drive_superstep(
             let raw = superstep.await;
             break StepResult::Done(pair(present, raw));
         }
-        match select(superstep, inbox.receiver.next()).await {
+        match select(superstep, control.receiver.next()).await {
             Either::Left((raw, _pending_message)) => {
                 break StepResult::Done(pair(present, raw));
             }
@@ -63,10 +63,10 @@ pub(crate) async fn drive_superstep(
                 superstep = remaining;
                 match message {
                     None => channel_open = false,
-                    Some(Message::Input { key, input }) => held_inputs.push((key, input)),
-                    Some(Message::Pause) => pause = true,
-                    Some(Message::Resume) => {}
-                    Some(Message::Cancel) => break StepResult::Cancelled,
+                    Some(Command::Input { key, input }) => held_inputs.push((key, input)),
+                    Some(Command::Pause) => pause = true,
+                    Some(Command::Resume) => {}
+                    Some(Command::Cancel) => break StepResult::Cancelled,
                 }
             }
         }

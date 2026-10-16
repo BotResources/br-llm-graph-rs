@@ -6,18 +6,18 @@ use std::sync::Arc;
 
 use br_llm_clients_core::OutputMode;
 use br_llm_messages::{
-    Conversation, Text, ToolResultBlock, UserBlock, UserInput, UserSource, WireMessage,
+    Conversation, InputId, Text, ToolResultBlock, UserBlock, UserInput, UserSource, WireMessage,
     WireUserBlock,
 };
 use serde_json::json;
 
 use crate::graph::Context;
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_hook_support::*;
-use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Value};
 use crate::testkit::SeqIds;
 
@@ -85,8 +85,9 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
     ]);
     let graph = ReactAgent {
         author: author(),
-        client: Arc::new(client.clone()),
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(Arc::new(client.clone())),
+        system: base(),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![tool.clone()],
         tool_nodes: Vec::new(),
@@ -95,33 +96,37 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
         enabled: None,
         // The hook reads it through the state it receives.
         inputs: vec![(key("log"), Kind::list(Kind::Str))],
+        thread_store: None,
     }
     .graph()
     .unwrap();
     let mut history = Conversation::new();
-    history.push_input(
-        UserInput::new(
-            UserSource::Human,
-            None,
-            vec![UserBlock::text(Text::new("save my note").unwrap())],
+    history
+        .push_input(
+            UserInput::new(
+                InputId::new("i-save-my-note").unwrap(),
+                UserSource::Human,
+                None,
+                vec![UserBlock::text(Text::new("save my note").unwrap())],
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    );
+        .unwrap();
     let state = graph
         .start_state([
-            (key("history"), Value::conversation(history)),
+            (key("opening"), Value::conversation(history)),
             (key("log"), Value::list(Vec::new())),
         ])
         .unwrap();
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let config = Config::new(
         graph.schema(),
         BTreeMap::from([(key("base"), Value::str("Write files."))]),
     )
     .unwrap();
 
-    let outcome = run(&graph, &config, state, None, &ctx, &mut inbox)
+    let outcome = run(&graph, &config, state, None, &ctx, &mut channel)
         .await
         .map_err(|failure| failure.error)
         .unwrap();

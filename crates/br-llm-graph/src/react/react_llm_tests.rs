@@ -13,11 +13,12 @@ use br_llm_messages::StreamEvent;
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Always, Context, Graph, GraphBuilder, Target};
 use crate::observe::{NoopObserver, Observer};
+use crate::react::given::{Model, Prompt};
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
-use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{State, Value};
 use crate::testkit::SeqIds;
 use crate::update::Update;
@@ -31,20 +32,23 @@ pub(crate) fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-pub(crate) fn llm(client: &MockClient, system: Vec<Source>) -> LlmNode {
-    LlmNode {
+pub(crate) fn llm(client: &MockClient, system: Prompt<ReactAgent>) -> LlmNode<ReactAgent> {
+    LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client: Arc::new(client.clone()),
+        model: Model::client(Arc::new(client.clone())),
         system,
+        history: None,
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: in_memory_call(),
+        seat: None,
     }
 }
 
 /// A graph of the one model-call step `llm`, ending `done`.
-pub(crate) fn single(llm: LlmNode) -> Graph {
+pub(crate) fn single(llm: LlmNode<ReactAgent>) -> Graph {
     GraphBuilder::new(schema())
         .entry(nid("llm"))
         .node(nid("llm"), llm)
@@ -61,8 +65,8 @@ pub(crate) async fn run_on(
     state: State,
     ctx: &Context,
 ) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
-    run(graph, &config(), state, None, ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config(), state, None, ctx, &mut channel).await
 }
 
 fn final_state(outcome: Outcome) -> State {
@@ -75,7 +79,7 @@ fn final_state(outcome: Outcome) -> State {
 #[tokio::test]
 async fn given_a_reply_when_the_step_runs_then_it_is_a_new_turn_of_the_author() {
     let client = mock(vec![text_step("hello")]);
-    let graph = single(llm(&client, vec![Source::Config(key("base"))]));
+    let graph = single(llm(&client, base()));
 
     let state = final_state(run_on(&graph, seeded_state(), &ctx()).await.unwrap());
 
@@ -112,7 +116,7 @@ async fn given_a_structured_output_mode_when_the_step_runs_then_the_request_carr
     )
     .unwrap();
     let client = mock(vec![structured_step(serde_json::json!({ "value": "x" }))]);
-    let mut node = llm(&client, Vec::new());
+    let mut node = llm(&client, Prompt::text(""));
     node.output_mode = OutputMode::Structured(shape.clone());
 
     run_on(&single(node), seeded_state(), &ctx()).await.unwrap();
@@ -126,7 +130,7 @@ async fn given_a_structured_output_mode_when_the_step_runs_then_the_request_carr
 #[tokio::test]
 async fn given_enabled_filter_when_llm_runs_then_only_enabled_tools_declared() {
     let client = mock(vec![text_step("done")]);
-    let mut node = llm(&client, vec![Source::Config(key("base"))]);
+    let mut node = llm(&client, base());
     node.tools = vec![Arc::new(EchoTool), Arc::new(TallyTool)];
     node.enabled = Some(key("enabled"));
     let mut state = seeded_state();
@@ -145,7 +149,7 @@ async fn given_enabled_filter_when_llm_runs_then_only_enabled_tools_declared() {
 #[tokio::test]
 async fn given_no_enabled_key_when_llm_runs_then_every_tool_is_declared_in_order() {
     let client = mock(vec![text_step("done")]);
-    let mut node = llm(&client, Vec::new());
+    let mut node = llm(&client, Prompt::text(""));
     node.tools = vec![Arc::new(TallyTool), Arc::new(EchoTool)];
 
     run_on(&single(node), seeded_state(), &ctx()).await.unwrap();
@@ -156,7 +160,7 @@ async fn given_no_enabled_key_when_llm_runs_then_every_tool_is_declared_in_order
 #[tokio::test]
 async fn given_failing_client_when_llm_runs_then_model_error_carrying_the_client_error() {
     let client = failing(ClientError::Unavailable { retry_after: None });
-    let graph = single(llm(&client, vec![Source::Config(key("base"))]));
+    let graph = single(llm(&client, base()));
 
     let failure = run_on(&graph, seeded_state(), &ctx()).await.err().unwrap();
 
@@ -189,7 +193,7 @@ async fn given_a_request_core_refuses_to_build_when_llm_runs_then_request_carryi
     // ReAct loop refuses them at build (`InvalidNode` with this `Request`,
     // see `react_duplicate_tool_tests`); the step, built here alone, does not.
     let client = mock(vec![text_step("unused")]);
-    let mut node = llm(&client, Vec::new());
+    let mut node = llm(&client, Prompt::text(""));
     node.tools = vec![Arc::new(EchoTool), Arc::new(EchoTool)];
 
     let failure = run_on(&single(node), seeded_state(), &ctx())
@@ -212,7 +216,7 @@ async fn given_a_request_core_refuses_to_build_when_llm_runs_then_request_carryi
 #[tokio::test]
 async fn given_failing_model_in_react_loop_when_run_then_node_failed_not_looping() {
     let client = failing(ClientError::Transport);
-    let mut node = llm(&client, vec![Source::Config(key("base"))]);
+    let mut node = llm(&client, base());
     node.tools = vec![Arc::new(EchoTool)];
     let react = ReactLoop {
         llm: nid("llm"),
@@ -220,6 +224,7 @@ async fn given_failing_model_in_react_loop_when_run_then_node_failed_not_looping
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), node)
@@ -247,9 +252,13 @@ async fn given_a_streamed_reply_when_llm_runs_then_the_observer_gets_each_event_
     let observer: Arc<dyn Observer> = recorder.clone();
     let ctx = Context::new(observer, Arc::new(SeqIds::new()));
 
-    run_on(&single(llm(&client, Vec::new())), seeded_state(), &ctx)
-        .await
-        .unwrap();
+    run_on(
+        &single(llm(&client, Prompt::text(""))),
+        seeded_state(),
+        &ctx,
+    )
+    .await
+    .unwrap();
 
     let events = recorder.events();
     let derived = br_llm_clients_mock::derive_events(

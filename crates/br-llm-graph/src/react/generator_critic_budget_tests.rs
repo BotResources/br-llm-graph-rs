@@ -1,14 +1,16 @@
 //! The critique budget of the generator-critic: zero gives one generation
-//! and no critic call; a budget read from the configuration is checked at
-//! run time.
+//! and no critic call; the largest one does not overflow the calls a tail
+//! schedule counts; a budget may be read from the configuration (its
+//! refusal is pinned with the other bounds, `generator_critic_bounds_tests`).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use br_llm_messages::Conversation;
-
-use crate::error::GraphError;
 use crate::graph::Count;
+use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
+use crate::react::given::Model;
+use crate::react::seats::GeneratorSeat;
 use crate::react::test_support::*;
 use crate::state::{Kind, Value};
 
@@ -27,7 +29,7 @@ async fn given_a_critique_budget_of_zero_when_run_then_one_generation_no_critic_
         assert!(!state.bool(&key("is_validated")).unwrap());
         assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
         assert_eq!(state.str(&key("answer")).unwrap(), "draft");
-        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+        assert_eq!(shape(state.transcript()), ["user", "writer:draft"]);
         assert_eq!(requests(&generator_client).len(), 1);
         assert!(requests(&critic_client).is_empty());
     }
@@ -46,7 +48,7 @@ async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_
     );
     let config = BTreeMap::from([(key("critiques"), Value::int(0))]);
     let state = ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
+        call_with(&graph, question("explain"), Vec::new(), config).await,
         "exhausted",
     );
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
@@ -57,31 +59,35 @@ async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_
     let graph = with_budget(&generator_client, &critic_client, budget(), true);
     let config = BTreeMap::from([(key("critiques"), Value::int(1))]);
     ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
+        call_with(&graph, question("explain"), Vec::new(), config).await,
         "validated",
     );
     assert_eq!(requests(&critic_client).len(), 1);
 }
 
 #[tokio::test]
-async fn given_a_negative_critique_budget_in_the_configuration_when_run_then_count_negative() {
-    let generator_client = mock(vec![text_step("draft")]);
-    let critic_client = mock(Vec::new());
-    let graph = with_budget(
-        &generator_client,
-        &critic_client,
-        Count::Config(key("critiques")),
-        true,
+async fn given_the_largest_budget_and_a_final_generation_when_the_generator_ends_with_a_tail_then_its_first_generation_calls_the_primary()
+ {
+    let primary = mock(vec![text_step("draft")]);
+    let tail = mock(Vec::new());
+    let critic_client = mock(vec![verdict(true, "")]);
+    let graph = GeneratorCritic::new(
+        GeneratorSeat {
+            model: Model::ending_with(Arc::new(primary.clone()), vec![Arc::new(tail.clone())]),
+            ..generator(&primary)
+        },
+        critic(&critic_client),
+        Count::Fixed(usize::MAX),
+    )
+    .graph()
+    .unwrap();
+
+    let state = ended(call(&graph, question("explain")).await, "validated");
+
+    assert_eq!(state.str(&key("answer")).unwrap(), "draft");
+    assert_eq!(
+        (primary.calls(), tail.calls()),
+        (1, 0),
+        "the budget plus one saturates: the tail is for the last calls only"
     );
-    let config = BTreeMap::from([(key("critiques"), Value::int(-1))]);
-    let failure = call_with(&graph, question("explain"), Conversation::new(), config)
-        .await
-        .err()
-        .unwrap();
-    assert!(
-        matches!(failure.error, GraphError::CountNegative { value: -1, .. }),
-        "{}",
-        failure.error
-    );
-    assert!(requests(&critic_client).is_empty());
 }

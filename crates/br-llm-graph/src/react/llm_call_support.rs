@@ -8,16 +8,16 @@ use std::sync::Arc;
 use br_llm_clients_core::{ClientRequest, OutputMode};
 use br_llm_clients_mock::{MockClient, Reply, ReplySource};
 use br_llm_messages::{
-    Author, Conversation, Text, Turn, TurnId, UserBlock, UserInput, UserSource, WireMessage,
-    WireUserBlock,
+    Author, Conversation, InputId, Text, Turn, TurnId, UserBlock, UserInput, UserSource,
+    WireMessage, WireUserBlock,
 };
 
-use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Map, Node, Output, Target};
+use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Map, Node, Target};
 use crate::observe::NoopObserver;
-use crate::react::llm_call::{LlmCall, LlmRequest};
-use crate::react::source::Source;
+use crate::react::given::{Model, Prompt};
+use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -28,14 +28,14 @@ pub(crate) fn nid(name: &str) -> NodeId {
 
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("doc"), Kind::Str)
-        .state(key("docs"), Kind::list(Kind::Str))
-        .state(key("summary"), Kind::Str)
-        .state(key("summaries"), Kind::list(Kind::Str))
-        .state(key("chat"), Kind::Conversation)
-        .state(key("count"), Kind::Int)
-        .state(key("counts"), Kind::list(Kind::Int))
-        .config(key("style"), Kind::Str)
+        .state_by_name(key("doc"), Kind::Str)
+        .state_by_name(key("docs"), Kind::list(Kind::Str))
+        .state_by_name(key("summary"), Kind::Str)
+        .state_by_name(key("summaries"), Kind::list(Kind::Str))
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("counts"), Kind::list(Kind::Int))
+        .config_by_name(key("style"), Kind::Str)
         .build()
 }
 
@@ -43,12 +43,14 @@ pub(crate) fn state_with(doc: &str, docs: &[&str]) -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-what-do-tides-follow").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("What do tides follow?").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat.push_turn(Turn::new(
         TurnId::new("t0").unwrap(),
         Some(Author::new("librarian", "librarian").unwrap()),
@@ -79,11 +81,11 @@ pub(crate) fn config() -> Config {
 }
 
 /// Summarizes the state key `doc` into `output`.
-pub(crate) fn summarize(client: &MockClient, output: Output) -> LlmCall {
+pub(crate) fn summarize(client: &MockClient, output: LlmOutput) -> LlmCall {
     LlmCall {
-        client: Arc::new(client.clone()),
-        system: Source::Config(key("style")),
-        request: LlmRequest::Text(Source::State(key("doc"))),
+        model: Model::client(Arc::new(client.clone())),
+        system: Prompt::from_config(&ckey("style")),
+        request: LlmRequest::Text(Prompt::from_state(&skey("doc"))),
         output_mode: OutputMode::Plain,
         output,
     }
@@ -127,8 +129,8 @@ pub(crate) async fn run_in(
     state: State,
     ctx: &Context,
 ) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
-    run(graph, &config(), state, None, ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config(), state, None, ctx, &mut channel).await
 }
 
 pub(crate) fn ctx() -> Context {
@@ -148,6 +150,16 @@ pub(crate) fn user_text(text: &str) -> WireMessage {
             text: Text::new(text).unwrap(),
         }],
     }
+}
+
+/// The output setting `summary`.
+pub(crate) fn set_summary() -> LlmOutput {
+    LlmOutput::Set(skey("summary"))
+}
+
+/// The output appending to `summaries`.
+pub(crate) fn append_summaries() -> LlmOutput {
+    LlmOutput::Append(skey("summaries"))
 }
 
 /// The text of the first user message of `request`.

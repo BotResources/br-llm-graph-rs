@@ -2,15 +2,18 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use br_llm_messages::{Author, Text, ToolCall, ToolName, ToolResult, ToolResultBlock, TurnId};
+use br_llm_messages::{Author, Text, ToolCall, ToolName, ToolResult, ToolResultBlock};
 use futures_util::future::join_all;
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Limit, Node, NodeError, NodeFuture};
+use crate::react::agent_call::ThreadBinding;
 use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, pending_calls};
 use crate::react::hook::{HookError, Judgment};
+use crate::react::round_writer::RoundWriters;
 use crate::react::tool::{Tool, ToolError, ToolOutput};
 use crate::react::tool_gate::SharedGates;
+use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Schema, State};
 use crate::update::Update;
 use crate::value::Key;
@@ -43,6 +46,11 @@ use crate::value::Key;
 /// share `gates`, so their limit bounds their calls together: at most that
 /// many calls at once across all of them.
 ///
+/// For a durable agent, the round's results are written to the agent's open
+/// turn, as one tool results item, before the node gives back its updates
+/// (see `DurableTools`): a tool's updates are applied after its result is in
+/// the thread.
+///
 /// At build, `enabled` must be a list-of-strings state key
 /// (`EnabledKeyMismatch`) and the key of `max_concurrency` an int
 /// configuration key (`LimitKeyMismatch`).
@@ -53,6 +61,22 @@ pub(crate) struct ToolNode {
     pub(crate) max_concurrency: Option<Limit>,
     pub(crate) enabled: Option<Key>,
     pub(crate) gates: Arc<SharedGates>,
+    /// For a durable agent: where the round's results are written.
+    pub(crate) durable: Option<DurableTools>,
+}
+
+/// How the tool nodes of a durable agent write a round: every tool node of
+/// the loop deposits its results in the round of its superstep, and the last
+/// one pushes the round's item whole into the agent's open turn, before any
+/// of them gives back its updates.
+#[derive(Clone)]
+pub(crate) struct DurableTools {
+    pub(crate) thread: ThreadBinding,
+    pub(crate) rounds: Arc<RoundWriters>,
+    /// The number of tool nodes of the loop.
+    pub(crate) nodes: usize,
+    /// The 0-based place of this node among them, in registration order.
+    pub(crate) node: usize,
 }
 
 /// How one owned call is answered.
@@ -91,12 +115,21 @@ impl Node for ToolNode {
 
 impl ToolNode {
     async fn run_calls(&self, state: &State, config: &Config) -> Result<Vec<Update>, NodeError> {
+        // Taken first: dropped on any error below, it tells the other tool
+        // nodes of the round that it will not be written.
+        let seat = self
+            .durable
+            .as_ref()
+            .map(|durable| durable.rounds.seat(state, durable.nodes, durable.node));
         let conversation = state.conversation(&self.key)?;
-        let Some(turn_id) =
-            last_turn_by_author(conversation, &self.author).map(|turn| turn.id().clone())
-        else {
+        let Some(turn) = last_turn_by_author(conversation, &self.author) else {
+            if let Some(seat) = seat {
+                seat.write(Vec::new(), |_| async { Ok(()) }).await?;
+            }
             return Ok(Vec::new());
         };
+        let turn_id = turn.id().clone();
+        let index = turn.items().len();
         let owned: HashMap<&ToolName, &Arc<dyn Tool>> = self
             .tools
             .iter()
@@ -155,7 +188,8 @@ impl ToolNode {
         .await;
         drop(lease);
 
-        let mut updates = Vec::new();
+        // Each call's result, in call order, with the tool's updates.
+        let mut answered: Vec<(ToolResult, Vec<Update>)> = Vec::new();
         for ((call, _), answer) in selected.iter().zip(answers) {
             match answer {
                 Answer::NotEnabled => {
@@ -163,7 +197,7 @@ impl ToolNode {
                         "Tool {} is not enabled for this run: this call was not executed.",
                         call.name
                     );
-                    updates.push(error_result(&self.key, &turn_id, call, text_block(&text)));
+                    answered.push((error_result(call, text_block(&text)), Vec::new()));
                 }
                 // Only after a hook failed, whose error this loop returns.
                 Answer::NotStarted => {}
@@ -174,27 +208,42 @@ impl ToolNode {
                         output.content,
                         output.is_error,
                     );
-                    updates.push(Update::PushResult {
-                        key: self.key.clone(),
-                        turn: turn_id.clone(),
-                        result,
-                    });
-                    updates.extend(output.updates);
+                    answered.push((result, output.updates));
                 }
-                Answer::Ran(Err(error)) => updates.push(error_result(
-                    &self.key,
-                    &turn_id,
-                    call,
-                    text_or(&error.to_string(), "tool call failed"),
+                Answer::Ran(Err(error)) => answered.push((
+                    error_result(call, text_or(&error.to_string(), "tool call failed")),
+                    Vec::new(),
                 )),
-                Answer::Refused(reason) => updates.push(error_result(
-                    &self.key,
-                    &turn_id,
-                    call,
-                    text_or(&reason, "tool call refused"),
+                Answer::Refused(reason) => answered.push((
+                    error_result(call, text_or(&reason, "tool call refused")),
+                    Vec::new(),
                 )),
                 Answer::HookFailed(error) => return Err(error),
             }
+        }
+        if let (Some(seat), Some(durable)) = (seat, &self.durable) {
+            let results = answered.iter().map(|(result, _)| result.clone()).collect();
+            let writer = TurnWriter {
+                store: durable.thread.store.as_ref(),
+                thread: durable.thread.thread(state)?,
+                turn: turn_id.clone(),
+            };
+            seat.write(results, |all| async move {
+                if all.is_empty() {
+                    return Ok(());
+                }
+                writer.push_results(index, &all).await
+            })
+            .await?;
+        }
+        let mut updates = Vec::new();
+        for (result, extra) in answered {
+            updates.push(Update::PushResult {
+                key: self.key.clone(),
+                turn: turn_id.clone(),
+                result,
+            });
+            updates.extend(extra);
         }
         Ok(updates)
     }
@@ -229,15 +278,6 @@ fn text_or(text: &str, fallback: &str) -> Vec<ToolResultBlock> {
 }
 
 /// The error result of `call`, holding `content`.
-fn error_result(
-    key: &Key,
-    turn: &TurnId,
-    call: &ToolCall,
-    content: Vec<ToolResultBlock>,
-) -> Update {
-    Update::PushResult {
-        key: key.clone(),
-        turn: turn.clone(),
-        result: ToolResult::new(call.id.clone(), call.name.clone(), content, true),
-    }
+fn error_result(call: &ToolCall, content: Vec<ToolResultBlock>) -> ToolResult {
+    ToolResult::new(call.id.clone(), call.name.clone(), content, true)
 }

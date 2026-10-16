@@ -6,12 +6,15 @@ use br_llm_messages::{Author, ToolName, TurnState};
 
 use crate::error::GraphError;
 use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Limit, Target};
+use crate::react::agent_call::ThreadBinding;
+use crate::react::given::LoopNode;
 use crate::react::helpers::{last_turn_state, pending_calls};
 use crate::react::llm_node::LlmNode;
 use crate::react::round_limit::{RoundLimit, completed_rounds};
+use crate::react::round_writer::RoundWriters;
 use crate::react::tool::Tool;
 use crate::react::tool_gate::SharedGates;
-use crate::react::tool_node::ToolNode;
+use crate::react::tool_node::{DurableTools, ToolNode};
 use crate::value::{Key, NodeId};
 
 /// The ReAct loop, added to a graph under construction: the model call
@@ -26,13 +29,16 @@ pub(crate) struct ReactLoop {
     pub(crate) after: Target,
     pub(crate) tool_concurrency: Option<Limit>,
     pub(crate) round_limit: Option<RoundLimit>,
+    /// The thread of a durable agent, which its tool nodes and its limit
+    /// node write to.
+    pub(crate) thread: Option<ThreadBinding>,
 }
 
 impl ReactLoop {
-    pub(crate) fn add(
+    pub(crate) fn add<N: LoopNode>(
         self,
         builder: GraphBuilder,
-        llm_node: LlmNode,
+        llm_node: LlmNode<N>,
     ) -> Result<GraphBuilder, GraphError> {
         self.check_names(&llm_node)?;
         self.check_partition(&llm_node)?;
@@ -50,7 +56,11 @@ impl ReactLoop {
         // One gate per superstep for all the tool nodes: the limit bounds
         // their calls together.
         let gates = Arc::new(SharedGates::default());
-        for (id, tools) in &self.tool_nodes {
+        // One round of results per superstep for all the tool nodes of a
+        // durable agent: its item is written whole.
+        let rounds = Arc::new(RoundWriters::default());
+        let nodes = self.tool_nodes.len();
+        for (node, (id, tools)) in self.tool_nodes.iter().enumerate() {
             builder = builder.node(
                 id.clone(),
                 ToolNode {
@@ -60,6 +70,12 @@ impl ReactLoop {
                     max_concurrency: self.tool_concurrency.clone(),
                     enabled: enabled.clone(),
                     gates: gates.clone(),
+                    durable: self.thread.clone().map(|thread| DurableTools {
+                        thread,
+                        rounds: rounds.clone(),
+                        nodes,
+                        node,
+                    }),
                 },
             );
         }
@@ -69,7 +85,13 @@ impl ReactLoop {
             builder = builder.edge(id.clone(), Always(Target::Node(self.llm.clone())));
         }
         if let Some(round_limit) = &self.round_limit {
-            builder = round_limit.add_limit_node(builder, key, author, &self.llm, &self.after);
+            builder = round_limit.add_limit_node(
+                builder,
+                key,
+                author,
+                (&self.llm, &self.after),
+                self.thread.clone(),
+            );
         }
         Ok(builder)
     }
@@ -78,7 +100,7 @@ impl ReactLoop {
     /// the model-call step is refused (`InvalidNode`, its reason `Request`
     /// carrying `DuplicateToolName`), before the rules on tool nodes, which
     /// go by name.
-    fn check_names(&self, llm_node: &LlmNode) -> Result<(), GraphError> {
+    fn check_names<N: LoopNode>(&self, llm_node: &LlmNode<N>) -> Result<(), GraphError> {
         let mut seen: HashSet<&ToolName> = HashSet::new();
         for tool in &llm_node.tools {
             let name = tool.spec().name();
@@ -94,7 +116,7 @@ impl ReactLoop {
         Ok(())
     }
 
-    fn check_partition(&self, llm_node: &LlmNode) -> Result<(), GraphError> {
+    fn check_partition<N: LoopNode>(&self, llm_node: &LlmNode<N>) -> Result<(), GraphError> {
         let declared: HashSet<&ToolName> = llm_node
             .tools
             .iter()

@@ -1,5 +1,5 @@
 use crate::error::GraphError;
-use crate::state::{Config, Kind, Schema};
+use crate::state::{Config, ConfigKey, Kind, Schema};
 use crate::value::Key;
 
 /// A bound that may be zero, given as a fixed number or read from an int
@@ -7,11 +7,18 @@ use crate::value::Key;
 /// positive counterpart.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Count {
+    /// A number fixed when the graph is built.
     Fixed(usize),
+    /// The value of an int configuration key, read at run time.
     Config(Key),
 }
 
 impl Count {
+    /// A count read at run time from the int configuration key `key`.
+    pub fn config(key: &ConfigKey<i64>) -> Self {
+        Count::Config(key.key().clone())
+    }
+
     /// Checks the count against the schema of a graph: a `Config` key must be
     /// an int configuration key (`CountKeyMismatch`); a fixed number always
     /// passes. A node of the caller that holds a `Count` calls it from its own
@@ -21,7 +28,7 @@ impl Count {
     /// use br_llm_graph::{Count, Key, Kind, Schema};
     ///
     /// let budget = Key::new("budget").unwrap();
-    /// let schema = Schema::builder().config(budget.clone(), Kind::Int).build();
+    /// let schema = Schema::builder().config_by_name(budget.clone(), Kind::Int).build();
     /// assert!(Count::Config(budget).check(&schema).is_ok());
     /// ```
     pub fn check(&self, schema: &Schema) -> Result<(), GraphError> {
@@ -46,7 +53,7 @@ impl Count {
     /// use br_llm_graph::{Config, Count, Key, Kind, Schema, Value};
     ///
     /// let budget = Key::new("budget").unwrap();
-    /// let schema = Schema::builder().config(budget.clone(), Kind::Int).build();
+    /// let schema = Schema::builder().config_by_name(budget.clone(), Kind::Int).build();
     /// let config = Config::new(&schema, BTreeMap::from([(budget.clone(), Value::int(0))])).unwrap();
     /// assert_eq!(Count::Config(budget).resolve(&config).unwrap(), 0);
     /// ```

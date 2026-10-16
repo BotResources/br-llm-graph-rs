@@ -12,14 +12,14 @@ use std::sync::atomic::Ordering;
 
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
-    Config, Hook, HookFuture, Judgment, Outcome, ReactAgent, Source, State, Tool, ToolFuture,
-    Value, channel, run,
+    Config, Hook, HookFuture, Judgment, Model, Outcome, Prompt, ReactAgent, State, StateKey, Tool,
+    ToolFuture, control, run,
 };
 use br_llm_messages::{Author, Conversation, ToolCallId};
 use serde_json::{Value as Json, json};
 
 use common::tools::WriteFileTool;
-use common::{context, key, scripted_as_written, text_step, tool_call_step, user};
+use common::{context, opening, scripted_as_written, state_key, text_step, tool_call_step, user};
 
 /// Accepts a write under `notes/`, refuses any other.
 struct NotesOnly;
@@ -87,11 +87,13 @@ async fn main() {
         hook: NotesOnly,
     });
 
-    // Input `history`; configuration none: the system text is fixed.
+    // Input `opening`, in memory; configuration none: the system text is
+    // fixed.
     let graph = ReactAgent {
         author: Author::new("agent", "agent").expect("author"),
-        client,
-        system: vec![Source::Const("Save what the user asks for.".to_owned())],
+        model: Model::client(client),
+        system: Prompt::text("Save what the user asks for."),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![write.clone()],
         tool_nodes: Vec::new(),
@@ -99,23 +101,25 @@ async fn main() {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .expect("agent graph");
 
-    let mut chat = Conversation::new();
-    chat.push_input(user("Save a note on tides."));
+    let answer: StateKey<String> = state_key("answer");
     let state = graph
-        .start_state([(key("history"), Value::conversation(chat))])
+        .start_state([state_key::<Conversation>("opening")
+            .given(opening([user("Save a note on tides.")]))
+            .expect("opening")])
         .expect("start state");
     let config = Config::new(graph.schema(), Default::default()).expect("config");
 
-    let (_sender, mut inbox) = channel();
-    match run(&graph, &config, state, None, &context(), &mut inbox).await {
+    let (_sender, mut channel) = control();
+    match run(&graph, &config, state, None, &context(), &mut channel).await {
         Ok(Outcome::Finished { state, .. }) => {
             println!(
                 "tool_hook: {} (the tool ran {} time)",
-                state.str(&key("answer")).expect("answer"),
+                state.get(&answer).expect("answer"),
                 write.tool.calls.load(Ordering::SeqCst)
             );
         }

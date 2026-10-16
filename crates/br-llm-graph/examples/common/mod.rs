@@ -1,16 +1,23 @@
+//! What the examples share: an observer that prints, an id source, a thread
+//! store kept in memory, scripted clients and the messages they answer.
+
+pub mod store;
 pub mod tools;
+pub mod turn;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-use br_llm_clients_core::{CacheRequirement, ClientSettings, MaxOutputTokens, ReasoningLevel};
+use br_llm_clients_core::{
+    CacheRequirement, ClientError, ClientSettings, MaxOutputTokens, ReasoningLevel,
+};
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_graph::{
-    Context, Cursor, EndLabel, IdSource, Key, NoopObserver, Observer, Origin, State, Update,
+    ConfigKey, Context, Cursor, EndLabel, IdRequest, IdSource, Key, NoopObserver, Observer, Origin,
+    Schema, State, StateKey, ThreadId, Update, ValueType,
 };
 use br_llm_messages::{
-    AssistantBlock, ModelId, Step, StopReason, StreamEvent, Text, ToolCall, ToolCallId, ToolName,
-    TurnId, UserBlock, UserInput, UserSource,
+    AssistantBlock, Conversation, InputId, ModelId, Step, StopReason, StreamEvent, Text, ToolCall,
+    ToolCallId, ToolName, TurnId, UserBlock, UserInput, UserSource,
 };
 use serde_json::Value as Json;
 
@@ -37,22 +44,49 @@ impl Observer for PrintObserver {
     }
 }
 
-pub struct SeqIds {
-    next: AtomicU64,
-}
+/// An id source that writes each id from its request, so the same request
+/// always gives the same id: the turn id names the request, the thread id is
+/// a UUIDv7 made from a hash of it.
+pub struct SeqIds;
 
 impl SeqIds {
     pub fn new() -> Self {
-        Self {
-            next: AtomicU64::new(1),
-        }
+        Self
     }
 }
 
+/// The request written as text: run, occurrence, trigger and rank.
+fn request_text(request: &IdRequest) -> String {
+    let trigger = request.trigger.as_ref().map_or("-", InputId::as_str);
+    format!(
+        "{}/{}/{trigger}/{}",
+        request.origin.run, request.origin.occurrence, request.rank
+    )
+}
+
 impl IdSource for SeqIds {
-    fn turn_id(&self) -> TurnId {
-        let index = self.next.fetch_add(1, Ordering::SeqCst);
-        TurnId::new(format!("turn-{index}")).expect("non-empty turn id")
+    fn thread_id(&self, request: &IdRequest) -> ThreadId {
+        use std::hash::{Hash, Hasher};
+        let text = request_text(request);
+        let mut high = std::collections::hash_map::DefaultHasher::new();
+        text.hash(&mut high);
+        let mut low = std::collections::hash_map::DefaultHasher::new();
+        (&text, 1u8).hash(&mut low);
+        let (high, low) = (high.finish(), low.finish());
+        ThreadId::new(format!(
+            "{:08x}-{:04x}-7{:03x}-{:x}{:03x}-{:012x}",
+            high >> 32,
+            (high >> 16) & 0xffff,
+            high & 0xfff,
+            8 + ((low >> 62) & 0x3),
+            (low >> 48) & 0xfff,
+            low & 0xffff_ffff_ffff
+        ))
+        .expect("a UUIDv7 text")
+    }
+
+    fn turn_id(&self, request: &IdRequest) -> TurnId {
+        TurnId::new(format!("turn/{}", request_text(request))).expect("non-empty turn id")
     }
 }
 
@@ -68,8 +102,33 @@ pub fn key(name: &str) -> Key {
     Key::new(name).expect("valid key")
 }
 
+/// The typed key of the state key `name` of a graph the example did not
+/// declare itself, such as an agent's (`opening`, `thread`, `answer`): a
+/// typed key is a name and the Rust type of its kind.
+pub fn state_key<T: ValueType>(name: &str) -> StateKey<T> {
+    Schema::builder().state(name).expect("valid key")
+}
+
+/// The typed key of the configuration key `name` of a graph the example did
+/// not declare itself.
+pub fn config_key<T: ValueType>(name: &str) -> ConfigKey<T> {
+    Schema::builder().config(name).expect("valid key")
+}
+
+/// A conversation of `inputs`, in order: an agent's `opening`.
+pub fn opening(inputs: impl IntoIterator<Item = UserInput>) -> Conversation {
+    let mut conversation = Conversation::new();
+    for input in inputs {
+        conversation
+            .push_input(input)
+            .expect("an input id unique in the conversation");
+    }
+    conversation
+}
+
 pub fn user(body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).expect("input id"),
         UserSource::Human,
         None,
         vec![UserBlock::text(Text::new(body).expect("non-empty"))],
@@ -79,6 +138,7 @@ pub fn user(body: &str) -> UserInput {
 
 pub fn runtime_input(kind: &str, body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).expect("input id"),
         UserSource::runtime(kind).expect("kind"),
         None,
         vec![UserBlock::text(Text::new(body).expect("non-empty"))],
@@ -152,6 +212,31 @@ pub fn scripted_at(reasoning: ReasoningLevel, steps: Vec<Step>) -> MockClient {
         );
     }
     builder.build()
+}
+
+/// A client whose first reply streams `after` events of `cut` then fails
+/// (`Unavailable`), then answers `steps` in order: a provider that drops a
+/// connection in the middle of a reply.
+pub fn scripted_cut(cut: Step, after: usize, steps: Vec<Step>) -> Arc<MockClient> {
+    let mut builder = MockClient::builder(
+        settings(ReasoningLevel::Medium),
+        Capabilities::new(CapabilitiesSpec::everything()).expect("capabilities"),
+    )
+    .reply(
+        Reply::cut(cut, after, ClientError::Unavailable { retry_after: None })
+            .rename_tool_call_ids("cut")
+            .build()
+            .expect("reply"),
+    );
+    for step in steps {
+        builder = builder.reply(
+            Reply::success(step)
+                .rename_tool_call_ids("call")
+                .build()
+                .expect("reply"),
+        );
+    }
+    Arc::new(builder.build())
 }
 
 /// A client answering `steps` in order, reasoning at a medium level.

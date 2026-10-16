@@ -32,6 +32,10 @@ jobs:
         run: cargo clippy --all-targets --all-features --locked -- -D warnings
       - name: cargo test
         run: cargo test --all-targets --all-features --locked
+      # `--all-targets` leaves the doctests out: the `compile_fail` doctests
+      # pin that a wrong kind through a typed key does not compile.
+      - name: cargo test --doc
+        run: cargo test --doc --all-features --locked
 
   msrv:
     name: MSRV 1.89 build

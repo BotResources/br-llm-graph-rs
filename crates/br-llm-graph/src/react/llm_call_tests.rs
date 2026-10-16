@@ -11,22 +11,22 @@ use br_llm_messages::{AssistantBlock, MessageError, Step, StopReason, Text};
 use serde_json::json;
 
 use crate::error::GraphError;
-use crate::graph::{Context, Node, Output};
+use crate::graph::{Context, Node};
 use crate::observe::Observer;
+use crate::react::given::{Prompt, Reads};
 use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::llm_call_support::*;
-use crate::react::source::Source;
 use crate::react::test_support::{
-    StreamRecorder, author, failing, key, mock, requests, returned, structured_step, system_of,
-    text_step,
+    StreamRecorder, author, failing, key, mock, requests, returned, skey, structured_step,
+    system_of, text_step,
 };
-use crate::state::Value;
+use crate::state::{ConfigKey, StateKey, Value};
 use crate::testkit::SeqIds;
 
 #[tokio::test]
 async fn given_a_text_request_when_the_call_runs_then_one_user_message_and_the_answer_is_set() {
     let client = mock(vec![text_step("Tides follow the moon.")]);
-    let graph = single(summarize(&client, Output::Set(key("summary"))));
+    let graph = single(summarize(&client, set_summary()));
 
     let state = finished(run_in(&graph, state_with("A note on tides.", &[]), &ctx()).await);
 
@@ -44,7 +44,7 @@ async fn given_a_text_request_when_the_call_runs_then_one_user_message_and_the_a
 #[tokio::test]
 async fn given_an_append_output_when_the_call_runs_then_the_answer_is_appended() {
     let client = mock(vec![text_step("first"), text_step("second")]);
-    let graph = single(summarize(&client, Output::Append(key("summaries"))));
+    let graph = single(summarize(&client, append_summaries()));
 
     let state = finished(run_in(&graph, state_with("doc", &[]), &ctx()).await);
     let state = finished(run_in(&graph, state, &ctx()).await);
@@ -60,10 +60,10 @@ async fn given_a_call_when_it_runs_then_nothing_but_its_output_is_written() {
     let client = mock(vec![text_step("answer")]);
     let call = LlmCall {
         request: LlmRequest::Conversation {
-            key: key("chat"),
+            key: skey("chat"),
             author: author(),
         },
-        ..summarize(&client, Output::Set(key("summary")))
+        ..summarize(&client, set_summary())
     };
     let before = state_with("doc", &[]);
 
@@ -99,7 +99,7 @@ async fn given_a_structured_reply_when_the_call_runs_then_the_answer_is_its_json
     )]);
     let call = LlmCall {
         output_mode: OutputMode::Structured(shape.clone()),
-        ..summarize(&client, Output::Set(key("summary")))
+        ..summarize(&client, set_summary())
     };
 
     let state = finished(run_in(&single(call), state_with("doc", &[]), &ctx()).await);
@@ -131,7 +131,7 @@ async fn given_a_reply_of_several_text_blocks_when_the_call_runs_then_they_are_j
     )
     .unwrap();
     let client = mock(vec![several]);
-    let graph = single(summarize(&client, Output::Set(key("summary"))));
+    let graph = single(summarize(&client, set_summary()));
 
     let state = finished(run_in(&graph, state_with("doc", &[]), &ctx()).await);
 
@@ -142,7 +142,7 @@ async fn given_a_reply_of_several_text_blocks_when_the_call_runs_then_they_are_j
 async fn given_a_request_that_resolves_blank_when_the_call_runs_then_the_node_fails_unsent() {
     for blank in ["", "  \n"] {
         let client = mock(vec![text_step("unused")]);
-        let graph = single(summarize(&client, Output::Set(key("summary"))));
+        let graph = single(summarize(&client, set_summary()));
 
         let failure = run_in(&graph, state_with(blank, &[]), &ctx())
             .await
@@ -163,11 +163,11 @@ async fn given_a_request_that_resolves_blank_when_the_call_runs_then_the_node_fa
 }
 
 #[tokio::test]
-async fn given_a_system_source_that_resolves_blank_when_the_call_runs_then_no_system_text() {
+async fn given_a_system_that_resolves_blank_when_the_call_runs_then_no_system_text() {
     let client = mock(vec![text_step("answer")]);
     let call = LlmCall {
-        system: Source::Const(" ".to_owned()),
-        ..summarize(&client, Output::Set(key("summary")))
+        system: Prompt::text(" "),
+        ..summarize(&client, set_summary())
     };
 
     finished(run_in(&single(call), state_with("doc", &[]), &ctx()).await);
@@ -178,15 +178,18 @@ async fn given_a_system_source_that_resolves_blank_when_the_call_runs_then_no_sy
 #[tokio::test]
 async fn given_a_computed_request_when_the_call_runs_then_it_is_resolved_at_the_call() {
     let client = mock(vec![text_step("answer")]);
+    let mut reads = Reads::new();
+    let style: ConfigKey<String> = reads.config("style").unwrap();
+    let doc: StateKey<String> = reads.state("doc").unwrap();
     let call = LlmCall {
-        request: LlmRequest::Text(Source::Fn(Arc::new(|state, config| {
+        request: LlmRequest::Text(Prompt::from_fn(reads, move |ctx| {
             Ok(format!(
                 "{} Summarize: {}",
-                config.str(&key("style"))?,
-                state.str(&key("doc"))?
+                ctx.config(&style)?,
+                ctx.get(&doc)?
             ))
-        }))),
-        ..summarize(&client, Output::Set(key("summary")))
+        })),
+        ..summarize(&client, set_summary())
     };
 
     finished(run_in(&single(call), state_with("tides", &[]), &ctx()).await);
@@ -200,7 +203,7 @@ async fn given_a_computed_request_when_the_call_runs_then_it_is_resolved_at_the_
 #[tokio::test]
 async fn given_a_failing_client_when_the_call_runs_then_model_and_nothing_written() {
     let client = failing(ClientError::RateLimited { retry_after: None });
-    let graph = single(summarize(&client, Output::Set(key("summary"))));
+    let graph = single(summarize(&client, set_summary()));
 
     let failure = run_in(&graph, state_with("doc", &[]), &ctx())
         .await
@@ -218,10 +221,13 @@ async fn given_a_failing_client_when_the_call_runs_then_model_and_nothing_writte
 async fn given_a_streamed_answer_when_the_call_runs_then_the_observer_gets_each_event_with_its_key()
 {
     for (request, expected_key) in [
-        (LlmRequest::Text(Source::State(key("doc"))), "summary"),
+        (
+            LlmRequest::Text(Prompt::from_state(&skey("doc"))),
+            "summary",
+        ),
         (
             LlmRequest::Conversation {
-                key: key("chat"),
+                key: skey("chat"),
                 author: author(),
             },
             "chat",
@@ -230,7 +236,7 @@ async fn given_a_streamed_answer_when_the_call_runs_then_the_observer_gets_each_
         let client = mock(vec![text_step("answer")]);
         let call = LlmCall {
             request,
-            ..summarize(&client, Output::Set(key("summary")))
+            ..summarize(&client, set_summary())
         };
         let recorder = Arc::new(StreamRecorder::default());
         let observer: Arc<dyn Observer> = recorder.clone();

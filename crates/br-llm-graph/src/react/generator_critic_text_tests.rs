@@ -1,20 +1,19 @@
-//! The texts of the generator-critic: every text is a source, resolved at the
+//! The texts of the generator-critic: every text is a `Prompt`, given at the
 //! call, and what the critic reads around the answer it judges.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use br_llm_messages::{Conversation, MessageError, Step, WireMessage};
+use br_llm_messages::{MessageError, Step, WireMessage};
 
 use crate::error::GraphError;
 use crate::graph::{Count, Graph};
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
+use crate::react::given::{Model, Prompt, Reads};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
-use crate::react::source::Source;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, channel, run};
-use crate::state::{Config, Kind, Value};
+use crate::state::{ConfigKey, Kind, StateKey, Value};
 use crate::value::Key;
 
 /// A new call on `question("explain")` with the given extra inputs and
@@ -23,22 +22,8 @@ pub(crate) async fn run_with(
     graph: &Graph,
     extra: Vec<(Key, Value)>,
     config: BTreeMap<Key, Value>,
-) -> Result<Outcome, RunFailure> {
-    let mut inputs = vec![
-        (
-            key("conversation"),
-            Value::conversation(question("explain")),
-        ),
-        (
-            key("generator_history"),
-            Value::conversation(Conversation::new()),
-        ),
-    ];
-    inputs.extend(extra);
-    let state = graph.start_state(inputs).unwrap();
-    let config = Config::new(graph.schema(), config).unwrap();
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx(), &mut inbox).await
+) -> Ran {
+    call_with(graph, question("explain"), extra, config).await
 }
 
 pub(crate) fn wrapped(answer: &str, request: &str) -> WireMessage {
@@ -58,7 +43,7 @@ pub(crate) fn opening() -> WireMessage {
 /// thinking, which a conforming client refuses, reaches the graph.
 pub(crate) fn lax_generator(steps: Vec<Step>) -> GeneratorSeat {
     GeneratorSeat {
-        client: Arc::new(LaxClient::new(steps)),
+        model: Model::client(Arc::new(LaxClient::new(steps))),
         ..generator(&mock(Vec::new()))
     }
 }
@@ -72,7 +57,7 @@ async fn given_a_custom_or_a_blank_review_request_when_the_critic_judges_then_it
         let graph = GeneratorCritic::new(
             generator(&generator_client),
             CriticSeat {
-                review_request: Some(Source::Const(request.to_owned())),
+                review_request: Some(Prompt::text(request)),
                 ..critic(&critic_client)
             },
             Count::Fixed(1),
@@ -89,17 +74,21 @@ async fn given_a_custom_or_a_blank_review_request_when_the_critic_judges_then_it
 }
 
 #[tokio::test]
-async fn given_texts_from_every_kind_of_source_when_run_then_each_is_resolved_at_the_call() {
+async fn given_texts_of_every_kind_when_run_then_each_is_given_at_the_call() {
     let generator_client = mock(vec![text_step("draft")]);
     let critic_client = mock(vec![verdict(true, "")]);
-    let system = Source::Fn(Arc::new(|state, config| {
+    let mut reads = Reads::new();
+    let topic: StateKey<String> = reads.state("topic").unwrap();
+    let tone: ConfigKey<String> = reads.config("tone").unwrap();
+    let system = Prompt::from_fn(reads, move |ctx| {
         Ok(format!(
             "Write about {} in a {} tone.",
-            state.str(&key("topic"))?,
-            config.str(&key("tone"))?
+            ctx.get(&topic)?,
+            ctx.config(&tone)?
         ))
-    }));
+    });
     let graph = GeneratorCritic {
+        // The tools may read `topic` too: one input, declared once.
         inputs: vec![(key("topic"), Kind::Str)],
         ..GeneratorCritic::new(
             GeneratorSeat {
@@ -107,11 +96,11 @@ async fn given_texts_from_every_kind_of_source_when_run_then_each_is_resolved_at
                 ..generator(&generator_client)
             },
             CriticSeat {
-                review_request: Some(Source::State(key("ask"))),
+                review_request: Some(Prompt::from_state(&skey("ask"))),
                 ..CriticSeat::new(
                     reviewer(),
-                    Arc::new(critic_client.clone()),
-                    Source::Config(key("tone")),
+                    Model::client(Arc::new(critic_client.clone())),
+                    Prompt::from_config(&ckey("tone")),
                 )
             },
             Count::Fixed(1),
@@ -120,6 +109,10 @@ async fn given_texts_from_every_kind_of_source_when_run_then_each_is_resolved_at
     .graph()
     .unwrap();
     assert_eq!(graph.signature().inputs.get(&key("ask")), Some(&Kind::Str));
+    assert_eq!(
+        graph.signature().inputs.get(&key("topic")),
+        Some(&Kind::Str)
+    );
     assert_eq!(graph.schema().config.get(&key("tone")), Some(&Kind::Str));
     ended(
         run_with(
@@ -149,13 +142,13 @@ async fn given_texts_from_every_kind_of_source_when_run_then_each_is_resolved_at
 fn given_one_state_key_read_by_both_seats_when_built_then_one_string_input() {
     let graph = GeneratorCritic::new(
         GeneratorSeat {
-            system: Source::State(key("brief")),
+            system: Prompt::from_state(&skey("brief")),
             ..generator(&mock(Vec::new()))
         },
         CriticSeat::new(
             reviewer(),
-            Arc::new(mock(Vec::new())),
-            Source::State(key("brief")),
+            Model::client(Arc::new(mock(Vec::new()))),
+            Prompt::from_state(&skey("brief")),
         ),
         Count::Fixed(1),
     )
@@ -168,13 +161,13 @@ fn given_one_state_key_read_by_both_seats_when_built_then_one_string_input() {
 }
 
 #[test]
-fn given_a_source_key_that_is_already_a_key_of_the_graph_when_built_then_key_collision() {
+fn given_a_text_key_that_is_already_a_key_of_the_graph_when_built_then_key_collision() {
     let state = GeneratorCritic::new(
         generator(&mock(Vec::new())),
         CriticSeat::new(
             reviewer(),
-            Arc::new(mock(Vec::new())),
-            Source::State(key("conversation")),
+            Model::client(Arc::new(mock(Vec::new()))),
+            Prompt::from_state(&skey("conversation")),
         ),
         Count::Fixed(1),
     )
@@ -188,8 +181,8 @@ fn given_a_source_key_that_is_already_a_key_of_the_graph_when_built_then_key_col
         generator(&mock(Vec::new())),
         CriticSeat::new(
             reviewer(),
-            Arc::new(mock(Vec::new())),
-            Source::Config(key("rounds")),
+            Model::client(Arc::new(mock(Vec::new()))),
+            Prompt::from_config(&ckey("rounds")),
         ),
         Count::Config(key("rounds")),
     )
@@ -209,15 +202,15 @@ async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_t
             generator(&mock(vec![text_step("draft")])),
             CriticSeat::new(
                 reviewer(),
-                Arc::new(critic_client.clone()),
-                Source::Const(system.to_owned()),
+                Model::client(Arc::new(critic_client.clone())),
+                Prompt::text(system),
             ),
             Count::Fixed(1),
         )
         .graph()
         .unwrap();
 
-        let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+        let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
 
         assert!(
             matches!(
@@ -231,7 +224,7 @@ async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_t
             0,
             "{system:?}: the critic is not called"
         );
-        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+        assert_eq!(shape(&conversation), ["user", "writer:draft"]);
     }
 }
 
@@ -242,13 +235,13 @@ async fn given_one_configuration_key_for_both_seats_when_run_then_it_is_declared
                  critic_client: &br_llm_clients_mock::MockClient| {
         GeneratorCritic::new(
             GeneratorSeat {
-                system: Source::Config(key("brief")),
+                system: Prompt::from_config(&ckey("brief")),
                 ..generator(generator_client)
             },
             CriticSeat::new(
                 reviewer(),
-                Arc::new(critic_client.clone()),
-                Source::Config(key("brief")),
+                Model::client(Arc::new(critic_client.clone())),
+                Prompt::from_config(&ckey("brief")),
             ),
             Count::Fixed(1),
         )

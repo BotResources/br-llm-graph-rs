@@ -1,7 +1,7 @@
 //! The ids and keys a ReAct agent and a generator-critic hold whatever their
 //! tools: without a split, `tools` is the graph's own node even when no tool
-//! is declared; and an agent's flag naming `history` or `answer` is refused
-//! before the rules of the ReAct loop.
+//! is declared; and an agent's flag naming `answer`, `opening`, `thread` or
+//! `conversation` is refused before the rules of the ReAct loop.
 
 use std::sync::Arc;
 
@@ -72,7 +72,7 @@ fn given_a_generator_without_tools_when_its_limit_node_is_named_tools_then_dupli
 fn given_an_agent_flag_naming_the_answer_when_built_then_flag_key_mismatch_before_the_loop_rules() {
     // Two tools of one name would be refused by the ReAct loop.
     let client = mock(Vec::new());
-    for flag in ["answer", "history"] {
+    for flag in ["answer", "opening", "thread", "conversation"] {
         let mut agent = limited(
             &client,
             1,

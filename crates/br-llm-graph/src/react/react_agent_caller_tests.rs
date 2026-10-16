@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use br_llm_messages::Entry;
 use serde_json::json;
 
 use crate::graph::{
@@ -14,18 +13,18 @@ use crate::graph::{
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::*;
 use crate::react::test_support::*;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::value::EndLabel;
 
 fn caller_schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("answer"), Kind::Str)
-        .state(key("questions"), Kind::list(Kind::Conversation))
-        .state(key("question"), Kind::Conversation)
-        .state(key("replies"), Kind::list(Kind::Str))
-        .config(key("prompt"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("answer"), Kind::Str)
+        .state_by_name(key("questions"), Kind::list(Kind::Conversation))
+        .state_by_name(key("question"), Kind::Conversation)
+        .state_by_name(key("replies"), Kind::list(Kind::Str))
+        .config_by_name(key("prompt"), Kind::Str)
         .build()
 }
 
@@ -36,8 +35,8 @@ fn caller_config() -> Config {
 }
 
 async fn run_caller(graph: &Graph, state: State) -> State {
-    let (_sender, mut inbox) = channel();
-    match run(graph, &caller_config(), state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    match run(graph, &caller_config(), state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap()
@@ -48,15 +47,14 @@ async fn run_caller(graph: &Graph, state: State) -> State {
 }
 
 #[tokio::test]
-async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_history_and_answer() {
+async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_its_answer() {
     let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("done with echo"),
     ]);
     let call = SubGraph::call(agent(&client).graph().unwrap())
-        .input(key("history"), Input::From(key("chat")))
+        .input(key("opening"), Input::From(key("chat")))
         .config(key("base"), Input::Config(key("prompt")))
-        .output(key("history"), Output::Set(key("chat")))
         .output(key("answer"), Output::Set(key("answer")));
     let graph = GraphBuilder::new(caller_schema())
         .entry(nid("agent"))
@@ -73,7 +71,7 @@ async fn given_the_agent_called_as_a_subgraph_when_run_then_the_caller_gets_hist
         .unwrap();
     let state = run_caller(&graph, state).await;
     assert_eq!(state.str(&key("answer")).unwrap(), "done with echo");
-    assert_eq!(state.conversation(&key("chat")).unwrap().entries().len(), 2);
+    assert_eq!(state.conversation(&key("chat")).unwrap().entries().len(), 1);
     let requests = requests(&client);
     assert_eq!(requests.len(), 2);
     assert!(
@@ -100,19 +98,18 @@ async fn given_a_pass_through_input_mapped_by_the_caller_when_a_tool_runs_then_i
     assert_eq!(
         agent.signature().inputs,
         BTreeMap::from([
-            (key("history"), Kind::Conversation),
+            (key("opening"), Kind::Conversation),
             (key("scope"), Kind::Str),
         ])
     );
     let call = SubGraph::call(agent)
-        .input(key("history"), Input::From(key("chat")))
+        .input(key("opening"), Input::From(key("chat")))
         .input(key("scope"), Input::From(key("folder")))
-        .config(key("base"), Input::Config(key("prompt")))
-        .output(key("history"), Output::Set(key("chat")));
+        .config(key("base"), Input::Config(key("prompt")));
     let schema = Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("folder"), Kind::Str)
-        .config(key("prompt"), Kind::Str)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("folder"), Kind::Str)
+        .config_by_name(key("prompt"), Kind::Str)
         .build();
     let graph = GraphBuilder::new(schema)
         .entry(nid("agent"))
@@ -131,12 +128,9 @@ async fn given_a_pass_through_input_mapped_by_the_caller_when_a_tool_runs_then_i
             (key("folder"), Value::str("notes/2026")),
         ])
         .unwrap();
-    let state = run_caller(&graph, state).await;
-    let Some(Entry::Turn(turn)) = state.conversation(&key("chat")).unwrap().entries().last() else {
-        panic!("expected the agent's turn");
-    };
+    run_caller(&graph, state).await;
     assert_eq!(
-        results_of(turn),
+        sent_results(&requests(&client)[1]),
         [("scope".to_owned(), false, "scope is notes/2026".to_owned())]
     );
 }
@@ -149,7 +143,7 @@ async fn given_the_agent_as_a_map_body_when_run_then_each_question_gets_its_repl
         text_step("two"),
     ]);
     let body = SubGraph::call(agent(&client).graph().unwrap())
-        .input(key("history"), Input::From(key("question")))
+        .input(key("opening"), Input::From(key("question")))
         .config(key("base"), Input::Config(key("prompt")))
         .output(key("answer"), Output::Append(key("replies")));
     let map = Map {

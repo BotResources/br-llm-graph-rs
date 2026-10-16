@@ -8,17 +8,21 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
-    Conversation, Entry, Text, ToolResultBlock, Turn, TurnItem, UserBlock, UserInput, UserSource,
+    Conversation, Entry, InputId, Text, ToolResultBlock, Turn, TurnItem, UserBlock, UserInput,
+    UserSource,
 };
 
 use crate::graph::{Context, Graph, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::source::Source;
-use crate::react::test_support::{EchoTool, author, key, requests, tool_names};
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::react::test_support::{
+    EchoTool, TURN_RANK, author, base, first_turn, in_memory_call, key, requests, tool_names,
+};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -29,11 +33,12 @@ pub(crate) fn nid(name: &str) -> NodeId {
 
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("log"), Kind::list(Kind::Str))
-        .state(key("limited"), Kind::Bool)
-        .config(key("base"), Kind::Str)
-        .config(key("max_rounds"), Kind::Int)
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name_with_default(key(TURN_RANK), Kind::Int, first_turn())
+        .state_by_name(key("log"), Kind::list(Kind::Str))
+        .state_by_name(key("limited"), Kind::Bool)
+        .config_by_name(key("base"), Kind::Str)
+        .config_by_name(key("max_rounds"), Kind::Int)
         .build()
 }
 
@@ -46,6 +51,7 @@ pub(crate) fn config(max_rounds: i64) -> Config {
 
 pub(crate) fn human(body: &str) -> UserInput {
     UserInput::new(
+        InputId::new(format!("i-{body}")).unwrap(),
         UserSource::Human,
         None,
         vec![UserBlock::text(Text::new(body).unwrap())],
@@ -58,12 +64,13 @@ pub(crate) fn state_with(chat: Conversation) -> State {
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
     values.insert(key("limited"), Value::bool(false));
+    values.insert(key(TURN_RANK), first_turn());
     State::new(schema(), values).unwrap()
 }
 
 pub(crate) fn fresh_state() -> State {
     let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
+    chat.push_input(human("hi")).unwrap();
     state_with(chat)
 }
 
@@ -73,14 +80,17 @@ pub(crate) fn declared(client: &MockClient) -> Vec<Vec<String>> {
 }
 
 pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -> Graph {
-    let llm = LlmNode {
+    let llm = LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client: Arc::new(client.clone()),
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(Arc::new(client.clone())),
+        system: base(),
+        history: None,
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: in_memory_call(),
+        seat: None,
     };
     let react = ReactLoop {
         llm: nid("llm"),
@@ -91,6 +101,7 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
             max_rounds,
             on_limit,
         }),
+        thread: None,
     };
     react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
@@ -105,8 +116,8 @@ pub(crate) async fn run_graph(
     state: State,
 ) -> Result<Outcome, RunFailure> {
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
-    run(graph, &config, state, None, &ctx, &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, &config, state, None, &ctx, &mut channel).await
 }
 
 pub(crate) fn finished(result: Result<Outcome, RunFailure>) -> State {

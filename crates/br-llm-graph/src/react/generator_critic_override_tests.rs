@@ -13,8 +13,8 @@ use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::generator_critic_verdict_tests::{critic_at, judged_with, shape_sent};
+use crate::react::given::Prompt;
 use crate::react::seats::CriticSeat;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::verdict::{Verdict, VerdictOverride, VerdictReader};
 
@@ -56,7 +56,7 @@ fn graded_reader() -> VerdictReader {
 
 fn graded(client: &MockClient) -> CriticSeat {
     CriticSeat {
-        thinking_description: Some(Source::State(key("ignored"))),
+        thinking_description: Some(Prompt::from_state(&skey("ignored"))),
         verdict: Some(VerdictOverride {
             shape: graded_shape(),
             reader: Some(graded_reader()),
@@ -89,12 +89,13 @@ async fn given_an_override_with_a_reader_when_the_critic_rejects_then_its_shape_
     );
     let state = ended(call(&graph, question("explain")).await, "validated");
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         [
             "user",
             "writer:draft",
             "reviewer:too short",
-            "writer:better"
+            "writer:better",
+            "reviewer:Accepted."
         ]
     );
     let requests = requests(&critic_client);
@@ -117,12 +118,12 @@ async fn given_a_reader_error_when_the_critic_judges_then_the_run_fails_with_it_
     )
     .graph()
     .unwrap();
-    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
     assert!(
         matches!(error, GraphError::Structured { ref message } if message == "no grade"),
         "{error}"
     );
-    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+    assert_eq!(shape(&conversation), ["user", "writer:draft"]);
 }
 
 #[tokio::test]
@@ -173,7 +174,7 @@ async fn given_an_override_without_a_reader_when_the_critic_judges_then_the_shap
             shape: shape.clone(),
             reader: None,
         }),
-        message_description: Some(Source::State(key("ignored"))),
+        message_description: Some(Prompt::from_state(&skey("ignored"))),
         ..critic(&client)
     };
     let (request, _) = judged_with(seat, &client, Vec::new(), BTreeMap::new()).await;

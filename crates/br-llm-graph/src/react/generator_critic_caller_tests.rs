@@ -4,43 +4,36 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use br_llm_messages::Conversation;
-
 use crate::graph::{
     Always, Graph, GraphBuilder, Input, ItemFailure, Map, Output, SubGraph, Target,
 };
 use crate::react::generator_critic_support::*;
 use crate::react::test_support::*;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::value::EndLabel;
 
 fn caller_schema() -> Schema {
     Schema::builder()
-        .state(key("chat"), Kind::Conversation)
-        .state(key("best"), Kind::Str)
-        .state(key("count"), Kind::Int)
-        .state(key("label"), Kind::Str)
-        .state(key("questions"), Kind::list(Kind::Conversation))
-        .state(key("question"), Kind::Conversation)
-        .state(key("answers"), Kind::list(Kind::Str))
-        .state(key("verdicts"), Kind::list(Kind::Bool))
+        .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name(key("best"), Kind::Str)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("label"), Kind::Str)
+        .state_by_name(key("questions"), Kind::list(Kind::Conversation))
+        .state_by_name(key("question"), Kind::Conversation)
+        .state_by_name(key("answers"), Kind::list(Kind::Str))
+        .state_by_name(key("verdicts"), Kind::list(Kind::Bool))
         .build()
 }
 
 fn duo_call(graph: Arc<Graph>, conversation: &str) -> SubGraph {
-    SubGraph::call(graph)
-        .input(key("conversation"), Input::From(key(conversation)))
-        .input(
-            key("generator_history"),
-            Input::Const(Value::conversation(Conversation::new())),
-        )
+    SubGraph::call(graph).input(key("opening"), Input::From(key(conversation)))
 }
 
 async fn run_caller(graph: &Graph, state: State) -> State {
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut inbox) = channel();
-    match run(graph, &config, state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    match run(graph, &config, state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap()

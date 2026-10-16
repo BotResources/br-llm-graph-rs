@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use super::support::*;
-use crate::{GraphError, NoopObserver, Outcome, State, channel, run};
+use crate::{GraphError, NoopObserver, Outcome, State, control, run};
 
 const FAILING: [&str; 2] = ["item07", "item12"];
 
 async fn uninterrupted() -> State {
     let probe = Arc::new(Probe::default());
     let graph = caller(per_item(&probe)).unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = context(Arc::new(NoopObserver));
     match run(
         &graph,
@@ -16,7 +16,7 @@ async fn uninterrupted() -> State {
         start(&graph, 20),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await
     {
@@ -29,7 +29,7 @@ async fn uninterrupted() -> State {
 async fn given_failing_items_that_propagate_when_resumed_then_finished_items_do_not_run_again() {
     let probe = Probe::failing(&FAILING);
     let graph = caller(per_item(&probe)).unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = context(Arc::new(NoopObserver));
     let failure = run(
         &graph,
@@ -37,7 +37,7 @@ async fn given_failing_items_that_propagate_when_resumed_then_finished_items_do_
         start(&graph, 20),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await
     .err()
@@ -59,7 +59,7 @@ async fn given_failing_items_that_propagate_when_resumed_then_finished_items_do_
     assert!(checkpoint.state.list(&key("analyses")).unwrap().is_empty());
 
     probe.heal();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = context(Arc::new(NoopObserver)).with_pending(checkpoint.pending);
     let outcome = run(
         &graph,
@@ -67,7 +67,7 @@ async fn given_failing_items_that_propagate_when_resumed_then_finished_items_do_
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {
@@ -89,7 +89,7 @@ async fn given_failing_items_that_are_captured_when_mapped_then_the_run_complete
  {
     let probe = Probe::failing(&FAILING);
     let graph = caller(capture_failures(per_item(&probe))).unwrap();
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = context(Arc::new(NoopObserver));
     let outcome = run(
         &graph,
@@ -97,7 +97,7 @@ async fn given_failing_items_that_are_captured_when_mapped_then_the_run_complete
         start(&graph, 20),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

@@ -6,9 +6,9 @@ use futures_util::future::join;
 use crate::graph::{Context, Graph, GraphBuilder, Map, Node};
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
+use crate::run::control::control;
 use crate::run::counted::{Counted, CountedBody};
 use crate::run::gates::{GatedBody, Gates};
-use crate::run::inbox::channel;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;
@@ -71,7 +71,7 @@ fn finished_state(result: Result<Outcome, RunFailure>) -> State {
 }
 
 async fn resume(graph: &Graph, checkpoint: Checkpoint, observer: Arc<dyn Observer>) -> State {
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = ctx(observer).with_pending(checkpoint.pending);
     let result = run(
         graph,
@@ -79,7 +79,7 @@ async fn resume(graph: &Graph, checkpoint: Checkpoint, observer: Arc<dyn Observe
         checkpoint.state,
         Some(checkpoint.cursor),
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     finished_state(result)
@@ -87,9 +87,9 @@ async fn resume(graph: &Graph, checkpoint: Checkpoint, observer: Arc<dyn Observe
 
 async fn uninterrupted(items: &[&str]) -> State {
     let graph = map_then_next(counted(&Arc::new(Counted::default())));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = ctx(Arc::new(NoopObserver));
-    finished_state(run(&graph, &config(), seeded(items), None, &ctx, &mut inbox).await)
+    finished_state(run(&graph, &config(), seeded(items), None, &ctx, &mut channel).await)
 }
 
 const ITEMS: [&str; 5] = ["a", "b", "c", "d", "e"];
@@ -98,9 +98,9 @@ const ITEMS: [&str; 5] = ["a", "b", "c", "d", "e"];
 async fn given_an_item_failing_after_others_finished_when_resumed_then_only_unfinished_items_run() {
     let calls = Counted::failing_on("c");
     let graph = map_then_next(counted(&calls));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = ctx(Arc::new(NoopObserver));
-    let failure = run(&graph, &config(), seeded(&ITEMS), None, &ctx, &mut inbox)
+    let failure = run(&graph, &config(), seeded(&ITEMS), None, &ctx, &mut channel)
         .await
         .err()
         .unwrap();
@@ -133,9 +133,9 @@ async fn given_a_cancel_in_the_middle_of_a_map_when_resumed_then_only_unfinished
         item: key("item"),
         lists: vec![key("outs"), key("log")],
     });
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     let (ctx, config) = (ctx(Arc::new(NoopObserver)), config());
-    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut inbox);
+    let running = run(&graph, &config, seeded(&items), None, &ctx, &mut channel);
     let driver = async {
         gates.release("b").await;
         gates.release("d").await;
@@ -171,7 +171,7 @@ impl Observer for Records {
 async fn given_a_map_superstep_that_completed_when_paused_then_items_were_recorded_and_dropped() {
     let records = Arc::new(Records::default());
     let graph = map_then_next(counted(&Arc::new(Counted::default())));
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     sender.pause();
     let ctx = ctx(records.clone());
     let outcome = run(
@@ -180,7 +180,7 @@ async fn given_a_map_superstep_that_completed_when_paused_then_items_were_record
         seeded(&["a", "b", "c"]),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Paused { checkpoint }) = outcome else {
@@ -205,7 +205,7 @@ async fn given_two_runs_sharing_one_context_when_one_fails_then_the_other_does_n
 {
     let failing = Counted::failing_on("b");
     let ctx = ctx(Arc::new(NoopObserver));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let graph = map_then_next(counted(&failing));
     let failure = run(
         &graph,
@@ -213,7 +213,7 @@ async fn given_two_runs_sharing_one_context_when_one_fails_then_the_other_does_n
         seeded(&["a", "b"]),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await
     .err()
@@ -223,7 +223,7 @@ async fn given_two_runs_sharing_one_context_when_one_fails_then_the_other_does_n
 
     let fresh = Arc::new(Counted::default());
     let graph = map_then_next(counted(&fresh));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let state = finished_state(
         run(
             &graph,
@@ -231,7 +231,7 @@ async fn given_two_runs_sharing_one_context_when_one_fails_then_the_other_does_n
             seeded(&["x", "y"]),
             None,
             &ctx,
-            &mut inbox,
+            &mut channel,
         )
         .await,
     );

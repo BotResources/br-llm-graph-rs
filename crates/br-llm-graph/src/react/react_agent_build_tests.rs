@@ -1,33 +1,30 @@
-//! The build of a ReAct agent: its signature, its configuration keys, and
-//! the keys and node ids it refuses.
+//! The build of a ReAct agent: its signature, its configuration keys, its
+//! round limit's flag and the node ids it refuses.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::GraphError;
 use crate::graph::Limit;
+use crate::react::given::Prompt;
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::*;
 use crate::react::round_limit::OnLimit;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::state::Kind;
 
 #[test]
-fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_limit_flag() {
+fn given_an_agent_when_built_then_its_signature_names_opening_answer_and_the_limit_flag() {
     let client = mock(Vec::new());
     let plain = agent(&client).graph().unwrap();
     let signature = plain.signature();
     assert_eq!(
         signature.inputs,
-        BTreeMap::from([(key("history"), Kind::Conversation)])
+        BTreeMap::from([(key("opening"), Kind::Conversation)])
     );
     assert_eq!(
         signature.outputs,
-        BTreeMap::from([
-            (key("history"), Kind::Conversation),
-            (key("answer"), Kind::Str),
-        ])
+        BTreeMap::from([(key("answer"), Kind::Str)])
     );
     assert_eq!(
         plain.schema().config,
@@ -35,7 +32,7 @@ fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_lim
     );
 
     let flagged = ReactAgent {
-        system: vec![Source::State(key("persona"))],
+        system: Prompt::from_state(&skey("persona")),
         tool_concurrency: Some(Limit::Config(key("width"))),
         ..limited(
             &client,
@@ -51,7 +48,7 @@ fn given_an_agent_when_built_then_its_signature_names_history_answer_and_the_lim
     assert_eq!(
         flagged.signature().inputs,
         BTreeMap::from([
-            (key("history"), Kind::Conversation),
+            (key("opening"), Kind::Conversation),
             (key("persona"), Kind::Str),
         ])
     );
@@ -87,15 +84,15 @@ fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_co
         node: nid("limit"),
         flag: key("topic"),
     };
-    let source = ReactAgent {
-        system: vec![Source::State(key("topic"))],
+    let read = ReactAgent {
+        system: Prompt::from_state(&skey("topic")),
         ..limited(&client, 1, on_limit())
     };
     let input = ReactAgent {
         inputs: vec![(key("topic"), Kind::Bool)],
         ..limited(&client, 1, on_limit())
     };
-    for agent in [source, input] {
+    for agent in [read, input] {
         assert!(matches!(
             agent.graph(),
             Err(GraphError::KeyCollision { ref key }) if *key == self::key("topic")
@@ -107,7 +104,7 @@ fn given_a_limit_flag_that_names_another_key_of_the_graph_when_built_then_key_co
 fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_then_duplicate_node()
 {
     let client = mock(Vec::new());
-    for reserved in ["llm", "answer"] {
+    for reserved in ["enter", "llm", "answer"] {
         let split = ReactAgent {
             tool_nodes: vec![(nid(reserved), vec![Arc::new(EchoTool) as _])],
             ..agent(&client)
@@ -139,104 +136,4 @@ fn given_a_tool_node_or_a_limit_node_named_like_a_node_of_the_agent_when_built_t
         limit_on_tools.graph(),
         Err(GraphError::DuplicateNode { ref id }) if *id == nid("tools")
     ));
-}
-
-#[test]
-fn given_an_enabled_key_that_names_a_key_of_the_graph_when_built_then_key_collision() {
-    for name in ["history", "answer"] {
-        let built = ReactAgent {
-            enabled: Some(key(name)),
-            ..agent(&mock(Vec::new()))
-        }
-        .graph();
-        assert!(
-            matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name))
-        );
-    }
-}
-
-#[test]
-fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_collision() {
-    let flagged = |inputs: Vec<(crate::value::Key, Kind)>| {
-        ReactAgent {
-            system: vec![Source::State(key("persona"))],
-            enabled: Some(key("offered")),
-            inputs,
-            ..limited(
-                &mock(Vec::new()),
-                1,
-                OnLimit::End {
-                    node: nid("limit"),
-                    flag: key("limit_reached"),
-                },
-            )
-        }
-        .graph()
-    };
-    for name in ["history", "answer", "persona", "offered", "limit_reached"] {
-        let built = flagged(vec![(key(name), Kind::Str)]);
-        assert!(
-            matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
-            "{name}"
-        );
-    }
-    let built = flagged(vec![(key("scope"), Kind::Str), (key("scope"), Kind::Int)]);
-    assert!(matches!(built, Err(GraphError::KeyCollision { .. })));
-    assert!(flagged(vec![(key("scope"), Kind::Str)]).is_ok());
-}
-
-#[test]
-fn given_a_key_read_by_several_sources_when_built_then_it_is_declared_once() {
-    let graph = ReactAgent {
-        system: vec![
-            Source::State(key("persona")),
-            Source::Config(key("base")),
-            Source::State(key("persona")),
-            Source::Config(key("base")),
-        ],
-        ..agent(&mock(Vec::new()))
-    }
-    .graph()
-    .unwrap();
-    assert_eq!(
-        graph.signature().inputs,
-        BTreeMap::from([
-            (key("history"), Kind::Conversation),
-            (key("persona"), Kind::Str),
-        ])
-    );
-    assert_eq!(
-        graph.schema().config,
-        BTreeMap::from([(key("base"), Kind::Str)])
-    );
-}
-
-#[test]
-fn given_a_source_that_names_a_key_of_the_graph_when_built_then_key_collision() {
-    let flagged = |source: Source| {
-        ReactAgent {
-            system: vec![source],
-            tool_concurrency: Some(Limit::Config(key("width"))),
-            ..limited(
-                &mock(Vec::new()),
-                1,
-                OnLimit::End {
-                    node: nid("limit"),
-                    flag: key("limit_reached"),
-                },
-            )
-        }
-        .graph()
-    };
-    for name in ["history", "answer", "limit_reached"] {
-        let built = flagged(Source::State(key(name)));
-        assert!(
-            matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key(name)),
-            "{name}"
-        );
-    }
-    let built = flagged(Source::Config(key("width")));
-    assert!(
-        matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key("width"))
-    );
 }

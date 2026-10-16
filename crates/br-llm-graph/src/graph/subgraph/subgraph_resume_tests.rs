@@ -7,7 +7,7 @@ use crate::graph::{Always, Context, FnNode, Graph, GraphBuilder, Map, NodeFuture
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
 use crate::run::counted::{Counted, CountedBody};
-use crate::run::{Outcome, PendingEntry, channel, run};
+use crate::run::{Outcome, PendingEntry, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 
@@ -15,12 +15,12 @@ use crate::update::Update;
 /// then joins the pieces into `summary`. Input `text`, output `summary`.
 fn split_and_join(calls: &Arc<Counted>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("text"), Kind::Str)
-        .state(key("parts"), Kind::list(Kind::Str))
-        .state(key("part"), Kind::Str)
-        .state(key("pieces"), Kind::list(Kind::Str))
-        .state(key("trail"), Kind::list(Kind::Str))
-        .state(key("summary"), Kind::Str)
+        .state_by_name(key("text"), Kind::Str)
+        .state_by_name(key("parts"), Kind::list(Kind::Str))
+        .state_by_name(key("part"), Kind::Str)
+        .state_by_name(key("pieces"), Kind::list(Kind::Str))
+        .state_by_name(key("trail"), Kind::list(Kind::Str))
+        .state_by_name(key("summary"), Kind::Str)
         .build();
     let split = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         let text = s.str(&key("text")).map(str::to_owned);
@@ -156,7 +156,7 @@ async fn given_an_inner_item_failing_inside_a_call_when_resumed_then_finished_ou
 
     calls.heal();
     let checkpoint = failure.checkpoint;
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let ctx = context(Arc::new(NoopObserver)).with_pending(checkpoint.pending);
     let outcome = run(
         &graph,
@@ -164,7 +164,7 @@ async fn given_an_inner_item_failing_inside_a_call_when_resumed_then_finished_ou
         checkpoint.state,
         Some(checkpoint.cursor),
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

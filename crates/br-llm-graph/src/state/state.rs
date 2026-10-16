@@ -5,11 +5,18 @@ use br_llm_messages::Conversation;
 use crate::error::GraphError;
 use crate::state::kind::Kind;
 use crate::state::schema::Schema;
+use crate::state::typed_key::StateKey;
 use crate::state::value::Value;
+use crate::state::value_type::{ValueType, read_as};
 use crate::value::Key;
 
+/// The schema version of a state and a configuration in JSON; another version
+/// is refused on reload (`SchemaMismatch`).
 pub const SCHEMA_VERSION: &str = "br-llm-graph/1";
 
+/// The typed key/value map of one run: a value for every state key of its
+/// schema, and no other key. Nodes never change it: the run alone applies
+/// updates. Its JSON is `{"schema_version", "schema", "values"}`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct State {
     schema_version: &'static str,
@@ -48,6 +55,9 @@ impl<'de> serde::Deserialize<'de> for State {
 }
 
 impl State {
+    /// The state of `values` over `schema`: a missing key is refused
+    /// (`MissingKey`), an undeclared one (`UnknownKey`), a value of another
+    /// kind (`KindMismatch`).
     pub fn new(schema: Schema, values: BTreeMap<Key, Value>) -> Result<Self, GraphError> {
         for (key, value) in &values {
             match schema.state.get(key) {
@@ -84,8 +94,31 @@ impl State {
         }
     }
 
+    /// The schema it was made from.
     pub fn schema(&self) -> &Schema {
         &self.schema
+    }
+
+    /// This state over `schema`, which declares every key of this state's
+    /// schema and maybe more: each key it adds takes its start value.
+    pub(crate) fn extended(mut self, schema: &Schema) -> State {
+        for key in schema.state.keys() {
+            if !self.values.contains_key(key)
+                && let Some(value) = schema.default_value(key)
+            {
+                self.values.insert(key.clone(), value);
+            }
+        }
+        self.schema = schema.clone();
+        self
+    }
+
+    /// This state over `schema`, whose keys are some of this state's: the
+    /// keys it does not declare are dropped.
+    pub(crate) fn restricted(mut self, schema: &Schema) -> State {
+        self.values.retain(|key, _| schema.state.contains_key(key));
+        self.schema = schema.clone();
+        self
     }
 
     pub(crate) fn kind_of(&self, key: &Key) -> Option<&Kind> {
@@ -94,7 +127,7 @@ impl State {
 
     /// The value of `key`: `UnknownKey` when the schema does not declare it,
     /// `MissingKey` when it is declared but holds no value.
-    pub(crate) fn get(&self, key: &Key) -> Result<&Value, GraphError> {
+    pub(crate) fn value(&self, key: &Key) -> Result<&Value, GraphError> {
         if !self.schema.state.contains_key(key) {
             return Err(GraphError::UnknownKey { key: key.clone() });
         }
@@ -107,39 +140,60 @@ impl State {
         &mut self.values
     }
 
+    /// The value of `key`, as its type: an `i64`, an `f64`, a `&str`, a
+    /// `bool`, a `Vec` of the elements' reads, or a `&Conversation`.
+    ///
+    /// The state must declare the key with its kind: a key it does not declare
+    /// is refused (`UnknownKey`), a key declared with another kind too
+    /// (`KindMismatch`), as for a key of another schema.
+    pub fn get<T: ValueType>(&self, key: &StateKey<T>) -> Result<T::Read<'_>, GraphError> {
+        let value = self.value(key.key())?;
+        let declared = self
+            .kind_of(key.key())
+            .ok_or_else(|| GraphError::UnknownKey {
+                key: key.key().clone(),
+            })?;
+        read_as::<T>(key.key(), declared, value)
+    }
+
+    /// The int value of the key named `key`, read by name.
     pub fn int(&self, key: &Key) -> Result<i64, GraphError> {
-        match self.get(key)? {
+        match self.value(key)? {
             Value::Int(v) => Ok(*v),
             other => Err(self.mismatch(key, Kind::Int, other)),
         }
     }
 
+    /// The float value of the key named `key`, read by name.
     pub fn float(&self, key: &Key) -> Result<f64, GraphError> {
-        match self.get(key)? {
+        match self.value(key)? {
             Value::Float(v) => Ok(v.get()),
             other => Err(self.mismatch(key, Kind::Float, other)),
         }
     }
 
+    /// The string value of the key named `key`, read by name.
     pub fn str(&self, key: &Key) -> Result<&str, GraphError> {
-        match self.get(key)? {
+        match self.value(key)? {
             Value::Str(v) => Ok(v),
             other => Err(self.mismatch(key, Kind::Str, other)),
         }
     }
 
+    /// The bool value of the key named `key`, read by name.
     pub fn bool(&self, key: &Key) -> Result<bool, GraphError> {
-        match self.get(key)? {
+        match self.value(key)? {
             Value::Bool(v) => Ok(*v),
             other => Err(self.mismatch(key, Kind::Bool, other)),
         }
     }
 
-    /// The items of a list key. A list read names no element kind: a key that
-    /// holds another kind gives `KindMismatch` whose expected kind is a list
-    /// (of the key's own kind) and whose found tag is the value's.
+    /// The items of the list key named `key`, read by name. A list read
+    /// names no element kind: a key that holds another kind gives
+    /// `KindMismatch` whose expected kind is a list (of the key's own kind)
+    /// and whose found tag is the value's.
     pub fn list(&self, key: &Key) -> Result<&[Value], GraphError> {
-        match self.get(key)? {
+        match self.value(key)? {
             Value::List(items) => Ok(items),
             other => match self.kind_of(key) {
                 Some(declared) => Err(self.mismatch(key, Kind::list(declared.clone()), other)),
@@ -148,13 +202,16 @@ impl State {
         }
     }
 
+    /// The conversation value of the key named `key`, read by name.
     pub fn conversation(&self, key: &Key) -> Result<&Conversation, GraphError> {
-        match self.get(key)? {
+        match self.value(key)? {
             Value::Conversation(conversation) => Ok(conversation),
             other => Err(self.mismatch(key, Kind::Conversation, other)),
         }
     }
 
+    /// This state with `key` set to `value` and nothing else changed
+    /// (`UnknownKey`, `KindMismatch`).
     pub fn derive(&self, key: &Key, value: Value) -> Result<State, GraphError> {
         let mut derived = self.clone();
         let kind = derived

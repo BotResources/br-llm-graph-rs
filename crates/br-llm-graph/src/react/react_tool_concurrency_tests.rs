@@ -5,20 +5,22 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_messages::{
-    AssistantBlock, Conversation, Entry, Step, StopReason, Text, ToolCall, ToolCallId, ToolName,
-    ToolResultBlock, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
+    AssistantBlock, Conversation, Entry, InputId, Step, StopReason, Text, ToolCall, ToolCallId,
+    ToolName, ToolResultBlock, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
 };
 use serde_json::{Value as Json, json};
 
 use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::{Model, Prompt};
 use crate::react::react_agent::ReactAgent;
-use crate::react::source::Source;
-use crate::react::test_support::{author, calls_step, config, key, mock, schema, spec, text_step};
+use crate::react::test_support::{
+    TURN_RANK, author, calls_step, config, first_turn, key, mock, schema, spec, text_step,
+};
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, State, Value};
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -83,18 +85,21 @@ fn four_calls_pending() -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-measure").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("measure").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat.push_turn(Turn::new(TurnId::new("t0").unwrap(), Some(author()), step))
         .unwrap();
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
     values.insert(key("enabled"), Value::list(Vec::new()));
+    values.insert(key(TURN_RANK), first_turn());
     State::new(schema(), values).unwrap()
 }
 
@@ -109,6 +114,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
         enabled: None,
         gates: Arc::new(SharedGates::default()),
+        durable: None,
     };
     let graph = GraphBuilder::new(schema())
         .entry(NodeId::new("tools").unwrap())
@@ -120,7 +126,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         .build()
         .unwrap();
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
 
     let outcome = run(
         &graph,
@@ -128,7 +134,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         four_calls_pending(),
         None,
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await
     .map_err(|f| f.error)
@@ -162,8 +168,9 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
     steps.extend(vec![text_step("measured"); runs]);
     ReactAgent {
         author: author(),
-        client: Arc::new(mock(steps)),
-        system: vec![Source::Const("Measure.".to_owned())],
+        model: Model::client(Arc::new(mock(steps))),
+        system: Prompt::text("Measure."),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: vec![left.clone(), right.clone()],
         tool_nodes: vec![
@@ -180,6 +187,7 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
         round_limit: None,
         enabled: None,
         inputs: Vec::new(),
+        thread_store: None,
     }
     .graph()
     .unwrap()
@@ -187,21 +195,24 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
 
 async fn run_split_agent(graph: &crate::graph::Graph) {
     let mut history = Conversation::new();
-    history.push_input(
-        UserInput::new(
-            UserSource::Human,
-            None,
-            vec![UserBlock::text(Text::new("measure").unwrap())],
+    history
+        .push_input(
+            UserInput::new(
+                InputId::new("i-measure").unwrap(),
+                UserSource::Human,
+                None,
+                vec![UserBlock::text(Text::new("measure").unwrap())],
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    );
+        .unwrap();
     let state = graph
-        .start_state([(key("history"), Value::conversation(history))])
+        .start_state([(key("opening"), Value::conversation(history))])
         .unwrap();
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()));
-    let (_sender, mut inbox) = channel();
-    let outcome = run(graph, &config, state, None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(graph, &config, state, None, &ctx, &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();

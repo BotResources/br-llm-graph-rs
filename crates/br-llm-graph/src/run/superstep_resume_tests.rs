@@ -7,20 +7,15 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use futures_util::future::join;
 
 use crate::graph::{Context, FnEdge, FnNode, Graph, GraphBuilder, Map, Node, NodeFuture};
-use crate::observe::NoopObserver;
 use crate::run::Checkpoint;
+use crate::run::control::control;
 use crate::run::counted::{Counted, CountedBody};
 use crate::run::gates::{GatedBody, Gates};
-use crate::run::inbox::channel;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::{Config, State, Value};
 use crate::update::Update;
-
-fn ctx() -> Context {
-    crate::testkit::context(Arc::new(NoopObserver))
-}
 
 /// Appends `mark` to `log` and counts its calls.
 fn counted_log(mark: &'static str, calls: &Arc<AtomicUsize>) -> impl Node + use<> {
@@ -74,15 +69,15 @@ async fn first_run(graph: &Graph) -> RunFailure {
 }
 
 async fn first_run_from(graph: &Graph, state: State) -> RunFailure {
-    let (_sender, mut inbox) = channel();
-    run(graph, &config(), state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    run(graph, &config(), state, None, &ctx(), &mut channel)
         .await
         .err()
         .unwrap()
 }
 
 async fn resume(graph: &Graph, checkpoint: Checkpoint) -> State {
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = ctx().with_pending(checkpoint.pending);
     let outcome = run(
         graph,
@@ -90,7 +85,7 @@ async fn resume(graph: &Graph, checkpoint: Checkpoint) -> State {
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     match outcome {
@@ -210,9 +205,9 @@ async fn given_a_cancel_while_a_sibling_runs_when_resumed_then_the_finished_node
             value: Value::str("slow"),
         }])
         .unwrap();
-    let (sender, mut inbox) = channel();
+    let (sender, mut channel) = control();
     let (ctx, config) = (ctx(), config());
-    let running = run(&graph, &config, state, None, &ctx, &mut inbox);
+    let running = run(&graph, &config, state, None, &ctx, &mut channel);
     let driver = async {
         gates.until(|g| g.started().len() == 1).await;
         sender.cancel();

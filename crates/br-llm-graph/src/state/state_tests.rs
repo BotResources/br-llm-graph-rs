@@ -12,8 +12,8 @@ fn key(name: &str) -> Key {
 
 fn schema() -> Schema {
     Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("items"), Kind::list(Kind::Str))
         .build()
 }
 
@@ -119,7 +119,7 @@ fn given_an_undeclared_key_when_read_then_unknown_key_for_every_typed_read() {
         state.bool(&stray).err(),
         state.list(&stray).err(),
         state.conversation(&stray).err(),
-        state.get(&stray).err(),
+        state.value(&stray).err(),
     ];
     for error in reads {
         assert!(

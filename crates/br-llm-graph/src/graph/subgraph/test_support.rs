@@ -5,7 +5,7 @@ use crate::error::GraphError;
 use crate::graph::subgraph::{Input, Output, SubGraph};
 use crate::graph::{Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Target};
 use crate::observe::{NoopObserver, Observer};
-use crate::run::{Outcome, RunFailure, channel, run};
+use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -28,11 +28,11 @@ pub(crate) fn end(label: &str) -> Target {
 /// `count`. Configuration: `rounds`.
 pub(crate) fn refine_graph() -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("text"), Kind::Str)
-        .state(key("count"), Kind::Int)
-        .state(key("flag"), Kind::Bool)
-        .state(key("answer"), Kind::Str)
-        .config(key("rounds"), Kind::Int)
+        .state_by_name(key("text"), Kind::Str)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("flag"), Kind::Bool)
+        .state_by_name(key("answer"), Kind::Str)
+        .config_by_name(key("rounds"), Kind::Int)
         .build();
     let draft = FnNode::new(|s: &State, c: &Config, _x: &Context| -> NodeFuture<'_> {
         Box::pin(async move {
@@ -77,20 +77,20 @@ pub(crate) fn refine_graph() -> Arc<Graph> {
 /// keys of the refinement loop.
 pub(crate) fn parent_schema() -> Schema {
     Schema::builder()
-        .state(key("question"), Kind::Str)
-        .state(key("count"), Kind::Int)
-        .state(key("flag"), Kind::Bool)
-        .state(key("result"), Kind::Str)
-        .state(key("steps"), Kind::Int)
-        .state(key("results"), Kind::list(Kind::Str))
-        .state(key("label"), Kind::Str)
-        .state(key("labels"), Kind::list(Kind::Str))
-        .state(key("items"), Kind::list(Kind::Str))
-        .state(key("item"), Kind::Str)
-        .state(key("counts"), Kind::list(Kind::Int))
-        .state(key("reasons"), Kind::list(Kind::Str))
-        .config(key("rounds"), Kind::Int)
-        .config(key("tone"), Kind::Str)
+        .state_by_name(key("question"), Kind::Str)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("flag"), Kind::Bool)
+        .state_by_name(key("result"), Kind::Str)
+        .state_by_name(key("steps"), Kind::Int)
+        .state_by_name(key("results"), Kind::list(Kind::Str))
+        .state_by_name(key("label"), Kind::Str)
+        .state_by_name(key("labels"), Kind::list(Kind::Str))
+        .state_by_name(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("counts"), Kind::list(Kind::Int))
+        .state_by_name(key("reasons"), Kind::list(Kind::Str))
+        .config_by_name(key("rounds"), Kind::Int)
+        .config_by_name(key("tone"), Kind::Str)
         .build()
 }
 
@@ -142,8 +142,8 @@ pub(crate) async fn run_parent(
     config: &Config,
     observer: Arc<dyn Observer>,
 ) -> Result<Outcome, RunFailure> {
-    let (_sender, mut inbox) = channel();
-    run(graph, config, state, None, &context(observer), &mut inbox).await
+    let (_sender, mut channel) = control();
+    run(graph, config, state, None, &context(observer), &mut channel).await
 }
 
 pub(crate) async fn finished(graph: &Graph, question: &str, rounds: i64) -> State {
@@ -159,8 +159,8 @@ pub(crate) async fn finished(graph: &Graph, question: &str, rounds: i64) -> Stat
 /// `bad`, with the message `cannot handle <text>`.
 pub(crate) fn picky_graph() -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("text"), Kind::Str)
-        .state(key("answer"), Kind::Str)
+        .state_by_name(key("text"), Kind::Str)
+        .state_by_name(key("answer"), Kind::Str)
         .build();
     let work = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         let text = s.str(&key("text")).map(str::to_owned);

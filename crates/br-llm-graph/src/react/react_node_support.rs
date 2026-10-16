@@ -6,19 +6,21 @@ use std::sync::Arc;
 
 use br_llm_clients_core::{Client, OutputMode};
 use br_llm_messages::{
-    Conversation, Entry, Step, Text, Turn, TurnId, TurnItem, UserBlock, UserInput, UserSource,
+    Conversation, Entry, InputId, Step, Text, Turn, TurnId, TurnItem, UserBlock, UserInput,
+    UserSource,
 };
 
 use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::{Model, Prompt};
 use crate::react::llm_node::LlmNode;
-use crate::react::source::Source;
+use crate::react::react_agent::ReactAgent;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
 use crate::run::Outcome;
-use crate::run::channel;
+use crate::run::control;
 use crate::run::run;
 use crate::state::{State, Value};
 use crate::testkit::SeqIds;
@@ -45,19 +47,23 @@ pub(crate) fn tool_node(
         max_concurrency,
         enabled,
         gates: Arc::new(SharedGates::default()),
+        durable: None,
     }
 }
 
 /// A model-call step of the agent on `chat`, without tools.
-pub(crate) fn llm_node(client: Arc<dyn Client>, system: Vec<Source>) -> LlmNode {
-    LlmNode {
+pub(crate) fn llm_node(client: Arc<dyn Client>, system: Prompt<ReactAgent>) -> LlmNode<ReactAgent> {
+    LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client,
+        model: Model::client(client),
         system,
+        history: None,
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: in_memory_call(),
+        seat: None,
     }
 }
 
@@ -65,18 +71,21 @@ pub(crate) fn state_with_call(step: Step) -> State {
     let mut chat = Conversation::new();
     chat.push_input(
         UserInput::new(
+            InputId::new("i-hi").unwrap(),
             UserSource::Human,
             None,
             vec![UserBlock::text(Text::new("hi").unwrap())],
         )
         .unwrap(),
-    );
+    )
+    .unwrap();
     chat.push_turn(Turn::new(TurnId::new("t1").unwrap(), Some(author()), step))
         .unwrap();
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
     values.insert(key("enabled"), Value::list(Vec::new()));
+    values.insert(key(TURN_RANK), first_turn());
     State::new(schema(), values).unwrap()
 }
 
@@ -90,8 +99,8 @@ pub(crate) async fn run_tool_node(state: State, tools: Vec<Arc<dyn Tool>>) -> St
         )
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), state, None, &ctx(), &mut inbox)
+    let (_sender, mut channel) = control();
+    let outcome = run(&graph, &config(), state, None, &ctx(), &mut channel)
         .await
         .map_err(|f| f.error)
         .unwrap();

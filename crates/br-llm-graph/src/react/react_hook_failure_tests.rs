@@ -11,7 +11,7 @@ use crate::graph::Context;
 use crate::observe::NoopObserver;
 use crate::react::react_hook_support::*;
 use crate::react::test_support::*;
-use crate::run::{RunFailure, channel, run};
+use crate::run::{RunFailure, control, run};
 use crate::testkit::SeqIds;
 
 /// The error the tool node returned, read as the hook's `PolicyDown`.
@@ -213,14 +213,14 @@ async fn given_a_node_failed_by_a_hook_when_the_run_is_resumed_then_its_calls_ar
 
     let ctx = Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
         .with_pending(failure.checkpoint.pending);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = run(
         &graph,
         &config(),
         failure.checkpoint.state,
         Some(failure.checkpoint.cursor),
         &ctx,
-        &mut inbox,
+        &mut channel,
     )
     .await;
 

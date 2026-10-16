@@ -5,7 +5,7 @@ use br_llm_clients_core::ReasoningLevel;
 use br_llm_clients_mock::{Gate, Reply, ReplySource, Rule, StateKind};
 
 use crate::error::GraphError;
-use crate::graph::{Always, CheckSite, GraphBuilder, Map, Node, Output, Target};
+use crate::graph::{Always, CheckSite, GraphBuilder, Map, Node, Target};
 use crate::react::llm_call_support::*;
 use crate::react::test_support::{key, mock, mock_at, text_step};
 use crate::state::Value;
@@ -23,7 +23,7 @@ async fn given_an_append_call_as_a_map_body_when_run_then_one_call_per_item_appe
     let client = mock_at(ReasoningLevel::Medium);
     client.push_rule(Rule::new(|call| asked(call.request()) == "beta", held));
     client.set_fallback(echoing());
-    let graph = mapped(summarize(&client, Output::Append(key("summaries"))), None);
+    let graph = mapped(summarize(&client, append_summaries()), None);
     let release = async {
         gate.wait_for_waiting(1).await;
         client
@@ -61,10 +61,7 @@ async fn given_a_map_concurrency_limit_when_the_calls_run_then_at_most_that_many
             .gate_at(0, &held)
             .build()
     }));
-    let graph = mapped(
-        summarize(&client, Output::Append(key("summaries"))),
-        Some(2),
-    );
+    let graph = mapped(summarize(&client, append_summaries()), Some(2));
     let check = async {
         gate.wait_for_waiting(2).await;
         let started = client.calls();
@@ -93,7 +90,7 @@ fn given_a_set_output_as_a_map_body_when_built_then_map_body_set() {
     let map = Map {
         list: key("docs"),
         item: key("doc"),
-        body: Box::new(summarize(&client, Output::Set(key("summary")))),
+        body: Box::new(summarize(&client, set_summary())),
         max_concurrency: None,
         on_item_failure: Default::default(),
     };
@@ -111,7 +108,7 @@ fn given_a_set_output_as_a_map_body_when_built_then_map_body_set() {
     ));
     // Positive control: the same call as a node of the graph.
     assert!(
-        summarize(&client, Output::Set(key("summary")))
+        summarize(&client, set_summary())
             .check(&schema(), CheckSite::Graph)
             .is_ok()
     );

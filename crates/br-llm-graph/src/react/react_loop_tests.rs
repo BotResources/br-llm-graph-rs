@@ -4,13 +4,14 @@ use serde_json::json;
 
 use crate::graph::{Context, GraphBuilder, Target};
 use crate::observe::NoopObserver;
+use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
-use crate::react::source::Source;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
 use crate::run::Outcome;
-use crate::run::channel;
+use crate::run::control;
 use crate::run::run;
 use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
@@ -24,15 +25,21 @@ fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
-fn llm_node(client: Arc<dyn br_llm_clients_core::Client>, tools: Vec<Arc<dyn Tool>>) -> LlmNode {
-    LlmNode {
+fn llm_node(
+    client: Arc<dyn br_llm_clients_core::Client>,
+    tools: Vec<Arc<dyn Tool>>,
+) -> LlmNode<ReactAgent> {
+    LlmNode::<ReactAgent> {
         key: key("chat"),
         author: author(),
-        client,
-        system: vec![Source::Config(key("base"))],
+        model: Model::client(client),
+        system: base(),
+        history: None,
         tools,
         enabled: None,
         output_mode: OutputMode::Plain,
+        call: in_memory_call(),
+        seat: None,
     }
 }
 
@@ -49,6 +56,7 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
@@ -56,11 +64,18 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
         .build()
         .unwrap();
 
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), seeded_state(), None, &ctx(), &mut inbox)
-        .await
-        .map_err(|f| f.error)
-        .unwrap();
+    let (_sender, mut channel) = control();
+    let outcome = run(
+        &graph,
+        &config(),
+        seeded_state(),
+        None,
+        &ctx(),
+        &mut channel,
+    )
+    .await
+    .map_err(|f| f.error)
+    .unwrap();
     let Outcome::Finished { state, end } = outcome else {
         panic!("expected finished");
     };
@@ -90,17 +105,25 @@ async fn given_two_tool_nodes_with_parallel_calls_when_run_then_both_run() {
         after: Target::End(EndLabel::new("done").unwrap()),
         tool_concurrency: None,
         round_limit: None,
+        thread: None,
     };
     let graph = react
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
         .unwrap()
         .build()
         .unwrap();
-    let (_sender, mut inbox) = channel();
-    let outcome = run(&graph, &config(), seeded_state(), None, &ctx(), &mut inbox)
-        .await
-        .map_err(|f| f.error)
-        .unwrap();
+    let (_sender, mut channel) = control();
+    let outcome = run(
+        &graph,
+        &config(),
+        seeded_state(),
+        None,
+        &ctx(),
+        &mut channel,
+    )
+    .await
+    .map_err(|f| f.error)
+    .unwrap();
     let Outcome::Finished { state, .. } = outcome else {
         panic!("expected finished");
     };

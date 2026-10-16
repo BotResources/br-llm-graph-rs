@@ -6,7 +6,7 @@ use crate::error::GraphError;
 use crate::graph::{Context, FnNode, Graph, GraphBuilder, NodeFuture};
 use crate::observe::NoopObserver;
 use crate::run::test_support::{config, edge, end, key, nid, noop_node, schema};
-use crate::run::{Outcome, channel, run};
+use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
@@ -59,9 +59,9 @@ fn given_no_signature_when_start_state_with_nothing_then_every_key_neutral() {
 #[test]
 fn given_explicit_default_when_start_state_then_key_starts_with_it() {
     let schema = Schema::builder()
-        .state_with_default(key("limit"), Kind::Int, Value::int(3))
-        .state(key("ratio"), Kind::Float)
-        .state(key("flag"), Kind::Bool)
+        .state_by_name_with_default(key("limit"), Kind::Int, Value::int(3))
+        .state_by_name(key("ratio"), Kind::Float)
+        .state_by_name(key("flag"), Kind::Bool)
         .build();
     let graph = graph_with(schema, &[]);
     let state = graph.start_state(Vec::new()).unwrap();
@@ -142,9 +142,9 @@ async fn given_state_from_start_state_when_run_then_nodes_read_the_inputs() {
         Arc::new(NoopObserver),
         Arc::new(crate::testkit::SeqIds::new()),
     );
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let Ok(Outcome::Finished { state, .. }) =
-        run(&graph, &config(), state, None, &ctx, &mut inbox).await
+        run(&graph, &config(), state, None, &ctx, &mut channel).await
     else {
         panic!("expected finished");
     };

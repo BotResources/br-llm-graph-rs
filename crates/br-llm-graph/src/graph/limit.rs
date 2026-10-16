@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use crate::error::GraphError;
-use crate::state::{Config, Kind, Schema};
+use crate::state::{Config, ConfigKey, Kind, Schema};
 use crate::value::Key;
 
 /// A positive bound, given as a fixed number or read from an int
@@ -9,11 +9,18 @@ use crate::value::Key;
 /// counterpart that may be zero.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Limit {
+    /// A number fixed when the graph is built.
     Fixed(NonZeroUsize),
+    /// The value of an int configuration key, read at run time.
     Config(Key),
 }
 
 impl Limit {
+    /// A limit read at run time from the int configuration key `key`.
+    pub fn config(key: &ConfigKey<i64>) -> Self {
+        Limit::Config(key.key().clone())
+    }
+
     /// Checks the limit against the schema of a graph: a `Config` key must be
     /// an int configuration key (`LimitKeyMismatch`); a fixed number always
     /// passes. A node of the caller that holds a `Limit` calls it from its own
@@ -24,7 +31,7 @@ impl Limit {
     /// use br_llm_graph::{GraphError, Key, Kind, Limit, Schema};
     ///
     /// let width = Key::new("width").unwrap();
-    /// let schema = Schema::builder().config(width.clone(), Kind::Str).build();
+    /// let schema = Schema::builder().config_by_name(width.clone(), Kind::Str).build();
     /// assert!(matches!(
     ///     Limit::Config(width).check(&schema),
     ///     Err(GraphError::LimitKeyMismatch { .. })
@@ -50,7 +57,7 @@ impl Limit {
     /// use br_llm_graph::{Config, Key, Kind, Limit, Schema, Value};
     ///
     /// let width = Key::new("width").unwrap();
-    /// let schema = Schema::builder().config(width.clone(), Kind::Int).build();
+    /// let schema = Schema::builder().config_by_name(width.clone(), Kind::Int).build();
     /// let config = Config::new(&schema, BTreeMap::from([(width.clone(), Value::int(4))])).unwrap();
     /// assert_eq!(Limit::Config(width).resolve(&config).unwrap().get(), 4);
     /// ```

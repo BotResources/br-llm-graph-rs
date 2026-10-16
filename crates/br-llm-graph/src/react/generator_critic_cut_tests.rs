@@ -10,6 +10,7 @@ use br_llm_messages::{AssistantBlock, ModelId, Step, StopReason, Text, Usage};
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
+use crate::react::given::Model;
 use crate::react::seats::GeneratorSeat;
 use crate::react::test_support::*;
 
@@ -83,7 +84,7 @@ async fn given_a_step_without_model_and_the_limits_stop_reason_from_a_generator_
     let critic_client = mock(vec![verdict(true, "")]);
     let graph = GeneratorCritic::new(
         GeneratorSeat {
-            client: Arc::new(LaxClient::new(vec![lookalike(None)])),
+            model: Model::client(Arc::new(LaxClient::new(vec![lookalike(None)]))),
             ..generator(&mock(Vec::new()))
         },
         critic(&critic_client),
@@ -115,7 +116,10 @@ async fn given_a_step_without_model_but_with_a_usage_and_the_limits_stop_reason_
     let critic_client = mock(vec![verdict(true, "")]);
     let graph = GeneratorCritic::new(
         GeneratorSeat {
-            client: Arc::new(LaxClient::new(vec![lookalike_with(Some(usage), None)])),
+            model: Model::client(Arc::new(LaxClient::new(vec![lookalike_with(
+                Some(usage),
+                None,
+            )]))),
             ..cut_generator(&mock(Vec::new()))
         },
         critic(&critic_client),
@@ -155,12 +159,13 @@ async fn given_a_generation_the_end_limit_cut_when_run_then_its_closing_step_is_
     let state = ended(start(&graph, Vec::new()).await, "validated");
 
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         [
             "user".to_owned(),
-            format!("writer:{CUT}"),
+            format!("writer:[5 items] {CUT}"),
             empty_critique(),
-            "writer:full".to_owned()
+            "writer:full".to_owned(),
+            "reviewer:Accepted.".to_owned()
         ]
     );
     assert_eq!(requests(&critic_client).len(), 1);

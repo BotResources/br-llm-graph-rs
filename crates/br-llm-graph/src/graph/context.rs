@@ -1,17 +1,13 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use br_llm_messages::TurnId;
-
+use crate::graph::ids::IdSource;
+use crate::graph::run_local::RunLocal;
 use crate::observe::Observer;
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
 use crate::run::{PendingEntry, PendingWrites};
 use crate::state::Value;
 use crate::update::Update;
 use crate::value::NodeId;
-
-pub trait IdSource: Send + Sync {
-    fn turn_id(&self) -> TurnId;
-}
 
 /// What the engine hands a node besides state and configuration: the
 /// observer, the id source, where the node runs (run id and occurrence), and
@@ -24,17 +20,25 @@ pub trait IdSource: Send + Sync {
 /// the pending writes this context holds (empty unless set with
 /// `with_pending`).
 ///
+/// What a part of the library keeps for one run (the client of an agent's
+/// turn) lives in the run's own slots: every run, a nested one included,
+/// starts with empty slots, shared by the contexts of its nodes and map
+/// items, and drops them when it returns.
+///
 /// Pending writes belong to the run being resumed. A called graph restarts
 /// whole: inside it recording is off, for every context derived from it, so
 /// `record` and `record_item` do nothing and `recorded` and `recorded_item`
 /// find nothing.
 #[derive(Clone)]
 pub struct Context {
+    /// The observer every event of the run reaches.
     pub observer: Arc<dyn Observer>,
+    /// The host's id source: every new thread id and turn id.
     pub ids: Arc<dyn IdSource>,
     origin: Origin,
     pending: Arc<Mutex<PendingWrites>>,
     recording: bool,
+    local: RunLocal,
 }
 
 impl Context {
@@ -47,9 +51,11 @@ impl Context {
             origin: Origin::default(),
             pending: Arc::default(),
             recording: true,
+            local: RunLocal::default(),
         }
     }
 
+    /// This context with the run id `run`, which nested runs share.
     pub fn with_run_id(mut self, run: RunId) -> Self {
         self.origin.run = run;
         self
@@ -62,14 +68,17 @@ impl Context {
         self
     }
 
+    /// Its run id and occurrence.
     pub fn origin(&self) -> &Origin {
         &self.origin
     }
 
+    /// Its run id.
     pub fn run_id(&self) -> &RunId {
         &self.origin.run
     }
 
+    /// Its occurrence: the node's, in a node's context.
     pub fn occurrence(&self) -> &OccurrenceKey {
         &self.origin.occurrence
     }
@@ -183,6 +192,27 @@ impl Context {
         let mut context = self.clone().with_pending(self.pending());
         context.recording = true;
         context
+    }
+
+    /// This context with an empty recorder of its own, recording off: a run
+    /// that records nothing and reuses nothing.
+    pub(crate) fn unrecorded(&self) -> Context {
+        let mut context = self.clone().with_pending(PendingWrites::default());
+        context.recording = false;
+        context
+    }
+
+    /// This context with empty run slots of its own: the context a run,
+    /// nested or not, gives its nodes.
+    pub(crate) fn for_run(&self) -> Context {
+        let mut context = self.clone();
+        context.local = RunLocal::default();
+        context
+    }
+
+    /// The slot of type `T` of the run this context belongs to.
+    pub(crate) fn run_local<T: std::any::Any + Default + Send + Sync>(&self) -> Arc<T> {
+        self.local.slot()
     }
 
     fn store(&self) -> MutexGuard<'_, PendingWrites> {

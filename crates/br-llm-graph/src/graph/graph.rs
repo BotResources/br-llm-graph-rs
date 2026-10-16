@@ -5,7 +5,7 @@ use crate::graph::edge::Edge;
 use crate::graph::node::Node;
 use crate::graph::signature::Signature;
 use crate::run::Cursor;
-use crate::state::{Config, Schema, State, Value};
+use crate::state::{Config, Kind, Schema, State, Value};
 use crate::value::{Key, NodeId};
 
 pub(crate) struct NodeEntry {
@@ -13,8 +13,15 @@ pub(crate) struct NodeEntry {
     pub is_join: bool,
 }
 
+/// A built graph: a schema, an entry, nodes and one edge per node, and a
+/// signature. It does not change and serves any number of runs.
 pub struct Graph {
     schema: Schema,
+    /// The private keys of the graph, beside `schema`: see `private.rs`.
+    private: BTreeMap<Key, Kind>,
+    /// `schema` and the private keys: the schema its nodes check against and
+    /// the state of its runs.
+    run_schema: Schema,
     signature: Signature,
     entry: NodeId,
     order: Vec<NodeId>,
@@ -24,6 +31,8 @@ pub struct Graph {
 
 pub(crate) struct Parts {
     pub schema: Schema,
+    pub private: BTreeMap<Key, Kind>,
+    pub run_schema: Schema,
     pub signature: Signature,
     pub entry: NodeId,
     pub order: Vec<NodeId>,
@@ -35,6 +44,8 @@ impl Graph {
     pub(crate) fn assemble(parts: Parts) -> Self {
         Self {
             schema: parts.schema,
+            private: parts.private,
+            run_schema: parts.run_schema,
             signature: parts.signature,
             entry: parts.entry,
             order: parts.order,
@@ -43,14 +54,30 @@ impl Graph {
         }
     }
 
+    /// The schema of the states and configurations given to and given back
+    /// by a run of this graph. A private key of the graph (an agent's
+    /// `conversation`) is not part of it.
     pub fn schema(&self) -> &Schema {
         &self.schema
     }
 
+    /// The schema of the state a run of this graph works on: `schema` and
+    /// the graph's private keys.
+    pub(crate) fn run_schema(&self) -> &Schema {
+        &self.run_schema
+    }
+
+    /// The private keys of the graph, with their kinds.
+    pub(crate) fn private(&self) -> &BTreeMap<Key, Kind> {
+        &self.private
+    }
+
+    /// The keys it takes as inputs and gives back as outputs.
     pub fn signature(&self) -> &Signature {
         &self.signature
     }
 
+    /// Its entry node.
     pub fn entry(&self) -> &NodeId {
         &self.entry
     }
@@ -119,6 +146,7 @@ impl Graph {
         self.edges.get(id).map(|edge| edge.as_ref())
     }
 
+    /// Whether it holds the node `id`.
     pub fn contains(&self, id: &NodeId) -> bool {
         self.nodes.contains_key(id)
     }
@@ -136,6 +164,7 @@ impl Graph {
         Ok(())
     }
 
+    /// Refuses a cursor naming a node the graph does not hold (`UnknownNode`).
     pub fn validate_cursor(&self, cursor: &Cursor) -> Result<(), GraphError> {
         for id in cursor.active.iter().chain(cursor.deferred.iter()) {
             if !self.contains(id) {

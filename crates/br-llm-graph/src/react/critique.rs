@@ -1,231 +1,137 @@
-//! The critic's step of the generator-critic graph: what the critic reads,
-//! its call, and the critique it appends.
+//! The critic's step of the generator-critic: its call, asked again while
+//! its verdict cannot be read and retries are left, and the acceptance or
+//! the critique it records.
 
-use std::sync::Arc;
-
-use br_llm_clients_core::{Client, ClientRequest};
-use br_llm_messages::{
-    AssistantBlock, Author, Conversation, Entry, Step, StopReason, Text, Turn, WireMessage,
-    WireUserBlock,
-};
+use br_llm_clients_core::{ClientRequest, ReasoningLevel};
+use br_llm_messages::{Text, WireMessage, WireUserBlock};
 
 use crate::error::GraphError;
-use crate::graph::{Context, Node, NodeFuture};
-use crate::react::generator_critic_routing::last_answer;
-use crate::react::helpers::{answer_text, complete, final_step, wire};
-use crate::react::round_limit::closes_on_limit;
-use crate::react::source::Source;
-use crate::react::verdict::{Verdict, VerdictForm};
-use crate::state::{Config, State, Value};
-use crate::update::Update;
+use crate::graph::{Context, Count, Node, NodeFuture};
+use crate::react::critic_view::CriticView;
+use crate::react::critic_writer::record;
+use crate::react::duo::TurnKind;
+use crate::react::given::{CriticFacts, Model, Prompt};
+use crate::react::helpers::{answer_text, final_step};
+use crate::react::seats::CriticSeat;
+use crate::react::sink::complete_in;
+use crate::react::verdict::{Reading, Verdict, VerdictForm};
+use crate::state::{Config, State};
 use crate::value::Key;
 
 /// The request that follows the wrapped answer, by default.
 pub(crate) const REVIEW_REQUEST: &str = "Please evaluate the generator's response above.";
 
-/// The critique that rejects an empty answer, by default.
-pub(crate) const EMPTY_ANSWER_CRITIQUE: &str = "The answer was empty. Write a complete answer.";
+/// The acceptance recorded for a valid verdict whose message is blank.
+pub(crate) const ACCEPTED_TEXT: &str = "Accepted.";
 
-/// Asks the critic for a verdict on `conversation`, or rejects an empty
-/// answer without asking. A rejection appends its message, as a turn of the
-/// critic, to both histories.
+/// Asks the critic for a verdict on the last generation of the call, and
+/// records it: a valid verdict as an acceptance (its message, or `Accepted.`
+/// when blank, stop reason `other(accepted)`), a rejection as a critique
+/// (its message, `end_turn`).
+///
+/// Each call is built for the critic's context, its attempt from 1: the
+/// client `model` gives, the system text (always sent: a text that resolves
+/// to a blank one fails the node with `Message`, before the call), what the
+/// critic reads, no tools, and the structured mode with the verdict shape,
+/// `thinking` in it exactly when that client's `ReasoningLevel` is `Off`.
+/// Its stream events carry the key `critic`, and reach no thread.
+///
+/// An unreadable verdict is asked again while `retries` are left: the same
+/// request for the next attempt, then a user message saying why the reply
+/// could not be read. After the last retry the node fails with `Structured`,
+/// and nothing is recorded; a retry is never recorded.
 pub(crate) struct CritiqueNode {
-    pub(crate) conversation: Key,
-    pub(crate) generator: Author,
-    pub(crate) generator_history: Key,
-    pub(crate) validated: Key,
-    pub(crate) author: Author,
-    pub(crate) client: Arc<dyn Client>,
-    pub(crate) system: Source,
-    pub(crate) review_request: Source,
-    pub(crate) empty_answer_critique: Source,
+    pub(crate) model: Model<CriticSeat>,
+    pub(crate) system: Prompt<CriticSeat>,
+    pub(crate) view: CriticView,
     pub(crate) verdict: VerdictForm,
-    /// Whether the generator's round limit is `OnLimit::End`, the only one
-    /// that cuts a generation.
-    pub(crate) limit_ends: bool,
+    pub(crate) retries: Count,
+    /// The key the critic's stream events carry: `critic`.
+    pub(crate) stream_key: Key,
 }
 
 impl Node for CritiqueNode {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         Box::pin(async move {
-            let conversation = state.conversation(&self.conversation)?;
-            let verdict = match last_answer(conversation, &self.generator) {
-                Some((index, step)) if !self.empty_step(step) => {
-                    let messages = self.messages(state, config, conversation, index, step)?;
-                    self.judge(state, config, ctx, messages).await?
-                }
-                Some(_) | None => Verdict {
-                    is_valid: false,
-                    message: self.empty_answer_text(state, config)?,
-                },
+            let duo = &self.view.duo;
+            let turns = duo.turns(state)?;
+            let Some(judged) = turns.last_generation() else {
+                return Ok(Vec::new());
             };
-            if verdict.is_valid {
-                return Ok(vec![Update::Set {
-                    key: self.validated.clone(),
-                    value: Value::bool(true),
-                }]);
+            let answer = final_step(judged).map(answer_text).unwrap_or_default();
+            let count = duo.count(config, &turns, turns.generations())?;
+            let conversation = state.conversation(&duo.conversation)?;
+            let attempts = self.retries.resolve(config)?.saturating_add(1);
+            let mut unreadable = String::new();
+            for attempt in 1..=attempts {
+                let facts = CriticFacts {
+                    conversation,
+                    count,
+                    answer: &answer,
+                    attempt,
+                };
+                let mut messages = self.view.messages(state, config, facts, judged)?;
+                if attempt > 1 {
+                    messages.push(retry_message(&unreadable)?);
+                }
+                match self.ask(state, config, ctx, facts, messages).await? {
+                    Reading::Verdict(Verdict {
+                        is_valid: true,
+                        message,
+                    }) => {
+                        let text = Text::new(message).or_else(|_| Text::new(ACCEPTED_TEXT))?;
+                        return Ok(record(duo, state, ctx, TurnKind::Acceptance, text).await?);
+                    }
+                    Reading::Verdict(Verdict { message, .. }) => {
+                        let text = Text::new(message)?;
+                        return Ok(record(duo, state, ctx, TurnKind::Critique, text).await?);
+                    }
+                    Reading::Unreadable(reason) => unreadable = reason,
+                }
             }
-            let critique = Step::new(
-                vec![AssistantBlock::Text {
-                    text: Text::new(verdict.message)?,
-                }],
-                StopReason::EndTurn,
-                None,
-                None,
-            )?;
-            let turn = Turn::new(ctx.ids.turn_id(), Some(self.author.clone()), critique);
-            Ok(vec![
-                Update::Set {
-                    key: self.validated.clone(),
-                    value: Value::bool(false),
-                },
-                Update::PushTurn {
-                    key: self.conversation.clone(),
-                    turn: turn.clone(),
-                },
-                Update::PushTurn {
-                    key: self.generator_history.clone(),
-                    turn,
-                },
-            ])
+            Err(GraphError::Structured {
+                message: unreadable,
+            }
+            .into())
         })
     }
 }
 
 impl CritiqueNode {
-    /// The critique of an empty answer: `empty_answer_critique`, or the
-    /// default text when it resolves to a blank text.
-    fn empty_answer_text(&self, state: &State, config: &Config) -> Result<String, GraphError> {
-        let text = self.empty_answer_critique.resolve(state, config)?;
-        if text.trim().is_empty() {
-            Ok(EMPTY_ANSWER_CRITIQUE.to_owned())
-        } else {
-            Ok(text)
-        }
-    }
-
-    /// What the critic reads: `conversation` before the answer at `index`,
-    /// rendered as the generator sees it with the generator's thinking
-    /// removed, then one user message holding the answer, wrapped, and the
-    /// review request. A generation the round limit cut is an empty answer:
-    /// it is left out, like an answer left with nothing once its thinking is
-    /// removed, and the user messages around it are merged.
-    fn messages(
-        &self,
-        state: &State,
-        config: &Config,
-        conversation: &Conversation,
-        index: usize,
-        answer: &Step,
-    ) -> Result<Vec<WireMessage>, GraphError> {
-        let mut earlier = Conversation::new();
-        for entry in conversation.entries().get(..index).unwrap_or_default() {
-            match entry {
-                Entry::UserInput(input) => earlier.push_input(input.clone()),
-                Entry::Turn(turn) if self.cut_generation(turn) => {}
-                Entry::Turn(turn) => earlier.push_turn(turn.clone())?,
-            }
-        }
-        let mut messages = if earlier.entries().is_empty() {
-            Vec::new()
-        } else {
-            without_thinking(wire(&earlier, &self.generator)?)
-        };
-        let mut text = format!(
-            "<generator_response>\n{}\n</generator_response>",
-            answer_text(answer)
-        );
-        let request = self.review_request.resolve(state, config)?;
-        if !request.trim().is_empty() {
-            text.push_str("\n\n");
-            text.push_str(&request);
-        }
-        messages.push(WireMessage::User {
-            content: vec![WireUserBlock::Text {
-                text: Text::new(text)?,
-            }],
-        });
-        Ok(messages)
-    }
-
-    /// The critic's call: its system text, always sent (a text that resolves
-    /// to a blank one fails the node with `Message`, before the call),
-    /// `messages`, no tools and the structured mode with the verdict shape.
-    /// Its stream events carry the key `conversation`.
-    async fn judge(
+    /// One call of the critic for its context `facts`, sending `messages`:
+    /// what it gives, read as a verdict.
+    async fn ask(
         &self,
         state: &State,
         config: &Config,
         ctx: &Context,
+        facts: CriticFacts<'_>,
         messages: Vec<WireMessage>,
-    ) -> Result<Verdict, GraphError> {
-        let system = Text::new(self.system.resolve(state, config)?).map_err(GraphError::from)?;
+    ) -> Result<Reading, crate::graph::NodeError> {
+        let client = self.model.give(state, config, facts)?;
+        let system =
+            Text::new(self.system.give(state, config, facts)?).map_err(GraphError::from)?;
+        let with_thinking = client.settings().reasoning() == ReasoningLevel::Off;
         let request = ClientRequest::new(
             Some(system),
             messages,
             Vec::new(),
-            self.verdict.output_mode(state, config)?,
+            self.verdict
+                .output_mode(state, config, facts, with_thinking)?,
         )
         .map_err(GraphError::Request)?;
-        let step = complete(self.client.as_ref(), &request, ctx, &self.conversation).await?;
-        self.verdict.read(&step)
+        let step = complete_in(client.as_ref(), &request, ctx, &self.stream_key, None).await?;
+        Ok(self.verdict.read(&step)?)
     }
 }
 
-impl CritiqueNode {
-    /// Whether `step` closes a generation the round limit cut: the
-    /// generator's limit is `OnLimit::End` and `step` is its closing step.
-    fn cut_step(&self, step: &Step) -> bool {
-        self.limit_ends && closes_on_limit(step)
-    }
-
-    /// Whether `turn` is a generation of the generator that the round limit
-    /// cut.
-    fn cut_generation(&self, turn: &Turn) -> bool {
-        turn.author() == Some(&self.generator)
-            && final_step(turn).is_some_and(|step| self.cut_step(step))
-    }
-
-    /// Whether an answer is empty: no non-blank text and no structured block,
-    /// or a generation the round limit cut.
-    fn empty_step(&self, step: &Step) -> bool {
-        self.cut_step(step)
-            || (step.structured().next().is_none()
-                && step.text().all(|text| text.as_str().trim().is_empty()))
-    }
-}
-
-/// Removes the thinking blocks of every assistant message. A message left
-/// with nothing is dropped, and the user messages it separated are merged,
-/// as `render` merges adjacent user messages.
-fn without_thinking(messages: Vec<WireMessage>) -> Vec<WireMessage> {
-    let mut kept: Vec<WireMessage> = Vec::new();
-    for message in messages {
-        let message = match message {
-            WireMessage::Assistant { content } => {
-                let content: Vec<AssistantBlock> = content
-                    .into_iter()
-                    .filter(|block| {
-                        !matches!(
-                            block,
-                            AssistantBlock::Thinking(_) | AssistantBlock::RedactedThinking(_)
-                        )
-                    })
-                    .collect();
-                if content.is_empty() {
-                    continue;
-                }
-                WireMessage::Assistant { content }
-            }
-            other @ (WireMessage::User { .. } | WireMessage::Relay { .. }) => other,
-        };
-        if let WireMessage::User { content: more } = &message
-            && let Some(WireMessage::User { content }) = kept.last_mut()
-        {
-            content.extend(more.iter().cloned());
-            continue;
-        }
-        kept.push(message);
-    }
-    kept
+/// The message that asks the critic again after an unreadable verdict.
+fn retry_message(reason: &str) -> Result<WireMessage, GraphError> {
+    Ok(WireMessage::User {
+        content: vec![WireUserBlock::Text {
+            text: Text::new(format!(
+                "Your reply could not be read as a verdict: {reason}. Reply again with the verdict."
+            ))?,
+        }],
+    })
 }

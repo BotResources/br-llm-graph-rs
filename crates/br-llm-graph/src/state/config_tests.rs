@@ -12,8 +12,8 @@ fn key(name: &str) -> Key {
 
 fn schema() -> Schema {
     Schema::builder()
-        .config(key("model"), Kind::Str)
-        .config(key("limit"), Kind::Int)
+        .config_by_name(key("model"), Kind::Str)
+        .config_by_name(key("limit"), Kind::Int)
         .build()
 }
 
@@ -82,7 +82,7 @@ fn given_an_undeclared_key_when_read_then_unknown_key_for_every_typed_read() {
         config.bool(&stray).err(),
         config.list(&stray).err(),
         config.conversation(&stray).err(),
-        config.get(&stray).err(),
+        config.value(&stray).err(),
     ];
     for error in reads {
         assert!(

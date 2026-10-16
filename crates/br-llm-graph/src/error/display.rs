@@ -1,233 +1,5 @@
-use br_llm_clients_core::{BuildError, ClientError};
-use br_llm_messages::MessageError;
-use br_llm_messages::{Author, ToolName};
-
-use crate::graph::NodeError;
-use crate::state::Kind;
-use crate::value::{EndLabel, Key, NodeId};
-
-#[derive(Debug)]
-pub enum NodeFault {
-    Returned(NodeError),
-    Refused(Box<GraphError>),
-    Panic(String),
-}
-
-impl std::fmt::Display for NodeFault {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NodeFault::Returned(error) => write!(f, "returned an error: {error}"),
-            NodeFault::Refused(error) => write!(f, "its updates were refused: {error}"),
-            NodeFault::Panic(message) => write!(f, "panicked: {message}"),
-        }
-    }
-}
-
-impl std::error::Error for NodeFault {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            NodeFault::Returned(error) => Some(error.as_ref()),
-            NodeFault::Refused(error) => Some(error.as_ref()),
-            NodeFault::Panic(_) => None,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum GraphError {
-    Identifier {
-        field: &'static str,
-        value: String,
-    },
-    FloatNotFinite,
-    MissingKey {
-        key: Key,
-    },
-    UnknownKey {
-        key: Key,
-    },
-    KindMismatch {
-        key: Key,
-        expected: Kind,
-        found: &'static str,
-    },
-    SchemaMismatch {
-        found: String,
-    },
-    SetConflict {
-        key: Key,
-    },
-    AppendNotList {
-        key: Key,
-    },
-    NotConversation {
-        key: Key,
-    },
-    Message(MessageError),
-    DuplicateNode {
-        id: NodeId,
-    },
-    MissingEntry,
-    UnknownEntry {
-        id: NodeId,
-    },
-    NodeWithoutEdge {
-        id: NodeId,
-    },
-    EdgeFromUnknownNode {
-        id: NodeId,
-    },
-    DuplicateEdge {
-        id: NodeId,
-    },
-    UnknownNode {
-        id: NodeId,
-    },
-    EmptyEdge {
-        node: NodeId,
-    },
-    MapKeyMismatch {
-        list: Key,
-        item: Key,
-    },
-    NodeFailed {
-        node: NodeId,
-        source: NodeFault,
-    },
-    AmbiguousEnd {
-        labels: Vec<EndLabel>,
-    },
-    EmptyCursor,
-    StateSchemaMismatch,
-    ConfigSchemaMismatch,
-    ToolNotCovered {
-        name: ToolName,
-    },
-    ToolCoveredTwice {
-        name: ToolName,
-    },
-    ToolNotDeclared {
-        name: ToolName,
-    },
-    PendingToolUnsatisfiable {
-        name: ToolName,
-    },
-    EnabledKeyMismatch {
-        key: Key,
-    },
-    SourceKeyMismatch {
-        key: Key,
-    },
-    /// The client refused or failed the call.
-    Model(ClientError),
-    /// The request of a model call could not be built.
-    Request(BuildError),
-    Structured {
-        message: String,
-    },
-    LimitKeyMismatch {
-        key: Key,
-    },
-    LimitNotPositive {
-        key: Key,
-        value: i64,
-    },
-    CountKeyMismatch {
-        key: Key,
-    },
-    CountNegative {
-        key: Key,
-        value: i64,
-    },
-    SameAuthor {
-        author: Author,
-    },
-    VerdictShapeMismatch {
-        reason: &'static str,
-    },
-    KeyCollision {
-        key: Key,
-    },
-    FlagKeyMismatch {
-        key: Key,
-    },
-    ToolLimitReached {
-        node: NodeId,
-        max_rounds: usize,
-    },
-    DuplicateInput {
-        key: Key,
-    },
-    DuplicateOutput {
-        key: Key,
-    },
-    MissingInput {
-        key: Key,
-    },
-    NotAnInput {
-        key: Key,
-    },
-    InputGivenTwice {
-        key: Key,
-    },
-    InvalidOccurrence {
-        value: String,
-    },
-    SubGraphNotAnInput {
-        key: Key,
-    },
-    SubGraphInputTwice {
-        key: Key,
-    },
-    SubGraphInputUnmapped {
-        key: Key,
-    },
-    SubGraphSourceMismatch {
-        key: Key,
-    },
-    SubGraphNotAConfig {
-        key: Key,
-    },
-    SubGraphConfigTwice {
-        key: Key,
-    },
-    SubGraphConfigUnmapped {
-        key: Key,
-    },
-    SubGraphConfigMismatch {
-        key: Key,
-    },
-    SubGraphNotAnOutput {
-        key: Key,
-    },
-    SubGraphTargetMismatch {
-        key: Key,
-    },
-    SubGraphSetTwice {
-        key: Key,
-    },
-    SubGraphFailed {
-        source: Box<GraphError>,
-    },
-    SubGraphSuspended,
-    MapBodyNotAppend {
-        key: Key,
-    },
-    MapBodySet {
-        key: Key,
-    },
-    MapWithoutOccurrence,
-    CaptureMismatch {
-        key: Key,
-    },
-    CaptureSetTwice {
-        key: Key,
-    },
-    InvalidNode {
-        node: NodeId,
-        source: Box<GraphError>,
-    },
-}
+use crate::error::GraphError;
+use crate::value::EndLabel;
 
 impl std::fmt::Display for GraphError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -239,6 +11,12 @@ impl std::fmt::Display for GraphError {
                 )
             }
             GraphError::FloatNotFinite => f.write_str("a float value must be finite"),
+            GraphError::ThreadId { value } => {
+                write!(
+                    f,
+                    "{value:?} is not a thread id: a UUIDv7 written as its text"
+                )
+            }
             GraphError::MissingKey { key } => write!(f, "key {key} is declared but missing"),
             GraphError::UnknownKey { key } => write!(f, "key {key} is not declared in the schema"),
             GraphError::KindMismatch {
@@ -320,10 +98,6 @@ impl std::fmt::Display for GraphError {
             GraphError::EnabledKeyMismatch { key } => {
                 write!(f, "enabled key {key} is not a list of strings state key")
             }
-            GraphError::SourceKeyMismatch { key } => write!(
-                f,
-                "source key {key} is not a declared key holding a string or a list of strings"
-            ),
             GraphError::Model(error) => write!(f, "model call failed: {error}"),
             GraphError::Request(error) => {
                 write!(f, "the request of a model call could not be built: {error}")
@@ -360,6 +134,13 @@ impl std::fmt::Display for GraphError {
             GraphError::FlagKeyMismatch { key } => {
                 write!(f, "flag key {key} is not a bool state key")
             }
+            GraphError::Thread { source } => write!(f, "thread store error: {source}"),
+            GraphError::ThreadNotFound { thread } => {
+                write!(f, "thread {thread} is not in the thread store")
+            }
+            GraphError::OpeningNotInputs => f.write_str(
+                "the opening of a durable agent must hold user inputs, and only user inputs",
+            ),
             GraphError::ToolLimitReached { node, max_rounds } => {
                 write!(
                     f,
@@ -448,97 +229,5 @@ impl std::fmt::Display for GraphError {
                 write!(f, "node {node} is refused: {source}")
             }
         }
-    }
-}
-
-impl std::error::Error for GraphError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            GraphError::NodeFailed { source, .. } => Some(source),
-            GraphError::Message(error) => Some(error),
-            GraphError::Model(error) => Some(error),
-            GraphError::Request(error) => Some(error),
-            GraphError::SubGraphFailed { source } => Some(source.as_ref()),
-            GraphError::InvalidNode { source, .. } => Some(source.as_ref()),
-            GraphError::Identifier { .. }
-            | GraphError::FloatNotFinite
-            | GraphError::MissingKey { .. }
-            | GraphError::UnknownKey { .. }
-            | GraphError::KindMismatch { .. }
-            | GraphError::SchemaMismatch { .. }
-            | GraphError::SetConflict { .. }
-            | GraphError::AppendNotList { .. }
-            | GraphError::NotConversation { .. }
-            | GraphError::DuplicateNode { .. }
-            | GraphError::MissingEntry
-            | GraphError::UnknownEntry { .. }
-            | GraphError::NodeWithoutEdge { .. }
-            | GraphError::EdgeFromUnknownNode { .. }
-            | GraphError::DuplicateEdge { .. }
-            | GraphError::UnknownNode { .. }
-            | GraphError::EmptyEdge { .. }
-            | GraphError::MapKeyMismatch { .. }
-            | GraphError::AmbiguousEnd { .. }
-            | GraphError::EmptyCursor
-            | GraphError::StateSchemaMismatch
-            | GraphError::ConfigSchemaMismatch
-            | GraphError::ToolNotCovered { .. }
-            | GraphError::ToolCoveredTwice { .. }
-            | GraphError::ToolNotDeclared { .. }
-            | GraphError::PendingToolUnsatisfiable { .. }
-            | GraphError::EnabledKeyMismatch { .. }
-            | GraphError::SourceKeyMismatch { .. }
-            | GraphError::Structured { .. }
-            | GraphError::LimitKeyMismatch { .. }
-            | GraphError::LimitNotPositive { .. }
-            | GraphError::CountKeyMismatch { .. }
-            | GraphError::CountNegative { .. }
-            | GraphError::SameAuthor { .. }
-            | GraphError::VerdictShapeMismatch { .. }
-            | GraphError::KeyCollision { .. }
-            | GraphError::FlagKeyMismatch { .. }
-            | GraphError::ToolLimitReached { .. }
-            | GraphError::DuplicateInput { .. }
-            | GraphError::DuplicateOutput { .. }
-            | GraphError::MissingInput { .. }
-            | GraphError::NotAnInput { .. }
-            | GraphError::InputGivenTwice { .. }
-            | GraphError::InvalidOccurrence { .. }
-            | GraphError::SubGraphNotAnInput { .. }
-            | GraphError::SubGraphInputTwice { .. }
-            | GraphError::SubGraphInputUnmapped { .. }
-            | GraphError::SubGraphSourceMismatch { .. }
-            | GraphError::SubGraphNotAConfig { .. }
-            | GraphError::SubGraphConfigTwice { .. }
-            | GraphError::SubGraphConfigUnmapped { .. }
-            | GraphError::SubGraphConfigMismatch { .. }
-            | GraphError::SubGraphNotAnOutput { .. }
-            | GraphError::SubGraphTargetMismatch { .. }
-            | GraphError::SubGraphSetTwice { .. }
-            | GraphError::SubGraphSuspended
-            | GraphError::MapBodyNotAppend { .. }
-            | GraphError::MapBodySet { .. }
-            | GraphError::MapWithoutOccurrence
-            | GraphError::CaptureMismatch { .. }
-            | GraphError::CaptureSetTwice { .. } => None,
-        }
-    }
-}
-
-impl From<MessageError> for GraphError {
-    fn from(error: MessageError) -> Self {
-        GraphError::Message(error)
-    }
-}
-
-impl From<ClientError> for GraphError {
-    fn from(error: ClientError) -> Self {
-        GraphError::Model(error)
-    }
-}
-
-impl From<BuildError> for GraphError {
-    fn from(error: BuildError) -> Self {
-        GraphError::Request(error)
     }
 }

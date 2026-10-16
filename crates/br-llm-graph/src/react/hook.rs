@@ -24,7 +24,10 @@ pub enum Judgment {
     /// The call is not executed: it is answered with an error result holding
     /// `reason` (`tool call refused` when the reason is blank), and the turn
     /// goes on.
-    Refuse { reason: String },
+    Refuse {
+        /// Why the call is refused.
+        reason: String,
+    },
 }
 
 /// The judgment of one tool call, made before its tool runs. A hook is the
@@ -42,22 +45,36 @@ pub enum Judgment {
 /// What a host's hook must allow for:
 /// - An error is not a strong refusal. Use `Judgment::Refuse` for a policy
 ///   decision; return an error only when the hook cannot judge. The error
-///   fails the node and the run, and a resumed run judges the call again.
+///   fails the node and the run (see below for what a resumed run does).
 /// - A judgment under way is dropped when the run is cancelled: a hook that
 ///   does I/O must be cancel-safe.
 /// - A pending judgment holds its call's concurrency slot, and the tool
 ///   nodes of one ReAct loop share one limit per superstep: a slow hook slows
 ///   down every call of the superstep waiting for a slot, in any of those
 ///   tool nodes.
-/// - A call may be judged more than once, under the same `ToolCallId`, after
-///   a cancel or a failed node (a failed node records nothing, so a resumed
-///   run judges and runs its calls again): an approval hook memoises its
-///   judgment by call id.
-/// - The effects of tools are at-least-once across a resume: a call whose
-///   tool ran before its node failed, or before a cancel, runs again.
+/// - A failed or cancelled tool node records nothing: the graph that holds
+///   it, resumed from its checkpoint, runs the node again, which judges and
+///   runs its calls again under the same `ToolCallId`s. The tool nodes are
+///   an agent's, and an agent's graph is resumed through its entry, so for
+///   an agent:
+///   - durable, a call is judged at most once: a call left without a result
+///     is answered as interrupted when the agent enters its thread again,
+///     and is neither judged nor run again; the model reads that result and
+///     decides whether to call again;
+///   - in memory, the call restarts from `opening`: the model is asked
+///     again, and the calls of its new reply are judged, possibly under the
+///     ids of the calls before. An approval hook memoises its judgment by
+///     call id.
+/// - The effects of tools are at-least-once across a resume in memory: a
+///   call whose tool ran before its node failed, or before a cancel, runs
+///   again when the model calls it again. Durable, its result was not
+///   written, so it is answered as interrupted and not run again by itself.
 /// - A hook that panics fails the node as a panic (`NodeFault::Panic`); the
 ///   other calls of the node are dropped at once.
 pub trait Hook: Send + Sync {
+    /// Judges the call `id` with its JSON `arguments`, the state and the
+    /// configuration: it accepts or refuses it, and returns no update. Its
+    /// error fails the node.
     fn judge<'a>(
         &'a self,
         id: &'a ToolCallId,

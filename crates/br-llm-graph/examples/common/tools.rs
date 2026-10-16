@@ -2,14 +2,11 @@
 //! made.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 
 use br_llm_clients_core::{Parameter, ParameterKind, Parameters, ToolSpec};
-use br_llm_graph::{Config, Key, Sender, State, Tool, ToolFuture, ToolOutput, Update, Value};
+use br_llm_graph::{Config, State, Tool, ToolFuture, ToolOutput};
 use br_llm_messages::{Text, ToolName, ToolResultBlock};
 use serde_json::Value as Json;
-
-use super::runtime_input;
 
 /// The declaration of a tool: built once, when the tool is made.
 pub fn tool_spec(name: &str, description: &str, parameters: Vec<Parameter>) -> ToolSpec {
@@ -116,24 +113,20 @@ impl Tool for WriteFileTool {
     }
 }
 
+/// Starts background work and returns at once: the host delivers its
+/// completion later, through the control sender, as a runtime input.
 pub struct StartTaskTool {
     spec: ToolSpec,
-    pub sender: Arc<Mutex<Option<Sender>>>,
-    pub chat: Key,
-    pub pending: Key,
 }
 
 impl StartTaskTool {
-    pub fn new(sender: Arc<Mutex<Option<Sender>>>, chat: Key, pending: Key) -> Self {
+    pub fn new() -> Self {
         Self {
             spec: tool_spec(
                 "start_task",
                 "start background work, return at once",
                 Vec::new(),
             ),
-            sender,
-            chat,
-            pending,
         }
     }
 }
@@ -143,23 +136,10 @@ impl Tool for StartTaskTool {
         &self.spec
     }
     fn call<'a>(&'a self, _arguments: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
-        let chat = self.chat.clone();
-        let handle = self.sender.lock().ok().and_then(|guard| guard.clone());
-        if let Some(sender) = handle {
-            tokio::spawn(async move {
-                tokio::task::yield_now().await;
-                sender.send(chat, runtime_input("task_done", "task-1 completed"));
-            });
-        }
-        let pending = self.pending.clone();
-        Box::pin(async move {
+        Box::pin(async {
             Ok(ToolOutput::text(vec![ToolResultBlock::text(
-                Text::new("task started").expect("non-empty"),
-            )])
-            .with_updates(vec![Update::Append {
-                key: pending,
-                value: Value::str("task-1"),
-            }]))
+                Text::new("task-1 started").expect("non-empty"),
+            )]))
         })
     }
 }

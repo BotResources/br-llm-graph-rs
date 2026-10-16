@@ -24,13 +24,13 @@ fn done_edge() -> Always {
 
 fn schema() -> Schema {
     Schema::builder()
-        .state(
+        .state_by_name(
             crate::value::Key::new("items").unwrap(),
             Kind::list(Kind::Str),
         )
-        .state(crate::value::Key::new("item").unwrap(), Kind::Str)
-        .state(crate::value::Key::new("out").unwrap(), Kind::Str)
-        .state(
+        .state_by_name(crate::value::Key::new("item").unwrap(), Kind::Str)
+        .state_by_name(crate::value::Key::new("out").unwrap(), Kind::Str)
+        .state_by_name(
             crate::value::Key::new("outs").unwrap(),
             Kind::list(Kind::Str),
         )

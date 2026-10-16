@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use crate::graph::{Edge, FnEdge, Target};
+use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
+
+use crate::graph::{Context, Edge, FnEdge, Target};
 use crate::graph::{FnNode, Node, NodeFuture};
+use crate::observe::NoopObserver;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -24,13 +28,13 @@ pub(crate) fn to(name: &str) -> Target {
 
 pub(crate) fn schema() -> Schema {
     Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("log"), Kind::list(Kind::Str))
-        .state(key("items"), Kind::list(Kind::Str))
-        .state(key("item"), Kind::Str)
-        .state(key("out"), Kind::Str)
-        .state(key("outs"), Kind::list(Kind::Str))
-        .state(key("chat"), Kind::Conversation)
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("log"), Kind::list(Kind::Str))
+        .state_by_name(key("items"), Kind::list(Kind::Str))
+        .state_by_name(key("item"), Kind::Str)
+        .state_by_name(key("out"), Kind::Str)
+        .state_by_name(key("outs"), Kind::list(Kind::Str))
+        .state_by_name(key("chat"), Kind::Conversation)
         .build()
 }
 
@@ -56,8 +60,8 @@ pub(crate) fn config() -> Config {
 /// A state and a configuration made from schemas that are not `schema()`.
 pub(crate) fn foreign_state_and_config() -> (State, Config) {
     let foreign = Schema::builder()
-        .state(key("count"), Kind::Int)
-        .config(key("width"), Kind::Int)
+        .state_by_name(key("count"), Kind::Int)
+        .config_by_name(key("width"), Kind::Int)
         .build();
     let state = State::new(
         foreign.clone(),
@@ -128,4 +132,23 @@ pub(crate) fn item_to_out_node() -> impl Node {
 
 pub(crate) fn edge(targets: Vec<Target>) -> impl Edge {
     FnEdge::new(move |_s: &State, _c: &Config| Ok(targets.clone()))
+}
+
+/// A context with no observer and sequential ids.
+pub(crate) fn ctx() -> Context {
+    Context::new(
+        Arc::new(NoopObserver),
+        Arc::new(crate::testkit::SeqIds::new()),
+    )
+}
+
+/// A human input of `body`, its id `i-{body}`.
+pub(crate) fn input(body: &str) -> UserInput {
+    UserInput::new(
+        InputId::new(format!("i-{body}")).unwrap(),
+        UserSource::Human,
+        None,
+        vec![UserBlock::text(Text::new(body).unwrap())],
+    )
+    .unwrap()
 }

@@ -40,7 +40,7 @@ fn two_rounds_answered() -> State {
         }
     }
     let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
+    chat.push_input(human("hi")).unwrap();
     chat.push_turn(turn).unwrap();
     state_with(chat)
 }

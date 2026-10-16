@@ -9,7 +9,7 @@ use super::test_support::*;
 use crate::graph::subgraph::{Output, SubGraph};
 use crate::graph::{Always, Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Target};
 use crate::observe::NoopObserver;
-use crate::run::{Outcome, PendingEntry, PendingWrites, channel, run};
+use crate::run::{Outcome, PendingEntry, PendingWrites, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 
@@ -17,8 +17,8 @@ use crate::update::Update;
 /// `seen`) and `b` run together. `b` fails in round 2 while `failing` holds.
 fn two_rounds(failing: &Arc<AtomicBool>) -> Arc<Graph> {
     let schema = Schema::builder()
-        .state(key("count"), Kind::Int)
-        .state(key("seen"), Kind::list(Kind::Str))
+        .state_by_name(key("count"), Kind::Int)
+        .state_by_name(key("seen"), Kind::list(Kind::Str))
         .build();
     let tick = FnNode::new(|s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         let count = s.int(&key("count")).map(|count| count + 1);
@@ -83,7 +83,7 @@ async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_
  {
     let failing = Arc::new(AtomicBool::new(true));
     let schema = Schema::builder()
-        .state(key("result"), Kind::list(Kind::Str))
+        .state_by_name(key("result"), Kind::list(Kind::Str))
         .build();
     let call = SubGraph::call(two_rounds(&failing)).output(key("seen"), Output::Set(key("result")));
     let caller = GraphBuilder::new(schema.clone())
@@ -95,14 +95,14 @@ async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_
     let config = Config::new(&schema, BTreeMap::new()).unwrap();
     let ctx = context(Arc::new(NoopObserver));
     let state = caller.start_state(Vec::new()).unwrap();
-    let (_sender, mut inbox) = channel();
-    let failure = run(&caller, &config, state, None, &ctx, &mut inbox)
+    let (_sender, mut channel) = control();
+    let failure = run(&caller, &config, state, None, &ctx, &mut channel)
         .await
         .err()
         .unwrap();
     let checkpoint = failure.checkpoint;
     failing.store(false, Ordering::SeqCst);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = ctx.with_pending(checkpoint.pending);
     let outcome = run(
         &caller,
@@ -110,7 +110,7 @@ async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_
         checkpoint.state,
         Some(checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {
@@ -126,7 +126,7 @@ async fn given_a_called_loop_failing_in_its_second_round_when_resumed_then_each_
 async fn given_stale_entries_below_a_call_when_it_runs_then_they_are_ignored_and_cleared() {
     let failing = Arc::new(AtomicBool::new(true));
     let schema = Schema::builder()
-        .state(key("result"), Kind::list(Kind::Str))
+        .state_by_name(key("result"), Kind::list(Kind::Str))
         .build();
     let call = SubGraph::call(two_rounds(&failing)).output(key("seen"), Output::Set(key("result")));
     let caller = GraphBuilder::new(schema.clone())
@@ -152,9 +152,9 @@ async fn given_stale_entries_below_a_call_when_it_runs_then_they_are_ignored_and
         }]),
     );
     let ctx = context(Arc::new(NoopObserver)).with_pending(stale.clone());
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let state = caller.start_state(Vec::new()).unwrap();
-    let failure = run(&caller, &config, state, None, &ctx, &mut inbox)
+    let failure = run(&caller, &config, state, None, &ctx, &mut channel)
         .await
         .err()
         .unwrap();
@@ -163,7 +163,7 @@ async fn given_stale_entries_below_a_call_when_it_runs_then_they_are_ignored_and
     failing.store(false, Ordering::SeqCst);
     let mut pending = failure.checkpoint.pending;
     pending.merge(stale);
-    let (_sender, mut inbox) = channel();
+    let (_sender, mut channel) = control();
     let resumed = context(Arc::new(NoopObserver)).with_pending(pending);
     let outcome = run(
         &caller,
@@ -171,7 +171,7 @@ async fn given_stale_entries_below_a_call_when_it_runs_then_they_are_ignored_and
         failure.checkpoint.state,
         Some(failure.checkpoint.cursor),
         &resumed,
-        &mut inbox,
+        &mut channel,
     )
     .await;
     let Ok(Outcome::Finished { state, .. }) = outcome else {

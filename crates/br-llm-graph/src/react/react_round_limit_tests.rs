@@ -10,11 +10,15 @@ use serde_json::json;
 
 use crate::error::GraphError;
 use crate::graph::{GraphBuilder, Limit, Target};
+use crate::react::given::{Model, Prompt};
 use crate::react::llm_node::LlmNode;
+use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
 use crate::react::react_round_limit_support::*;
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::test_support::{EchoTool, author, key, mock, text_step, tool_call_step};
+use crate::react::test_support::{
+    EchoTool, author, in_memory_call, key, mock, text_step, tool_call_step,
+};
 use crate::value::EndLabel;
 
 #[tokio::test]
@@ -182,9 +186,9 @@ async fn given_an_earlier_finished_turn_when_the_agent_runs_again_then_rounds_re
         .unwrap();
     earlier.push_step(text_step("earlier answer")).unwrap();
     let mut chat = Conversation::new();
-    chat.push_input(human("hi"));
+    chat.push_input(human("hi")).unwrap();
     chat.push_turn(earlier).unwrap();
-    chat.push_input(human("again"));
+    chat.push_input(human("again")).unwrap();
     let client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("second answer"),
@@ -203,14 +207,17 @@ async fn given_an_earlier_finished_turn_when_the_agent_runs_again_then_rounds_re
 #[test]
 fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
     let add = |max_rounds: Limit, flag: &str| {
-        let llm = LlmNode {
+        let llm = LlmNode::<ReactAgent> {
             key: key("chat"),
             author: author(),
-            client: Arc::new(mock(Vec::new())),
-            system: Vec::new(),
+            model: Model::client(Arc::new(mock(Vec::new()))),
+            system: Prompt::text(""),
+            history: None,
             tools: vec![Arc::new(EchoTool)],
             enabled: None,
             output_mode: OutputMode::Plain,
+            call: in_memory_call(),
+            seat: None,
         };
         ReactLoop {
             llm: nid("llm"),
@@ -224,6 +231,7 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
                     flag: key(flag),
                 },
             }),
+            thread: None,
         }
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
         .err()
