@@ -50,7 +50,7 @@ impl std::fmt::Display for GraphError {
             }
             GraphError::EdgeToUnknownNode { node, target } => write!(
                 f,
-                "the edge of node {node} declares target {target}, which is not in the graph"
+                "the edge of node {node} declares node {target}, which is not in the graph"
             ),
             GraphError::UnknownNode { id } => write!(f, "node {id} is not in the graph"),
             GraphError::EmptyEdge { node } => {
@@ -58,7 +58,7 @@ impl std::fmt::Display for GraphError {
             }
             GraphError::UndeclaredTarget { node, target } => write!(
                 f,
-                "the edge of node {node} returned {target}, a target it does not declare"
+                "the edge of node {node} returned {target}, which it does not declare"
             ),
             GraphError::MapKeyMismatch { list, item } => write!(
                 f,
