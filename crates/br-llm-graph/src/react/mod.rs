@@ -202,6 +202,8 @@ mod test_support;
 #[cfg(test)]
 mod test_tools;
 #[cfg(test)]
+mod turn_client_scope_tests;
+#[cfg(test)]
 mod turn_ids_tests;
 
 pub use generator_critic::GeneratorCritic;

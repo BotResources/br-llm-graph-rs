@@ -1,6 +1,6 @@
 //! The tools of the react tests: echo, tally (with an update), scope (reads
-//! the state), write_file (counts its calls) and strict (parses its
-//! arguments).
+//! the state), write_file (counts its calls), strict (parses its
+//! arguments) and a yielding echo.
 
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -145,4 +145,31 @@ impl Tool for StrictTool {
 struct StrictArgs {
     #[allow(dead_code)]
     n: i64,
+}
+
+/// Answers like `echo`, named `echo`, after yielding to the runtime a few
+/// times: the runs or map items driven together interleave in their tool
+/// rounds.
+pub(crate) struct YieldingEcho;
+
+impl Tool for YieldingEcho {
+    fn spec(&self) -> &ToolSpec {
+        static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| spec("echo"));
+        &SPEC
+    }
+    fn call<'a>(
+        &'a self,
+        _arguments: Json,
+        _state: &'a State,
+        _config: &'a Config,
+    ) -> ToolFuture<'a> {
+        Box::pin(async {
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+            Ok(ToolOutput::text(vec![ToolResultBlock::text(
+                Text::new("echoed").unwrap(),
+            )]))
+        })
+    }
 }

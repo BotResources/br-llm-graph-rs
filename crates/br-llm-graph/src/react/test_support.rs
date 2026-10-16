@@ -13,7 +13,7 @@ use serde_json::{Value as Json, json};
 use crate::react::given::{ModelNode, Prompt};
 pub(crate) use crate::react::test_clients::{LaxClient, StreamRecorder};
 pub(crate) use crate::react::test_tools::{
-    EchoTool, ScopeTool, StrictTool, TallyTool, WriteFileTool, spec,
+    EchoTool, ScopeTool, StrictTool, TallyTool, WriteFileTool, YieldingEcho, spec,
 };
 use crate::state::{Config, ConfigKey, Kind, Schema, State, StateKey, Value, ValueType};
 use crate::value::Key;
