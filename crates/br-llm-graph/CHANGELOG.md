@@ -26,7 +26,9 @@ may declare their targets, which the build and the run then hold them to.
   fields of its kind, nested graphs included. It runs nothing, calls no
   client, reads no state and no configuration; two builds from the same
   parts give equal descriptions, in the same order.
-- A description writes no value. The schema is `{"state", "config",
+- A description writes no state value, default, prompt, client, author
+  name or secret; it does write fixed bounds (a fixed `Limit` or `Count`,
+  the generator-critic's `final_generation`). The schema is `{"state", "config",
   "defaults"?}`, `defaults` mapping each state key that has a default to
   its kind, never the default's value, whatever its kind (a string, a
   list, a conversation). An author (of a model-calling node, of an LLM

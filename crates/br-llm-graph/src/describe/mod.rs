@@ -12,12 +12,14 @@
 //! `NodeDescription::nesting`). Realizes labels name what a node implements
 //! and the library never reads them (`Node::realizing`).
 //!
-//! A description writes no value: nothing a function computes, no prompt
-//! text, no client, no tool argument and no secret is part of it. A subject
-//! is written as how it was given (`fixed`, `ready_made`, `function`); a
-//! fixed value of a call or a capture, and a state key's default, as its
-//! kind; an author by its id, never its name, which is rendered into what a
-//! model reads.
+//! A description writes no state value, no default, no prompt, no client,
+//! no author name and no secret: nothing a function computes and no tool
+//! argument is part of it. A subject is written as how it was given
+//! (`fixed`, `ready_made`, `function`); a fixed value of a call or a
+//! capture, and a state key's default, as its kind; an author by its id,
+//! never its name, which is rendered into what a model reads. It does write
+//! the graph's fixed bounds: a fixed `Limit` or `Count` (`{"fixed": n}`)
+//! and the generator-critic's `final_generation`.
 
 mod graph;
 mod json;
