@@ -161,6 +161,10 @@ mod tails;
 #[cfg(test)]
 mod testkit;
 #[cfg(doctest)]
+mod typed_call_mappings;
+#[cfg(doctest)]
+mod typed_captures;
+#[cfg(doctest)]
 mod typed_kinds;
 #[cfg(doctest)]
 mod typed_mappings;
