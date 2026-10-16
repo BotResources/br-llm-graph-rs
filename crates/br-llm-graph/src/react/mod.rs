@@ -105,6 +105,8 @@ mod react_background_task_tests;
 #[cfg(test)]
 mod react_duplicate_tool_tests;
 #[cfg(test)]
+mod react_durable_answer_tests;
+#[cfg(test)]
 mod react_durable_entry_tests;
 #[cfg(test)]
 mod react_durable_resume_tests;
