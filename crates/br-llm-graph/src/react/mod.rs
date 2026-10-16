@@ -125,8 +125,6 @@ mod react_durable_support;
 #[cfg(test)]
 mod react_durable_write_tests;
 #[cfg(test)]
-mod react_generator_critic_tests;
-#[cfg(test)]
 mod react_helper_tests;
 #[cfg(test)]
 mod react_hook_failure_tests;
@@ -138,6 +136,8 @@ mod react_hook_stop_tests;
 mod react_hook_support;
 #[cfg(test)]
 mod react_hook_tests;
+#[cfg(test)]
+mod react_host_node_tests;
 #[cfg(test)]
 mod react_llm_system_tests;
 #[cfg(test)]
