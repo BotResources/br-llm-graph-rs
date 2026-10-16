@@ -9,6 +9,7 @@ use crate::react::agent_build::{
     AgentKeys, declare_count, declare_limit, round_limit_flag, tools_node_clash,
 };
 use crate::react::agent_call::{AgentCall, ThreadBinding};
+use crate::react::bounds::Bounds;
 use crate::react::check::{CheckNode, EMPTY_ANSWER_CRITIQUE};
 use crate::react::critic_view::CriticView;
 use crate::react::critique::{CritiqueNode, REVIEW_REQUEST};
@@ -159,8 +160,19 @@ impl GeneratorCritic {
             revision_limit: self.revision_limit,
             limit_ends,
         };
+        let bounds = Bounds::new(
+            [&duo.budget, &duo.revision_limit, &self.verdict_retries],
+            [
+                generator.tool_concurrency.as_ref(),
+                generator
+                    .round_limit
+                    .as_ref()
+                    .map(|limit| &limit.max_rounds),
+            ],
+        );
         let router = Router {
             duo: duo.clone(),
+            bounds,
             generate: names.generate.clone(),
             check: names.check.clone(),
             critique: names.critique.clone(),

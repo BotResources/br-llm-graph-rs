@@ -39,7 +39,10 @@ use crate::value::Key;
 ///   resumed from a checkpoint enters again through its entry.
 /// - Configuration: the keys of the budget, the revision limit and the
 ///   verdict retries, the generator's tool concurrency and round limit, and
-///   each configuration key a function declares, of its kind.
+///   each configuration key a function declares, of its kind. The edge of
+///   `route` resolves the counts and the limits, in that order, before
+///   anything is routed: a refused one (`CountNegative`, `LimitNotPositive`)
+///   is the run's error itself, and no model is called.
 ///
 /// One key given twice with one kind is declared once (a key several
 /// functions read, a key a function reads that is also `enabled`, a key of

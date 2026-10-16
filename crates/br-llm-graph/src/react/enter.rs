@@ -9,6 +9,7 @@ use br_llm_messages::Conversation;
 
 use crate::graph::{Context, Edge, FnEdge, Node, NodeFuture, Target};
 use crate::react::agent_call::{AgentCall, Position};
+use crate::react::bounds::Bounds;
 use crate::react::rehydrate::{enter_thread, opening_inputs};
 use crate::react::thread_store::MessageStatus;
 use crate::react::turn_clients::TurnClients;
@@ -80,11 +81,20 @@ impl EnterNode {
     }
 }
 
-/// The edge of `enter`: to the answer when the call was answered on entry,
-/// else to the model call.
-pub(crate) fn enter_edge(call: AgentCall, llm: NodeId, answer: NodeId) -> impl Edge + 'static {
-    FnEdge::new(move |state, _config| match call.position(state)? {
-        Position::Answered(_) => Ok(vec![Target::Node(answer.clone())]),
-        Position::Writing(_) => Ok(vec![Target::Node(llm.clone())]),
+/// The edge of `enter`: first the check of the agent's `bounds`, whose
+/// refusal is the run's error; then to the answer when the call was
+/// answered on entry, else to the model call.
+pub(crate) fn enter_edge(
+    call: AgentCall,
+    bounds: Bounds,
+    llm: NodeId,
+    answer: NodeId,
+) -> impl Edge + 'static {
+    FnEdge::new(move |state, config| {
+        bounds.check(config)?;
+        match call.position(state)? {
+            Position::Answered(_) => Ok(vec![Target::Node(answer.clone())]),
+            Position::Writing(_) => Ok(vec![Target::Node(llm.clone())]),
+        }
     })
 }

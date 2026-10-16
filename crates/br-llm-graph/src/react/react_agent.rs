@@ -8,6 +8,7 @@ use crate::graph::{Always, Graph, GraphBuilder, Limit, Target};
 use crate::react::agent_answer::AnswerNode;
 use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag, tools_node_clash};
 use crate::react::agent_call::{AgentCall, ThreadBinding};
+use crate::react::bounds::Bounds;
 use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
 use crate::react::given::{History, Model, Prompt};
@@ -80,7 +81,9 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   from a checkpoint enters again through `enter`.
 /// - Configuration: each configuration key the functions declare, of its
 ///   kind, the tool concurrency and the round limit when they read a
-///   configuration key.
+///   configuration key. The edge of `enter` resolves both limits before
+///   anything is routed: a refused one (`LimitNotPositive`) is the run's
+///   error itself, and the model is not called.
 ///
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
@@ -208,6 +211,13 @@ impl ReactAgent {
         } else {
             self.tool_nodes
         };
+        let bounds = Bounds::new(
+            [],
+            [
+                self.tool_concurrency.as_ref(),
+                self.round_limit.as_ref().map(|limit| &limit.max_rounds),
+            ],
+        );
         let answer_call = call.clone();
         let answer_flag = flag.clone().zip(self.round_limit.clone());
         let react = ReactLoop {
@@ -243,7 +253,10 @@ impl ReactAgent {
                     clients,
                 },
             )
-            .edge(enter, enter_edge(call, llm.clone(), answer_node.clone()));
+            .edge(
+                enter,
+                enter_edge(call, bounds, llm.clone(), answer_node.clone()),
+            );
         for key in inputs {
             builder = builder.input(key);
         }

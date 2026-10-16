@@ -1,10 +1,9 @@
 //! The critique budget of the generator-critic: zero gives one generation
-//! and no critic call; a budget read from the configuration is checked at
-//! run time.
+//! and no critic call; a budget may be read from the configuration (its
+//! refusal is pinned with the other bounds, `generator_critic_bounds_tests`).
 
 use std::collections::BTreeMap;
 
-use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic_support::*;
 use crate::react::test_support::*;
@@ -59,33 +58,4 @@ async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_
         "validated",
     );
     assert_eq!(requests(&critic_client).len(), 1);
-}
-
-#[tokio::test]
-async fn given_a_negative_critique_budget_in_the_configuration_when_run_then_count_negative() {
-    let generator_client = mock(vec![text_step("draft")]);
-    let critic_client = mock(Vec::new());
-    let graph = with_budget(
-        &generator_client,
-        &critic_client,
-        Count::Config(key("critiques")),
-        true,
-    );
-    let config = BTreeMap::from([(key("critiques"), Value::int(-1))]);
-    let failure = call_with(&graph, question("explain"), Vec::new(), config)
-        .await
-        .result
-        .err()
-        .unwrap();
-    // The generator's context reads the budget: its node meets the refusal.
-    assert!(
-        matches!(
-            returned(&failure.error),
-            GraphError::CountNegative { value: -1, .. }
-        ),
-        "{}",
-        failure.error
-    );
-    assert!(requests(&generator_client).is_empty());
-    assert!(requests(&critic_client).is_empty());
 }

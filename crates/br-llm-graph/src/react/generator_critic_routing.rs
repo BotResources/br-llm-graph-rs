@@ -3,6 +3,7 @@
 
 use crate::error::GraphError;
 use crate::graph::Target;
+use crate::react::bounds::Bounds;
 use crate::react::duo::{CallTurns, Duo, TurnKind};
 use crate::state::{Config, State};
 use crate::value::NodeId;
@@ -11,6 +12,8 @@ use crate::value::NodeId;
 #[derive(Clone)]
 pub(crate) struct Router {
     pub(crate) duo: Duo,
+    /// The counts and limits the graph reads, checked on entry.
+    pub(crate) bounds: Bounds,
     pub(crate) generate: NodeId,
     pub(crate) check: NodeId,
     pub(crate) critique: NodeId,
@@ -18,11 +21,14 @@ pub(crate) struct Router {
 }
 
 impl Router {
-    /// On entry, on the last turn of the call: a generation goes to the
-    /// check; a critique is routed as after a rejection; a revision as the
-    /// check routes it; an acceptance finishes, without calling a model;
-    /// none goes to the generator.
+    /// On entry, first the check of the graph's bounds, whose refusal is the
+    /// run's error (a refused `Count` is an edge refusal); then on the last
+    /// turn of the call: a generation goes to the check; a critique is
+    /// routed as after a rejection; a revision as the check routes it; an
+    /// acceptance finishes, without calling a model; none goes to the
+    /// generator.
     pub(crate) fn entry(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError> {
+        self.bounds.check(config)?;
         let turns = self.duo.turns(state)?;
         let next = match turns.last().map(|(_, kind)| kind) {
             None => &self.generate,
