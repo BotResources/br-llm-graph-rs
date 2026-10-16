@@ -132,3 +132,105 @@ fn given_prompts_tools_clients_and_fixed_values_when_described_then_none_of_them
     }
     assert!(written.contains("\"tools\":[\"vault\"]"));
 }
+
+/// A graph whose state defaults hold secrets, of three kinds, called from a
+/// parent; and an agent whose author's name is a secret.
+fn graph_with_secret_defaults_and_author() -> crate::graph::Graph {
+    let summarize = LlmCall {
+        model: Model::client(Arc::new(mock(Vec::new()))),
+        system: Prompt::from_state(&skey("persona")),
+        request: LlmRequest::Text(Prompt::text("Summarize.")),
+        output_mode: OutputMode::Plain,
+        output: LlmOutput::Set(skey("note")),
+    };
+    let schema = Schema::builder()
+        .state_by_name(key("note"), Kind::Str)
+        .state_by_name_with_default(
+            key("persona"),
+            Kind::Str,
+            Value::str("SECRET-PERSONA-PROMPT sk-live-123"),
+        )
+        .state_by_name_with_default(
+            key("rules"),
+            Kind::list(Kind::Str),
+            Value::list(vec![Value::str("SECRET-RULE")]),
+        )
+        .state_by_name_with_default(
+            key("examples"),
+            Kind::Conversation,
+            Value::conversation(question("SECRET-EXAMPLE")),
+        )
+        .build();
+    let child = GraphBuilder::new(schema)
+        .entry(nid("summarize"))
+        .node(nid("summarize"), summarize)
+        .edge(
+            nid("summarize"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .output(key("note"))
+        .build()
+        .unwrap();
+    let mut researcher = agent(&mock(Vec::new()));
+    researcher.author = br_llm_messages::Author::new("researcher", "SECRET-AUTHOR-NAME").unwrap();
+    researcher.system = Prompt::text("Research.");
+    let parent_schema = Schema::builder()
+        .state_by_name(key("note"), Kind::Str)
+        .state_by_name(key("question"), Kind::Conversation)
+        .build();
+    GraphBuilder::new(parent_schema)
+        .entry(nid("call"))
+        .node(
+            nid("call"),
+            SubGraph::call(Arc::new(child))
+                .output(key("note"), crate::graph::Output::Set(key("note"))),
+        )
+        .node(
+            nid("researcher"),
+            SubGraph::call(researcher.graph().unwrap())
+                .input(key("opening"), Input::From(key("question"))),
+        )
+        .edge(nid("call"), Always(Target::Node(nid("researcher"))))
+        .edge(
+            nid("researcher"),
+            Always(Target::End(EndLabel::new("done").unwrap())),
+        )
+        .build()
+        .unwrap()
+}
+
+#[test]
+fn given_secret_defaults_of_each_kind_and_a_secret_author_name_when_described_then_none_is_written()
+{
+    let written =
+        serde_json::to_string(&graph_with_secret_defaults_and_author().describe()).unwrap();
+    for sentinel in [
+        "SECRET-PERSONA-PROMPT",
+        "sk-live-123",
+        "SECRET-RULE",
+        "SECRET-EXAMPLE",
+        "SECRET-AUTHOR-NAME",
+    ] {
+        assert!(
+            !written.contains(sentinel),
+            "{sentinel} is written: {written}"
+        );
+    }
+}
+
+#[test]
+fn given_defaults_and_an_author_when_described_then_defaults_by_kind_and_the_author_by_id() {
+    let json = serde_json::to_value(graph_with_secret_defaults_and_author().describe()).unwrap();
+    let child = &json["nodes"][0]["graph"];
+    assert_eq!(
+        child["schema"]["defaults"],
+        serde_json::json!({
+            "examples": {"type": "conversation"},
+            "persona": {"type": "str"},
+            "rules": {"type": "list", "element": {"type": "str"}}
+        })
+    );
+    let llm = &json["nodes"][1]["graph"]["nodes"][1];
+    assert_eq!(llm["id"], "llm");
+    assert_eq!(llm["author"], serde_json::json!({"id": "researcher"}));
+}
