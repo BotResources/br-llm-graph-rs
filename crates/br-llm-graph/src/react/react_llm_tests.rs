@@ -42,6 +42,8 @@ pub(crate) fn llm(client: &MockClient, system: Prompt<ReactAgent>) -> LlmNode<Re
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,
+        tool_concurrency: None,
+        round_limit: None,
         call: in_memory_call(),
         seat: None,
     }

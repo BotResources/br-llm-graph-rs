@@ -26,6 +26,7 @@ mod critic_view;
 mod critic_writer;
 mod critique;
 mod declarations;
+mod describe;
 mod duo;
 mod enter;
 mod generator_critic;
@@ -227,6 +228,7 @@ mod turn_client_scope_tests;
 mod turn_ids_tests;
 
 pub use generator_critic::GeneratorCritic;
+pub(crate) use given::Origin;
 pub use given::{
     AgentNode, Budgeted, GeneratorCriticNode, Given, History, LoopNode, Model, ModelNode, Prompt,
     Reads, RequestContext, Scheduled,

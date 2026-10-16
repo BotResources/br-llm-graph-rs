@@ -96,6 +96,11 @@ impl Node for ToolNode {
             None => Ok(()),
         }
     }
+
+    /// `tools`: the names of the tools this node runs.
+    fn describe(&self) -> crate::describe::NodeDescription {
+        self.description()
+    }
 }
 
 impl ToolNode {

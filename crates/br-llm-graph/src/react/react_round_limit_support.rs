@@ -89,6 +89,8 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output_mode: OutputMode::Plain,
+        tool_concurrency: None,
+        round_limit: None,
         call: in_memory_call(),
         seat: None,
     };

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::{Always, FnEdge, Graph, GraphBuilder, Target};
 use crate::react::agent_build::{
@@ -18,7 +19,7 @@ use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_names::Names;
 use crate::react::generator_critic_nodes::{FinishNode, Prepare, RouteNode, finish_edge};
 use crate::react::generator_critic_routing::Router;
-use crate::react::given::{History, Prompt, Reads};
+use crate::react::given::{History, Origin, Prompt, Reads};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::OnLimit;
@@ -81,10 +82,10 @@ impl GeneratorCritic {
 
         let review_request = critic
             .review_request
-            .unwrap_or_else(|| Prompt::text(REVIEW_REQUEST));
+            .unwrap_or_else(|| Prompt::text(REVIEW_REQUEST).with_origin(Origin::ReadyMade));
         let empty_answer_critique = self
             .empty_answer_critique
-            .unwrap_or_else(|| Prompt::text(EMPTY_ANSWER_CRITIQUE));
+            .unwrap_or_else(|| Prompt::text(EMPTY_ANSWER_CRITIQUE).with_origin(Origin::ReadyMade));
         let verdict = VerdictForm::new(
             critic.verdict,
             critic.thinking_description,
@@ -167,6 +168,7 @@ impl GeneratorCritic {
 
         let builder = keys
             .declare_private(GraphBuilder::new(schema))
+            .agent(AgentKind::GeneratorCritic)
             .entry(match &self.prepare {
                 Some(_) => names.prepare.clone(),
                 None => names.route.clone(),
@@ -189,8 +191,8 @@ impl GeneratorCritic {
             llm: names.generate.clone(),
             tool_nodes,
             after: Target::Node(names.check.clone()),
-            tool_concurrency: generator.tool_concurrency,
-            round_limit: generator.round_limit,
+            tool_concurrency: generator.tool_concurrency.clone(),
+            round_limit: generator.round_limit.clone(),
             thread: call.thread.clone(),
         };
         let llm = LlmNode {
@@ -202,6 +204,8 @@ impl GeneratorCritic {
             tools: generator.tools,
             enabled: generator.enabled,
             output_mode: generator.output_mode,
+            tool_concurrency: generator.tool_concurrency,
+            round_limit: generator.round_limit,
             call,
             seat: Some(duo.clone()),
         };

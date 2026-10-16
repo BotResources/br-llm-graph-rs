@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::edge::{Edge, Target};
 use crate::graph::graph::{EdgeEntry, Graph, NodeEntry, Parts};
@@ -23,6 +24,7 @@ pub struct GraphBuilder {
     edges: Vec<(NodeId, Box<dyn Edge>)>,
     inputs: Vec<Key>,
     outputs: Vec<Key>,
+    agent: Option<AgentKind>,
 }
 
 impl GraphBuilder {
@@ -36,6 +38,7 @@ impl GraphBuilder {
             edges: Vec::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            agent: None,
         }
     }
 
@@ -110,6 +113,13 @@ impl GraphBuilder {
         self
     }
 
+    /// Marks the graph as the graph of `agent`, so a call of it is described
+    /// with the agent's kind.
+    pub(crate) fn agent(mut self, agent: AgentKind) -> Self {
+        self.agent = Some(agent);
+        self
+    }
+
     /// Sets the edge of the node `from`. Every node has exactly one.
     pub fn edge(mut self, from: NodeId, edge: impl Edge + 'static) -> Self {
         self.edges.push((from, Box::new(edge)));
@@ -139,6 +149,7 @@ impl GraphBuilder {
             edges: raw_edges,
             inputs,
             outputs,
+            agent,
         } = self;
 
         schema.check_defaults()?;
@@ -217,6 +228,7 @@ impl GraphBuilder {
             order,
             nodes,
             edges,
+            agent,
         }))
     }
 }

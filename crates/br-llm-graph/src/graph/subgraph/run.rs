@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::describe::NodeDescription;
 use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::node::{CheckSite, Node, NodeFuture};
@@ -56,6 +57,13 @@ impl Node for SubGraph {
     /// output and capture must be an `Append`.
     fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
         check_call(schema, self, site == CheckSite::MapBody)
+    }
+
+    /// `call`, or `react_agent` and `generator_critic` for the graph of an
+    /// agent: the call's mappings, its failure policy and the description of
+    /// the graph it runs.
+    fn describe(&self) -> NodeDescription {
+        self.description()
     }
 }
 

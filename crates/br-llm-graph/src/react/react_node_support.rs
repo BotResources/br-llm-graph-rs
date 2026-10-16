@@ -62,6 +62,8 @@ pub(crate) fn llm_node(client: Arc<dyn Client>, system: Prompt<ReactAgent>) -> L
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,
+        tool_concurrency: None,
+        round_limit: None,
         call: in_memory_call(),
         seat: None,
     }

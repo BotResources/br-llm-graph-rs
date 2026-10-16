@@ -26,6 +26,11 @@ impl Node for Prepare {
     fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
         self.0.check(schema, site)
     }
+
+    /// The host's node's own description, forwarded.
+    fn describe(&self) -> crate::describe::NodeDescription {
+        self.0.describe()
+    }
 }
 
 /// The `route` node: starts `conversation` and the list of the call's turns.

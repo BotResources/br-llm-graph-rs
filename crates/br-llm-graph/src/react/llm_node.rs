@@ -3,13 +3,15 @@ use std::sync::Arc;
 use br_llm_clients_core::{ClientRequest, OutputMode, ToolSpec};
 use br_llm_messages::{Author, StopReason, Turn, TurnId};
 
+use crate::describe::NodeDescription;
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Node, NodeFuture};
+use crate::graph::{CheckSite, Context, Limit, Node, NodeFuture};
 use crate::react::agent_call::AgentCall;
 use crate::react::duo::Duo;
 use crate::react::given::{History, LoopNode, Model, Prompt, SeatCount};
 use crate::react::helpers::{check_enabled, enabled_names, system_text, wire};
 use crate::react::llm_node_target::{Target, answered_rounds};
+use crate::react::round_limit::RoundLimit;
 use crate::react::sink::complete_in;
 use crate::react::thread_store::TurnEnd;
 use crate::react::tool::Tool;
@@ -55,6 +57,10 @@ pub(crate) struct LlmNode<N: LoopNode> {
     /// (`EnabledKeyMismatch`).
     pub(crate) enabled: Option<Key>,
     pub(crate) output_mode: OutputMode,
+    /// The tool concurrency limit of the loop, for the description.
+    pub(crate) tool_concurrency: Option<Limit>,
+    /// The round limit of the loop, for the description.
+    pub(crate) round_limit: Option<RoundLimit>,
     /// The call of the agent: the turn the reply goes to and, for a durable
     /// agent, the thread it streams into.
     pub(crate) call: AgentCall,
@@ -144,6 +150,12 @@ impl<N: LoopNode> Node for LlmNode<N> {
             history.reads().check(schema)?;
         }
         Ok(())
+    }
+
+    /// `model_call`: the seat's author, how its model, system and history
+    /// are given, its tools, its enabled key and its bounds.
+    fn describe(&self) -> NodeDescription {
+        self.description()
     }
 }
 

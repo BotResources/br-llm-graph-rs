@@ -216,6 +216,8 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
             tools: vec![Arc::new(EchoTool)],
             enabled: None,
             output_mode: OutputMode::Plain,
+            tool_concurrency: None,
+            round_limit: None,
             call: in_memory_call(),
             seat: None,
         };

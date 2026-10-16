@@ -169,6 +169,7 @@ mod typed_kinds;
 #[cfg(doctest)]
 mod typed_mappings;
 
+pub mod describe;
 pub mod error;
 pub mod graph;
 pub mod observe;
@@ -180,6 +181,7 @@ pub mod state;
 pub mod update;
 pub mod value;
 
+pub use describe::{DESCRIPTION_VERSION, GraphDescription, NodeDescription, Realizing};
 pub use error::{GraphError, NodeFault};
 pub use graph::{
     Always, CaptureSource, CaptureUpdate, CheckSite, Context, Count, Edge, FnEdge, FnNode, Graph,

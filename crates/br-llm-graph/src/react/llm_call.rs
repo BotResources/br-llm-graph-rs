@@ -144,6 +144,11 @@ impl Node for LlmCall {
         }
         check_output(schema, &self.output, site)
     }
+
+    /// `llm_call`: how its subjects are given, its request and its output.
+    fn describe(&self) -> crate::describe::NodeDescription {
+        self.description()
+    }
 }
 
 impl LlmCall {

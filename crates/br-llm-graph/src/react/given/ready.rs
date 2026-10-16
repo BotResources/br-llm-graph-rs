@@ -22,7 +22,7 @@ impl<N: ModelNode> Given<N, String> {
     /// The text the state key `key` holds.
     pub fn from_state(key: &StateKey<String>) -> Self {
         let key = key.clone();
-        Self::from_fn(Reads::of_state(&key), move |ctx| {
+        Self::ready_made(Reads::of_state(&key), move |ctx| {
             Ok(ctx.get(&key)?.to_owned())
         })
     }
@@ -30,13 +30,13 @@ impl<N: ModelNode> Given<N, String> {
     /// The strings the state key `key` holds, joined with a blank line.
     pub fn from_state_list(key: &StateKey<Vec<String>>) -> Self {
         let key = key.clone();
-        Self::from_fn(Reads::of_state(&key), move |ctx| Ok(joined(ctx.get(&key)?)))
+        Self::ready_made(Reads::of_state(&key), move |ctx| Ok(joined(ctx.get(&key)?)))
     }
 
     /// The text the configuration key `key` holds.
     pub fn from_config(key: &ConfigKey<String>) -> Self {
         let key = key.clone();
-        Self::from_fn(Reads::of_config(&key), move |ctx| {
+        Self::ready_made(Reads::of_config(&key), move |ctx| {
             Ok(ctx.config(&key)?.to_owned())
         })
     }
@@ -45,7 +45,7 @@ impl<N: ModelNode> Given<N, String> {
     /// line.
     pub fn from_config_list(key: &ConfigKey<Vec<String>>) -> Self {
         let key = key.clone();
-        Self::from_fn(Reads::of_config(&key), move |ctx| {
+        Self::ready_made(Reads::of_config(&key), move |ctx| {
             Ok(joined(ctx.config(&key)?))
         })
     }
@@ -63,7 +63,7 @@ impl<N: Scheduled> Given<N, Arc<dyn Client>> {
     /// the next ones each client of `then` in turn, and the last client
     /// repeats. The calls are counted by the node (`Scheduled`).
     pub fn schedule(first: Arc<dyn Client>, then: Vec<Arc<dyn Client>>) -> Self {
-        Self::from_fn(Reads::new(), move |ctx| {
+        Self::ready_made(Reads::new(), move |ctx| {
             Ok(from_start(&first, &then, ctx.call_index()).clone())
         })
     }
@@ -82,7 +82,7 @@ impl<N: Budgeted> Given<N, Arc<dyn Client>> {
     /// not counted. An LLM call and a ReAct agent have none, so they have no
     /// tail.
     pub fn ending_with(primary: Arc<dyn Client>, tail: Vec<Arc<dyn Client>>) -> Self {
-        Self::from_fn(Reads::new(), move |ctx| {
+        Self::ready_made(Reads::new(), move |ctx| {
             Ok(with_tail(&primary, &tail, ctx.call_index(), ctx.calls_allowed()).clone())
         })
     }

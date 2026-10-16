@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::edge::{Edge, Target};
 use crate::graph::node::Node;
@@ -42,6 +43,9 @@ pub struct Graph {
     order: Vec<NodeId>,
     nodes: BTreeMap<NodeId, NodeEntry>,
     edges: BTreeMap<NodeId, EdgeEntry>,
+    /// The agent that built the graph, if any: a call of it is described
+    /// with the agent's kind.
+    agent: Option<AgentKind>,
 }
 
 pub(crate) struct Parts {
@@ -53,6 +57,7 @@ pub(crate) struct Parts {
     pub order: Vec<NodeId>,
     pub nodes: BTreeMap<NodeId, NodeEntry>,
     pub edges: BTreeMap<NodeId, EdgeEntry>,
+    pub agent: Option<AgentKind>,
 }
 
 impl Graph {
@@ -66,6 +71,7 @@ impl Graph {
             order: parts.order,
             nodes: parts.nodes,
             edges: parts.edges,
+            agent: parts.agent,
         }
     }
 
@@ -90,6 +96,11 @@ impl Graph {
     /// The keys it takes as inputs and gives back as outputs.
     pub fn signature(&self) -> &Signature {
         &self.signature
+    }
+
+    /// The agent that built the graph, if any.
+    pub(crate) fn agent(&self) -> Option<AgentKind> {
+        self.agent
     }
 
     /// Its entry node.

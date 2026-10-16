@@ -3,6 +3,7 @@
 
 mod context;
 mod nodes;
+mod origin;
 mod reads;
 mod ready;
 
@@ -17,6 +18,7 @@ use crate::state::{Config, State};
 pub use context::RequestContext;
 pub use nodes::{AgentNode, Budgeted, GeneratorCriticNode, LoopNode, ModelNode, Scheduled};
 pub(crate) use nodes::{CheckFacts, CriticFacts, SeatCount};
+pub(crate) use origin::Origin;
 pub use reads::Reads;
 
 /// A function given to a model-calling node: it reads the node's context and
@@ -74,6 +76,8 @@ type GiveFn<N, T> = dyn for<'a> Fn(&RequestContext<'a, N>) -> Result<T, NodeErro
 pub struct Given<N: ModelNode, T> {
     reads: Reads,
     give: Arc<GiveFn<N, T>>,
+    /// How it was given, for the graph's description.
+    origin: Origin,
 }
 
 /// The model of a node: the client it calls, given or chosen per call. A
@@ -90,7 +94,7 @@ pub type History<N> = Given<N, Vec<WireMessage>>;
 impl<N: ModelNode, T: Clone + Send + Sync + 'static> Given<N, T> {
     /// The fixed value `value`, given on every call; it reads no key.
     pub fn value(value: T) -> Self {
-        Self::from_fn(Reads::new(), move |_| Ok(value.clone()))
+        Self::from_fn(Reads::new(), move |_| Ok(value.clone())).with_origin(Origin::Fixed)
     }
 }
 
@@ -103,7 +107,28 @@ impl<N: ModelNode, T> Given<N, T> {
         Self {
             reads,
             give: Arc::new(give),
+            origin: Origin::Function,
         }
+    }
+
+    /// A ready-made subject of the library: `give`, reading the keys
+    /// declared in `reads`.
+    pub(crate) fn ready_made<F>(reads: Reads, give: F) -> Self
+    where
+        F: for<'a> Fn(&RequestContext<'a, N>) -> Result<T, NodeError> + Send + Sync + 'static,
+    {
+        Self::from_fn(reads, give).with_origin(Origin::ReadyMade)
+    }
+
+    /// This subject, given as `origin` says.
+    pub(crate) fn with_origin(mut self, origin: Origin) -> Self {
+        self.origin = origin;
+        self
+    }
+
+    /// How it was given: a fixed value, a ready-made value or a function.
+    pub(crate) fn origin(&self) -> Origin {
+        self.origin
     }
 
     /// The keys this subject reads.
@@ -128,6 +153,7 @@ impl<N: ModelNode, T> Clone for Given<N, T> {
         Self {
             reads: self.reads.clone(),
             give: self.give.clone(),
+            origin: self.origin,
         }
     }
 }

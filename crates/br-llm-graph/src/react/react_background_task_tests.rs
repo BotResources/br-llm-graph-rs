@@ -94,6 +94,8 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         tools: vec![start_task.clone()],
         enabled: None,
         output_mode: OutputMode::Plain,
+        tool_concurrency: None,
+        round_limit: None,
         call: in_memory_call(),
         seat: None,
     };
