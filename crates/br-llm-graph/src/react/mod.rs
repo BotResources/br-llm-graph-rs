@@ -55,6 +55,8 @@ mod generator_critic_override_tests;
 #[cfg(test)]
 mod generator_critic_prepare_tests;
 #[cfg(test)]
+mod generator_critic_rule_tests;
+#[cfg(test)]
 mod generator_critic_support;
 #[cfg(test)]
 mod generator_critic_tests;
