@@ -9,6 +9,99 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-16
+
+Breaking: a built graph describes itself as data (`Graph::describe`), so a
+host can compare the graph it built with the graph it meant to build; edges
+may declare their targets, which the build and the run then hold them to.
+
+### Added
+
+- `Graph::describe` gives a `GraphDescription`: the graph's entry, its
+  signature, its schema (state and configuration keys with their kinds and
+  defaults; an agent's private keys are not part of it) and its nodes in
+  registration order, each with its id, its kind, its realizes labels, its
+  edge's declared targets in the order given (or undeclared) and the
+  fields of its kind, nested graphs included. It runs nothing, calls no
+  client, reads no state and no configuration; two builds from the same
+  parts give equal descriptions, in the same order.
+- Its JSON, `br-llm-graph-description/1` (`DESCRIPTION_VERSION`):
+  `{"description_version", "entry", "signature", "schema", "nodes"}`; a
+  node `{"id", "kind", "realizes"?, "join"?, "edge", ...}`; an edge
+  `{"targets": [{"node"} | {"end"}]}` or `{"undeclared": true}`; a nested
+  graph without its version. Written only: `GraphDescription` and
+  `NodeDescription` implement `Serialize` and not `Deserialize` (pinned by
+  `compile_fail` doctests).
+- The kinds: `node` and `join` (a host's node, by default), `call`,
+  `react_agent` and `generator_critic` (a call of an agent's graph, with
+  everything a call holds), `map`, `llm_call`, `model_call` (an agent's
+  model-calling step and the critic's call) and `tools` (a tool node). A
+  node of another kind registered as a join carries `"join": true`.
+- What each kind holds:
+  - a call: its inputs, configuration keys and outputs with their sources
+    and targets, its end label, its failure policy with its captures, and
+    the description of its graph; a fixed value is written as its kind
+    (`{"const": kind}`), never the value;
+  - a map: its list and item keys, its concurrency limit, its item-failure
+    policy and its body, a node without id or edge;
+  - an LLM call: how its model and system are given, its request and its
+    output;
+  - a model-calling node: its author, how its model, system and history
+    are given (`fixed`, `ready_made` or `function`, never the value), its
+    tool names, its enabled key, its tool concurrency and round limit. The
+    critic's node adds the critique budget, `final_generation`, the verdict
+    retries, how the review request is given and whether the verdict shape
+    is the default; the generator-critic's `check` holds the revision limit
+    and how the rule check and the empty-answer critique are given;
+  - a tool node: the names of its tools.
+  A `Limit` or a `Count` is `{"fixed": n}` or `{"config": key}`.
+- `Node::describe`, a provided method: what a node says of itself
+  (`NodeDescription`), by default `node` or `join` with nothing nested. A
+  host's node may give its own kind label (`NodeDescription::labelled`; a
+  label that is not an identifier or that names a library kind is refused,
+  `Identifier` with the field `kind_label`) and a nested description
+  (`NodeDescription::nesting`). A node that wraps another forwards it; the
+  generator-critic's `prepare` does.
+- Realizes labels: `Node::realizing(labels)` wraps any node in
+  `Realizing<N>`, which runs, checks and describes as its node does and
+  adds the labels, free text in the order given; the library never reads
+  them. `NodeDescription::realizing` adds labels to a description.
+- `Edge::declared`, a provided method: the targets an edge may give, known
+  without running it; `None` by default (undeclared). `Always` declares its
+  target; `FnEdge::targets` declares an edge built from a function (in the
+  order given, a repeated target once at its first place).
+- `GraphError::UndeclaredTarget { node, target }`: a declared edge that
+  returns a target it did not declare fails the run, the run's error
+  itself, before any target runs. Per edge, in registration order: the
+  edge's error, `EmptyEdge`, `UndeclaredTarget`, then `UnknownNode`.
+- `GraphError::EdgeToUnknownNode { node, target }`: the build refuses a
+  declared node target the graph does not hold, checked last, after the
+  node checks; undeclared targets and end labels are not checked.
+- The library's own graphs declare every edge's targets: the ReAct agent
+  (`enter`, the model call with its tool nodes, its round-limit node and
+  the answer, the tool nodes, the round-limit node), the generator-critic
+  (`route`, `check`, `critique`, `finish` with its labels `validated` and
+  `exhausted`, `prepare`).
+- `Target` is displayed (`node {id}`, `end {label}`) and serialized
+  (`{"node": id}`, `{"end": label}`).
+- The example `describe` prints the description of a graph with declared
+  edges, a call, a map and an agent.
+
+### Changed
+
+- **Breaking:** an `Always` (or a declared `FnEdge`) naming a node the
+  graph does not hold is refused at build with `EdgeToUnknownNode`; 0.5
+  built it and failed the run only when the edge ran (`UnknownNode`).
+- **Breaking:** `GraphError` gains `UndeclaredTarget` and
+  `EdgeToUnknownNode`; a `match` on it without a wildcard arm no longer
+  compiles.
+- **Breaking:** `Edge` gains the provided method `declared` and `Node` the
+  provided methods `describe` and `realizing`: a host type that implements
+  them and also has inherent or trait methods of these names may need to
+  disambiguate its calls.
+- `GraphBuilder::build` documents and applies the new refusal order:
+  `EdgeToUnknownNode` after `InvalidNode`.
+
 ## 0.5.0 - 2026-10-16
 
 Breaking: an agent works in a thread of a thread store the host gives, and
