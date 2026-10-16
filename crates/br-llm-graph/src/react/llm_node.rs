@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
 use br_llm_clients_core::{ClientRequest, OutputMode, ToolSpec};
-use br_llm_messages::{Author, Conversation, StopReason, Turn, TurnId, TurnItem, TurnState};
+use br_llm_messages::{Author, StopReason, Turn, TurnId};
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture};
-use crate::react::agent_call::{AgentCall, Position};
+use crate::react::agent_call::AgentCall;
 use crate::react::duo::Duo;
 use crate::react::given::{History, LoopNode, Model, Prompt, SeatCount};
-use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, system_text, wire};
+use crate::react::helpers::{check_enabled, enabled_names, system_text, wire};
+use crate::react::llm_node_target::{Target, answered_rounds};
 use crate::react::sink::complete_in;
 use crate::react::thread_store::TurnEnd;
 use crate::react::tool::Tool;
@@ -146,23 +147,6 @@ impl<N: LoopNode> Node for LlmNode<N> {
     }
 }
 
-/// Where the reply of a model call goes.
-enum Target<'a> {
-    /// A new step of this turn, which awaits one.
-    Step(&'a Turn),
-    /// The first step of a new turn under `id`; the call moves to `moved`
-    /// when set.
-    Open { id: TurnId, moved: Option<Position> },
-}
-
-/// The rounds `turn` has answered: its tool results items.
-fn answered_rounds(turn: &Turn) -> usize {
-    turn.items()
-        .iter()
-        .filter(|item| matches!(item, TurnItem::ToolResults(_)))
-        .count()
-}
-
 impl<N: LoopNode> LlmNode<N> {
     /// The client called for this model call: the one `model` gave for the
     /// turn `turn`, asked at the turn's first round (in this call, for a turn
@@ -186,23 +170,6 @@ impl<N: LoopNode> LlmNode<N> {
         Ok(client)
     }
 
-    /// The 0-based index of the turn the reply goes to among the call's
-    /// turns, as the call ranks them: 0 for a turn the call continues in
-    /// memory.
-    fn turn_index(&self, state: &State, target: &Target<'_>) -> Result<usize, GraphError> {
-        let rank = match (target, self.call.position(state)?) {
-            (
-                Target::Open {
-                    moved: Some(Position::Writing(rank)),
-                    ..
-                },
-                _,
-            ) => *rank,
-            (_, Position::Writing(rank) | Position::Answered(rank)) => rank,
-        };
-        Ok(rank.saturating_sub(1))
-    }
-
     /// Where the call of a generator-critic stands for the generator's
     /// context: the number of the generation the reply goes to, counted
     /// among the generator's turns of the call. Nothing for a ReAct agent.
@@ -221,42 +188,6 @@ impl<N: LoopNode> LlmNode<N> {
             Target::Open { .. } => None,
         };
         duo.count(config, &turns, turns.generations_before(writing) + 1)
-    }
-
-    /// Where the reply goes. In memory, the author's last turn while it
-    /// awaits a step, whatever turn it is (one the opening ends with
-    /// included), as the rule of the ReAct loop says. Durable, only the turn
-    /// of the call's rank, while it awaits a step: a turn of the thread that
-    /// is not the call's, a repaired one included, is never continued. Else
-    /// a new turn: the turn of the call's rank when it is not in the
-    /// conversation yet, or the turn of the next rank once it is finished.
-    fn target<'a>(
-        &self,
-        state: &State,
-        ctx: &Context,
-        conversation: &'a Conversation,
-    ) -> Result<Target<'a>, GraphError> {
-        // In memory, the rule of the ReAct loop is literal: the author's last
-        // turn goes on while it awaits a step, wherever it comes from.
-        let call = &self.call;
-        if call.thread.is_none()
-            && let Some(turn) = last_turn_by_author(conversation, &self.author)
-            && matches!(turn.state(), TurnState::AwaitingStep)
-        {
-            return Ok(Target::Step(turn));
-        }
-        let rank = match call.position(state)? {
-            Position::Writing(rank) | Position::Answered(rank) => rank,
-        };
-        let id = call.turn_id(state, ctx, rank)?;
-        Ok(match conversation.turn(&id) {
-            Some(turn) if matches!(turn.state(), TurnState::AwaitingStep) => Target::Step(turn),
-            Some(_) => Target::Open {
-                id: call.turn_id(state, ctx, rank + 1)?,
-                moved: Some(Position::Writing(rank + 1)),
-            },
-            None => Target::Open { id, moved: None },
-        })
     }
 
     fn declared_tools(&self, state: &State) -> Result<Vec<ToolSpec>, GraphError> {
