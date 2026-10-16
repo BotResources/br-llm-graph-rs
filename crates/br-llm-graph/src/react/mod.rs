@@ -60,6 +60,8 @@ mod turn_writer;
 mod verdict;
 
 #[cfg(test)]
+mod declared_edges_tests;
+#[cfg(test)]
 mod generator_critic_bounds_tests;
 #[cfg(test)]
 mod generator_critic_budget_tests;
