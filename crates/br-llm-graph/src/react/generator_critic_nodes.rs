@@ -1,13 +1,13 @@
 //! The bookkeeping nodes of the generator-critic graph: the caller's
 //! `prepare` node, the routing node that starts `conversation`, and the
-//! outputs written on finishing.
+//! outputs written on finishing, with the end label they give.
 
 use std::sync::Arc;
 
 use br_llm_messages::{Conversation, Entry};
 
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Node, NodeFuture};
+use crate::graph::{CheckSite, Context, Edge, FnEdge, Node, NodeFuture, Target};
 use crate::react::agent_call::Position;
 use crate::react::duo::{Duo, TurnKind};
 use crate::react::helpers::{answer_text, final_step};
@@ -17,7 +17,7 @@ use crate::react::turn_clients::TurnClients;
 use crate::react::turn_ids::agent_origin;
 use crate::state::{Config, Schema, State, Value};
 use crate::update::Update;
-use crate::value::Key;
+use crate::value::{EndLabel, Key};
 
 /// The caller's `prepare` node, run as it is.
 pub(crate) struct Prepare(pub(crate) Box<dyn Node>);
@@ -192,4 +192,17 @@ impl Node for FinishNode {
             Ok(updates)
         })
     }
+}
+
+/// The edge of `finish`: the run ends with `validated` when `is_validated`
+/// (the key `validated`) is true, else `exhausted`.
+pub(crate) fn finish_edge(validated: Key) -> impl Edge + 'static {
+    FnEdge::new(move |state, _config| {
+        let label = if state.bool(&validated)? {
+            "validated"
+        } else {
+            "exhausted"
+        };
+        Ok(vec![Target::End(EndLabel::new(label)?)])
+    })
 }

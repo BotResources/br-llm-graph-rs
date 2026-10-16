@@ -16,7 +16,7 @@ use crate::react::declarations::Declarations;
 use crate::react::duo::Duo;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_names::Names;
-use crate::react::generator_critic_nodes::{FinishNode, Prepare, RouteNode};
+use crate::react::generator_critic_nodes::{FinishNode, Prepare, RouteNode, finish_edge};
 use crate::react::generator_critic_routing::Router;
 use crate::react::given::{History, Prompt, Reads};
 use crate::react::llm_node::LlmNode;
@@ -26,7 +26,6 @@ use crate::react::seats::CriticHistory;
 use crate::react::turn_clients::TurnClients;
 use crate::react::verdict::VerdictForm;
 use crate::state::{Kind, Schema};
-use crate::value::EndLabel;
 
 impl GeneratorCritic {
     /// The graph of this generator-critic, or the first refusal of its
@@ -221,7 +220,6 @@ impl GeneratorCritic {
         }
 
         let (entry, checked, judged) = (router.clone(), router.clone(), router);
-        let validated = names.validated.clone();
         let graph = builder
             .node(
                 names.route.clone(),
@@ -270,22 +268,12 @@ impl GeneratorCritic {
                 FinishNode {
                     duo,
                     answer: keys.answer,
-                    validated: names.validated,
+                    validated: names.validated.clone(),
                     generations: names.generations,
                     flag: flag_limit,
                 },
             )
-            .edge(
-                names.finish,
-                FnEdge::new(move |state, _config| {
-                    let label = if state.bool(&validated)? {
-                        "validated"
-                    } else {
-                        "exhausted"
-                    };
-                    Ok(vec![Target::End(EndLabel::new(label)?)])
-                }),
-            )
+            .edge(names.finish, finish_edge(names.validated))
             .build()?;
         Ok(Arc::new(graph))
     }
