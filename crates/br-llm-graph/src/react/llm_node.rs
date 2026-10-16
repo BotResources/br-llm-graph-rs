@@ -31,7 +31,8 @@ use crate::value::Key;
 /// conversation and the round, the rounds already answered in the turn the
 /// reply goes to (0 for a new turn). The reply is added as a new step of the
 /// turn the agent writes when that turn awaits a step, else as a new turn of
-/// the author under an id from the id source (see `target`).
+/// the author under an id from the id source (see `target`): in memory, the
+/// author's last turn; durable, the turn of the call's rank.
 ///
 /// For a durable agent the turn is written to its thread first: a new turn
 /// is opened under its id, the sink pushes each stream event into it, and a
@@ -157,12 +158,16 @@ fn answered_rounds(turn: &Turn) -> usize {
 }
 
 impl<N: AgentNode> LlmNode<N> {
-    /// Where the reply goes. With the agent's call: the turn it writes, while
-    /// that turn awaits a step; a new one when it is not in the conversation
-    /// yet, or the turn of the next rank once it is finished. Without (the
-    /// generator-critic until it keeps its call): the author's last turn
-    /// while it awaits a step, else a new turn, ranked one past the turns
-    /// that follow the trigger.
+    /// Where the reply goes. In memory, the author's last turn while it
+    /// awaits a step, whatever turn it is (one the opening ends with
+    /// included), as the rule of the ReAct loop says. Durable, only the turn
+    /// of the call's rank, while it awaits a step: a turn of the thread that
+    /// is not the call's, a repaired one included, is never continued. Else,
+    /// with the agent's call, a new turn: the turn of the call's rank when it
+    /// is not in the conversation yet, or the turn of the next rank once it
+    /// is finished. Without (the generator-critic until it keeps its call):
+    /// the author's last turn while it awaits a step, else a new turn, ranked
+    /// one past the turns that follow the trigger.
     fn target<'a>(
         &self,
         state: &State,
@@ -182,6 +187,14 @@ impl<N: AgentNode> LlmNode<N> {
                 }
             });
         };
+        // In memory, the rule of the ReAct loop is literal: the author's last
+        // turn goes on while it awaits a step, wherever it comes from.
+        if call.thread.is_none()
+            && let Some(turn) = last_turn_by_author(conversation, &self.author)
+            && matches!(turn.state(), TurnState::AwaitingStep)
+        {
+            return Ok(Target::Step(turn));
+        }
         let rank = match call.position(state)? {
             Position::Writing(rank) | Position::Answered(rank) => rank,
         };

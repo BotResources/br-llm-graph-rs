@@ -35,7 +35,13 @@ use crate::value::{EndLabel, Key, NodeId};
 /// `conversation`; the turn stays open across its rounds. Without one, the
 /// agent works in memory: `conversation` starts as `opening` and lives for
 /// the current call. Both run the same loop, read the same functions and
-/// give the same outputs and errors.
+/// give the same outputs and errors; they differ in the turn a reply goes
+/// on in. In memory, the rule of the ReAct loop is literal: a reply is added
+/// as a new step of the author's last turn when that turn awaits a step, so
+/// an own turn the opening ends with, awaiting a step, is continued. Durable,
+/// a reply goes on in the turn of the call's rank only: a turn of the thread
+/// that is not the call's, or one repaired on entry, is never continued, and
+/// the call opens its turn of the next rank.
 ///
 /// The model call is built from what the runner gives it (see `Given`), each
 /// subject a value or a function of the agent's context, which holds the

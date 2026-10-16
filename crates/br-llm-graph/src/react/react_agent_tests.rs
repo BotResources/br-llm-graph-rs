@@ -146,7 +146,7 @@ async fn given_the_round_limit_errors_when_the_agent_keeps_calling_then_the_run_
 }
 
 #[tokio::test]
-async fn given_an_opening_holding_an_earlier_turn_of_the_agent_when_called_in_memory_then_it_answers_in_a_new_turn()
+async fn given_an_opening_ending_with_a_turn_of_the_agent_awaiting_a_step_when_called_in_memory_then_the_reply_continues_it()
  {
     let mut opening = question("hi");
     let mut turn = Turn::new(
@@ -167,15 +167,10 @@ async fn given_an_opening_holding_an_earlier_turn_of_the_agent_when_called_in_me
     let graph = agent(&client).graph().unwrap();
     let state = finished(call(&graph, opening).await);
     assert_eq!(state.str(&key("answer")).unwrap(), "a new reply");
-    assert_eq!(state.transcript().entries().len(), 3);
-    let earlier = state
-        .transcript()
-        .turn(&TurnId::new("t0").unwrap())
-        .unwrap();
-    assert_eq!(earlier.items().len(), 2);
-    let turn = last_turn(&state);
-    assert_eq!(turn.id().as_str(), "t1");
-    assert_eq!(turn.items().len(), 1);
+    assert_eq!(state.transcript().entries().len(), 2);
+    let continued = last_turn(&state);
+    assert_eq!(continued.id().as_str(), "t0");
+    assert_eq!(continued.items().len(), 3);
     assert_eq!(requests(&client).len(), 1);
 }
 
