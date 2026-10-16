@@ -37,7 +37,7 @@ fn llm_node(
         tools,
         enabled: None,
         output_mode: OutputMode::Plain,
-        call: None,
+        call: in_memory_call(),
         seat: None,
     }
 }

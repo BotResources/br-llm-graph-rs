@@ -62,7 +62,7 @@ pub(crate) fn llm_node(client: Arc<dyn Client>, system: Prompt<ReactAgent>) -> L
         tools: Vec::new(),
         enabled: None,
         output_mode: OutputMode::Plain,
-        call: None,
+        call: in_memory_call(),
         seat: None,
     }
 }
@@ -85,6 +85,7 @@ pub(crate) fn state_with_call(step: Step) -> State {
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
     values.insert(key("enabled"), Value::list(Vec::new()));
+    values.insert(key(TURN_RANK), first_turn());
     State::new(schema(), values).unwrap()
 }
 

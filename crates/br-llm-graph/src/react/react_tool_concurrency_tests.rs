@@ -14,7 +14,9 @@ use crate::graph::{Always, Context, GraphBuilder, Limit, Target};
 use crate::observe::NoopObserver;
 use crate::react::given::{Model, Prompt};
 use crate::react::react_agent::ReactAgent;
-use crate::react::test_support::{author, calls_step, config, key, mock, schema, spec, text_step};
+use crate::react::test_support::{
+    TURN_RANK, author, calls_step, config, first_turn, key, mock, schema, spec, text_step,
+};
 use crate::react::tool::{Tool, ToolFuture, ToolOutput};
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
@@ -97,6 +99,7 @@ fn four_calls_pending() -> State {
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
     values.insert(key("enabled"), Value::list(Vec::new()));
+    values.insert(key(TURN_RANK), first_turn());
     State::new(schema(), values).unwrap()
 }
 

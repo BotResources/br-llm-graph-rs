@@ -16,7 +16,9 @@ use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
 use crate::react::react_round_limit_support::*;
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::test_support::{EchoTool, author, key, mock, text_step, tool_call_step};
+use crate::react::test_support::{
+    EchoTool, author, in_memory_call, key, mock, text_step, tool_call_step,
+};
 use crate::value::EndLabel;
 
 #[tokio::test]
@@ -214,7 +216,7 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
             tools: vec![Arc::new(EchoTool)],
             enabled: None,
             output_mode: OutputMode::Plain,
-            call: None,
+            call: in_memory_call(),
             seat: None,
         };
         ReactLoop {

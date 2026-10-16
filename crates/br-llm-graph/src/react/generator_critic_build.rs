@@ -202,7 +202,7 @@ impl GeneratorCritic {
             tools: generator.tools,
             enabled: generator.enabled,
             output_mode: generator.output_mode,
-            call: Some(call),
+            call,
             seat: Some(duo.clone()),
         };
         let mut builder = react.add(builder, llm)?;

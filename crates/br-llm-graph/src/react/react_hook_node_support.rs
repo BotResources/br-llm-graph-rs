@@ -54,6 +54,7 @@ pub(crate) fn pending(calls: Vec<AssistantBlock>) -> State {
         (key("chat"), Value::conversation(chat)),
         (key("log"), Value::list(vec![Value::str("one entry")])),
         (key("enabled"), Value::list(Vec::new())),
+        (key(TURN_RANK), first_turn()),
     ]);
     State::new(schema(), values).unwrap()
 }

@@ -71,6 +71,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
 
     let schema = Schema::builder()
         .state_by_name(k("chat"), Kind::Conversation)
+        .state_by_name(k(TURN_RANK), Kind::Int)
         .state_by_name(k("pending_tasks"), Kind::list(Kind::Str))
         .config_by_name(k("base"), Kind::Str)
         .build();
@@ -93,7 +94,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         tools: vec![start_task.clone()],
         enabled: None,
         output_mode: OutputMode::Plain,
-        call: None,
+        call: in_memory_call(),
         seat: None,
     };
     let react = ReactLoop {
@@ -152,6 +153,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     let mut values = BTreeMap::new();
     values.insert(k("chat"), Value::conversation(chat));
     values.insert(k("pending_tasks"), Value::list(Vec::new()));
+    values.insert(k(TURN_RANK), first_turn());
     let state = State::new(schema, values).unwrap();
 
     let mut session = Session::new(graph, config, state, ctx()).unwrap();

@@ -19,7 +19,9 @@ use crate::react::llm_node::LlmNode;
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::test_support::{EchoTool, author, base, key, requests, tool_names};
+use crate::react::test_support::{
+    EchoTool, TURN_RANK, author, base, first_turn, in_memory_call, key, requests, tool_names,
+};
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::testkit::SeqIds;
@@ -32,6 +34,7 @@ pub(crate) fn nid(name: &str) -> NodeId {
 pub(crate) fn schema() -> Schema {
     Schema::builder()
         .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name_with_default(key(TURN_RANK), Kind::Int, first_turn())
         .state_by_name(key("log"), Kind::list(Kind::Str))
         .state_by_name(key("limited"), Kind::Bool)
         .config_by_name(key("base"), Kind::Str)
@@ -61,6 +64,7 @@ pub(crate) fn state_with(chat: Conversation) -> State {
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
     values.insert(key("limited"), Value::bool(false));
+    values.insert(key(TURN_RANK), first_turn());
     State::new(schema(), values).unwrap()
 }
 
@@ -85,7 +89,7 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output_mode: OutputMode::Plain,
-        call: None,
+        call: in_memory_call(),
         seat: None,
     };
     let react = ReactLoop {

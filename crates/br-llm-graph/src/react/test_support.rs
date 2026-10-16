@@ -10,6 +10,7 @@ use br_llm_messages::{
 };
 use serde_json::{Value as Json, json};
 
+use crate::react::agent_call::AgentCall;
 use crate::react::given::{ModelNode, Prompt};
 pub(crate) use crate::react::test_clients::{LaxClient, StreamRecorder};
 pub(crate) use crate::react::test_tools::{
@@ -41,9 +42,31 @@ pub(crate) fn base<N: ModelNode>() -> Prompt<N> {
     Prompt::from_config(&ckey("base"))
 }
 
+/// The call of a model-call step run on `chat` outside an agent's graph,
+/// in memory: its trigger is the last user input of `chat`, and where it
+/// stands among its turns is the int key `turn_rank` (`TURN_RANK`, from 1),
+/// which every schema such a step runs on declares.
+pub(crate) fn in_memory_call() -> AgentCall {
+    AgentCall {
+        opening: key("chat"),
+        position: key(TURN_RANK),
+        thread: None,
+        turns: None,
+    }
+}
+
+/// The key where the call of `in_memory_call` stands.
+pub(crate) const TURN_RANK: &str = "turn_rank";
+
+/// The start value of `TURN_RANK`: the call writes its first turn.
+pub(crate) fn first_turn() -> Value {
+    Value::int(1)
+}
+
 pub(crate) fn schema() -> Schema {
     Schema::builder()
         .state_by_name(key("chat"), Kind::Conversation)
+        .state_by_name_with_default(key(TURN_RANK), Kind::Int, first_turn())
         .state_by_name(key("log"), Kind::list(Kind::Str))
         .state_by_name(key("enabled"), Kind::list(Kind::Str))
         .config_by_name(key("base"), Kind::Str)
@@ -65,6 +88,7 @@ pub(crate) fn seeded_state() -> State {
     let mut values = BTreeMap::new();
     values.insert(key("chat"), Value::conversation(chat));
     values.insert(key("log"), Value::list(Vec::new()));
+    values.insert(key(TURN_RANK), first_turn());
     values.insert(
         key("enabled"),
         Value::list(vec![Value::str("echo"), Value::str("tally")]),

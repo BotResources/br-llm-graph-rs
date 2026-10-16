@@ -34,16 +34,3 @@ pub(crate) fn trigger(conversation: &Conversation) -> Option<&UserInput> {
 pub(crate) fn id_request(ctx: &Context, trigger: Option<&InputId>, rank: usize) -> IdRequest {
     IdRequest::new(agent_origin(ctx), trigger.cloned(), rank)
 }
-
-/// The rank of the next turn of a call kept in memory in `conversation`: one
-/// more than the turns that follow its trigger (every turn when it has
-/// none).
-pub(crate) fn next_rank_in_memory(conversation: &Conversation) -> usize {
-    let turns = conversation
-        .entries()
-        .iter()
-        .rev()
-        .take_while(|entry| matches!(entry, Entry::Turn(_)))
-        .count();
-    turns + 1
-}

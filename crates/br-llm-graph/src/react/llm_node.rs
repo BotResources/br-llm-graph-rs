@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use br_llm_clients_core::{ClientRequest, OutputMode, ToolSpec};
-use br_llm_messages::{
-    Author, Conversation, StopReason, Turn, TurnId, TurnItem, TurnState, UserInput,
-};
+use br_llm_messages::{Author, Conversation, StopReason, Turn, TurnId, TurnItem, TurnState};
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture};
@@ -15,7 +13,6 @@ use crate::react::sink::complete_in;
 use crate::react::thread_store::TurnEnd;
 use crate::react::tool::Tool;
 use crate::react::turn_clients::TurnClients;
-use crate::react::turn_ids::{id_request, next_rank_in_memory, trigger};
 use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Schema, State};
 use crate::update::Update;
@@ -58,10 +55,8 @@ pub(crate) struct LlmNode<N: LoopNode> {
     pub(crate) enabled: Option<Key>,
     pub(crate) output_mode: OutputMode,
     /// The call of the agent: the turn the reply goes to and, for a durable
-    /// agent, the thread it streams into. `None`: a model-call step outside
-    /// an agent's graph (the tests of the loop's nodes), in memory, where
-    /// the conversation alone says where the reply goes.
-    pub(crate) call: Option<AgentCall>,
+    /// agent, the thread it streams into.
+    pub(crate) call: AgentCall,
     /// For the generator of a generator-critic: where the call stands, for
     /// the generator's context.
     pub(crate) seat: Option<Duo>,
@@ -95,7 +90,7 @@ impl<N: LoopNode> Node for LlmNode<N> {
             };
             let client = self.client(state, config, ctx, facts, &turn_id)?;
 
-            let writer = match self.call.as_ref().and_then(|call| call.thread.as_ref()) {
+            let writer = match &self.call.thread {
                 Some(binding) => Some(TurnWriter {
                     store: binding.store.as_ref(),
                     thread: binding.thread(state)?,
@@ -125,14 +120,14 @@ impl<N: LoopNode> Node for LlmNode<N> {
                 }],
                 Target::Open { moved, .. } => {
                     let turn = Turn::new(turn_id, Some(self.author.clone()), step);
-                    let added = self.call.as_ref().and_then(|call| call.add_turn(turn.id()));
+                    let added = self.call.add_turn(turn.id());
                     let mut updates = vec![Update::PushTurn {
                         key: self.key.clone(),
                         turn,
                     }];
                     updates.extend(added);
-                    if let (Some(call), Some(position)) = (&self.call, moved) {
-                        updates.push(call.move_to(position));
+                    if let Some(position) = moved {
+                        updates.push(self.call.move_to(position));
                     }
                     updates
                 }
@@ -192,13 +187,10 @@ impl<N: LoopNode> LlmNode<N> {
     }
 
     /// The 0-based index of the turn the reply goes to among the call's
-    /// turns, as the call ranks them: 0 for a node outside an agent's graph
-    /// and for a turn the call continues in memory.
+    /// turns, as the call ranks them: 0 for a turn the call continues in
+    /// memory.
     fn turn_index(&self, state: &State, target: &Target<'_>) -> Result<usize, GraphError> {
-        let Some(call) = &self.call else {
-            return Ok(0);
-        };
-        let rank = match (target, call.position(state)?) {
+        let rank = match (target, self.call.position(state)?) {
             (
                 Target::Open {
                     moved: Some(Position::Writing(rank)),
@@ -238,7 +230,6 @@ impl<N: LoopNode> LlmNode<N> {
     /// is not the call's, a repaired one included, is never continued. Else
     /// a new turn: the turn of the call's rank when it is not in the
     /// conversation yet, or the turn of the next rank once it is finished.
-    /// Without a call, ranked one past the turns that follow the trigger.
     fn target<'a>(
         &self,
         state: &State,
@@ -247,20 +238,13 @@ impl<N: LoopNode> LlmNode<N> {
     ) -> Result<Target<'a>, GraphError> {
         // In memory, the rule of the ReAct loop is literal: the author's last
         // turn goes on while it awaits a step, wherever it comes from.
-        if self.call.as_ref().is_none_or(|call| call.thread.is_none())
+        let call = &self.call;
+        if call.thread.is_none()
             && let Some(turn) = last_turn_by_author(conversation, &self.author)
             && matches!(turn.state(), TurnState::AwaitingStep)
         {
             return Ok(Target::Step(turn));
         }
-        let Some(call) = &self.call else {
-            let trigger = trigger(conversation).map(UserInput::id);
-            let rank = next_rank_in_memory(conversation);
-            return Ok(Target::Open {
-                id: ctx.ids.turn_id(&id_request(ctx, trigger, rank)),
-                moved: None,
-            });
-        };
         let rank = match call.position(state)? {
             Position::Writing(rank) | Position::Answered(rank) => rank,
         };

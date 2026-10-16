@@ -224,7 +224,7 @@ impl ReactAgent {
             tools: self.tools,
             enabled: self.enabled,
             output_mode: self.output_mode,
-            call: Some(call.clone()),
+            call: call.clone(),
             seat: None,
         };
 
