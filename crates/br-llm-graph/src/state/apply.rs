@@ -117,5 +117,8 @@ impl State {
 }
 
 #[cfg(test)]
+#[path = "apply_conversation_tests.rs"]
+mod conversation_tests;
+#[cfg(test)]
 #[path = "apply_tests.rs"]
 mod tests;
