@@ -103,7 +103,9 @@ impl Edge for Repeating {
 
 #[tokio::test]
 async fn given_a_target_declared_twice_when_built_then_it_is_kept_once_at_its_first_place() {
-    let graph = graph(Repeating(vec![to("x"), end("done"), to("x"), end("done")]));
+    // `x` again after `done`: kept at its first place, `[x, done]`; kept at
+    // its last place it would read `[done, x]`.
+    let graph = graph(Repeating(vec![to("x"), end("done"), to("x")]));
     let json = serde_json::to_value(graph.describe()).unwrap();
     assert_eq!(
         json["nodes"][0]["edge"],
