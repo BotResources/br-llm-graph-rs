@@ -10,9 +10,8 @@ use crate::react::given::{CriticFacts, Prompt, Reads};
 use crate::react::seats::CriticSeat;
 use crate::state::{Config, State};
 
-/// The critic's judgement of one answer. `message` may be blank (empty or
+/// The critic's judgment of one answer. `message` may be blank (empty or
 /// whitespace only) only when `is_valid` is true.
-/// The critic's judgment of an answer.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Verdict {
     /// Whether the answer is valid.

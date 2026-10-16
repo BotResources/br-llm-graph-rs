@@ -152,6 +152,15 @@ impl ThreadView {
 /// its turn open on entry fails it, never continues it, so its stream
 /// events are never pushed twice. An error of the store fails the agent's
 /// node with `GraphError::Thread`, carrying it.
+///
+/// The ends the library sends: `TurnEnd::Completed` when a turn ends, and
+/// `TurnEnd::Failed` only for a turn of the call it finds open on entry; it
+/// never sends `TurnEnd::Cancelled`. A turn left by a model error, a store
+/// error or a cancel stays open (`MessageStatus::Streaming`) until the next
+/// entry of the call fails it. A host may end such a turn itself (fail it
+/// when it sees the run fail, cancel it when it cancels the run): the agent
+/// that enters later finds it failed or cancelled, and repaired, and goes on
+/// in the turn of the next rank.
 pub trait ThreadStore: Send + Sync {
     /// The thread `thread`, or `None` when it is absent.
     fn read<'a>(&'a self, thread: &'a ThreadId) -> ThreadFuture<'a, Option<ThreadView>>;

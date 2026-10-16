@@ -168,7 +168,9 @@ impl<'de> serde::Deserialize<'de> for OccurrenceKey {
 }
 
 /// An opaque run identifier supplied by the host. The library only carries
-/// it; nested runs share the run identifier of their caller.
+/// it; nested runs share the run identifier of their caller. It names the
+/// requests of the id source (see `IdSource`): two runs at once of agents
+/// that write ids need distinct run ids.
 #[derive(
     Debug,
     Clone,

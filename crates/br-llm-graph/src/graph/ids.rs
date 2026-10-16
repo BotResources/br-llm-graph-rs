@@ -52,6 +52,12 @@ impl IdRequest {
 /// other request, so a resumed run finds what it wrote and a new call never
 /// meets the ids of another. How it makes them (a hash of the request, a
 /// table it keeps...) is the host's.
+///
+/// Two runs at once of agents that write ids need distinct run ids, for
+/// their ids only: under one run id, the same occurrence and the same
+/// trigger, they would ask the same requests and write under the same ids.
+/// Nothing else is shared between runs: the client an agent keeps for its
+/// turn lives in its run, whatever the run id.
 pub trait IdSource: Send + Sync {
     /// The id of a thread the store creates for an agent given the empty
     /// `thread`: `request` is of rank 0.
