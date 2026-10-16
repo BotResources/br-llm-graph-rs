@@ -61,11 +61,13 @@ pub(crate) fn capture_shapes(captures: &[CaptureUpdate]) -> Vec<CaptureShape> {
         .collect()
 }
 
-/// The kind of `value`, a fixed value of a capture; `None` for an empty
-/// list, whose element kind the value does not say. A list takes the kind of
-/// its first element: the build refuses a capture whose value does not have
-/// its target's kind (`CaptureMismatch`), so every element of a list in a
-/// built graph has that kind.
+/// The kind of `value`, a fixed value of a capture; `None` when the value
+/// does not say it: an empty list, or a list whose every element is such a
+/// list. A list takes the kind of the first of its elements whose kind the
+/// value says (`[[], ["a"]]` is a list of lists of strings): the build
+/// refuses a capture whose value does not have its target's kind
+/// (`CaptureMismatch`), so every element of a list in a built graph has
+/// that kind.
 fn kind_of(value: &Value) -> Option<Kind> {
     match value {
         Value::Int(_) => Some(Kind::Int),
@@ -73,6 +75,6 @@ fn kind_of(value: &Value) -> Option<Kind> {
         Value::Str(_) => Some(Kind::Str),
         Value::Bool(_) => Some(Kind::Bool),
         Value::Conversation(_) => Some(Kind::Conversation),
-        Value::List(items) => Some(Kind::list(kind_of(items.first()?)?)),
+        Value::List(items) => items.iter().find_map(kind_of).map(Kind::list),
     }
 }
