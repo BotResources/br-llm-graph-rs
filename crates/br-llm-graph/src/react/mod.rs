@@ -84,6 +84,8 @@ mod generator_critic_override_tests;
 #[cfg(test)]
 mod generator_critic_prepare_tests;
 #[cfg(test)]
+mod generator_critic_repaired_tests;
+#[cfg(test)]
 mod generator_critic_resume_tests;
 #[cfg(test)]
 mod generator_critic_retry_tests;
