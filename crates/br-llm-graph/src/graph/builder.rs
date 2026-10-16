@@ -224,3 +224,7 @@ impl GraphBuilder {
 #[cfg(test)]
 #[path = "builder_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "edge_to_unknown_tests.rs"]
+mod edge_to_unknown_tests;
