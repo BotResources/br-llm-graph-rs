@@ -4,21 +4,20 @@ use br_llm_clients_core::OutputMode;
 use br_llm_messages::Author;
 
 use crate::error::GraphError;
-use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Node, NodeFuture, Target};
+use crate::graph::{Always, Graph, GraphBuilder, Limit, Target};
+use crate::react::agent_answer::AnswerNode;
 use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag, tools_node_clash};
-use crate::react::agent_call::{AgentCall, Position, ThreadBinding};
+use crate::react::agent_call::{AgentCall, ThreadBinding};
 use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
 use crate::react::given::{History, Model, Prompt};
-use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
 use crate::react::thread_store::ThreadStore;
 use crate::react::tool::Tool;
 use crate::react::turn_clients::TurnClients;
-use crate::state::{Config, Kind, Schema, State, Value};
-use crate::update::Update;
+use crate::state::{Kind, Schema};
 use crate::value::{EndLabel, Key, NodeId};
 
 /// A ReAct agent as a graph, to call with `SubGraph` or run on its own.
@@ -273,53 +272,5 @@ impl ReactAgent {
             .edge(answer_node, Always(Target::End(EndLabel::new("done")?)))
             .build()?;
         Ok(Arc::new(graph))
-    }
-}
-
-/// Sets `answer` to the text of the final step of the call's turn, empty
-/// when there is none: the turn the call wrote, the agent's last; or, for a
-/// call answered on entry, the completed turn of its rank, whatever turns of
-/// the agent the thread holds after it. A call answered on entry also sets
-/// the round limit's flag when the limit was reached in that turn, as the
-/// run that wrote it did.
-struct AnswerNode {
-    conversation: Key,
-    answer: Key,
-    author: Author,
-    call: AgentCall,
-    /// The round limit and its flag, when it has one.
-    flag: Option<(Key, RoundLimit)>,
-}
-
-impl Node for AnswerNode {
-    fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
-        Box::pin(async move {
-            let conversation = state.conversation(&self.conversation)?;
-            let answered = match self.call.position(state)? {
-                Position::Answered(rank) => Some(self.call.turn_id(state, ctx, rank)?),
-                Position::Writing(_) => None,
-            };
-            let turn = match &answered {
-                Some(id) => conversation.turn(id),
-                None => last_turn_by_author(conversation, &self.author),
-            };
-            let answer = turn
-                .and_then(final_step)
-                .map(answer_text)
-                .unwrap_or_default();
-            let mut updates = vec![Update::Set {
-                key: self.answer.clone(),
-                value: Value::str(answer),
-            }];
-            if let (Some((flag, limit)), Some(turn), Some(_)) = (&self.flag, turn, &answered)
-                && limit.reached_in_turn(turn, config)?
-            {
-                updates.push(Update::Set {
-                    key: flag.clone(),
-                    value: Value::bool(true),
-                });
-            }
-            Ok(updates)
-        })
     }
 }

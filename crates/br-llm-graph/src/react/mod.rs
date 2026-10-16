@@ -1,3 +1,4 @@
+mod agent_answer;
 mod agent_build;
 mod agent_call;
 mod check;
@@ -61,7 +62,11 @@ mod generator_critic_override_tests;
 #[cfg(test)]
 mod generator_critic_prepare_tests;
 #[cfg(test)]
+mod generator_critic_resume_tests;
+#[cfg(test)]
 mod generator_critic_retry_tests;
+#[cfg(test)]
+mod generator_critic_rule_context_tests;
 #[cfg(test)]
 mod generator_critic_rule_tests;
 #[cfg(test)]
