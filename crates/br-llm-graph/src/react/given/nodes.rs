@@ -226,8 +226,9 @@ impl Budgeted for GeneratorSeat {
             final_generation,
             ..
         } = facts.count;
+        // Saturating: a budget of `usize::MAX` allows as many calls.
         if final_generation {
-            budget + 1
+            budget.saturating_add(1)
         } else {
             budget.max(1)
         }
