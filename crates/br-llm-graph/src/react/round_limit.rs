@@ -80,6 +80,14 @@ impl RoundLimit {
         }
     }
 
+    /// The id of the node the limit adds, when `on_limit` has one.
+    pub(crate) fn node(&self) -> Option<&NodeId> {
+        match &self.on_limit {
+            OnLimit::Error => None,
+            OnLimit::Continue { node, .. } | OnLimit::End { node, .. } => Some(node),
+        }
+    }
+
     /// Where a reply of `author`'s open turn that asks for tools after the
     /// last allowed round goes: `End` always to its node; `Continue` to its
     /// node until that node has answered in this turn, then the run fails, as

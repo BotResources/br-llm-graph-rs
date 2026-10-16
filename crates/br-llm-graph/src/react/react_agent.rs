@@ -3,6 +3,7 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_messages::Author;
 
+use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::{Always, Graph, GraphBuilder, Limit, Target};
 use crate::react::agent_answer::AnswerNode;
@@ -211,8 +212,6 @@ impl ReactAgent {
             llm: llm.clone(),
             tool_nodes,
             after: Target::Node(answer_node.clone()),
-            tool_concurrency: self.tool_concurrency,
-            round_limit: self.round_limit,
             thread: call.thread.clone(),
         };
         let llm_node = LlmNode {
@@ -224,12 +223,15 @@ impl ReactAgent {
             tools: self.tools,
             enabled: self.enabled,
             output_mode: self.output_mode,
+            tool_concurrency: self.tool_concurrency,
+            round_limit: self.round_limit,
             call: call.clone(),
             seat: None,
         };
 
         let builder = keys
             .declare_private(GraphBuilder::new(schema))
+            .agent(AgentKind::ReactAgent)
             .entry(enter.clone())
             .node(
                 enter.clone(),

@@ -204,3 +204,37 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
         );
     }
 }
+
+#[tokio::test]
+async fn given_a_generator_round_limit_that_continues_when_a_reply_calls_tools_past_it_then_the_limit_node_goes_back_to_the_generator()
+ {
+    let generator_client = mock(vec![
+        tool_call_step("c1", "echo", json!({})),
+        tool_call_step("c2", "echo", json!({})),
+        text_step("answer"),
+    ]);
+    let critic_client = mock(vec![verdict(true, "")]);
+    let graph = GeneratorCritic::new(
+        GeneratorSeat {
+            tools: vec![Arc::new(EchoTool)],
+            round_limit: Some(RoundLimit {
+                max_rounds: limit(1),
+                on_limit: OnLimit::Continue {
+                    node: nid("limit"),
+                    flag: key("limited"),
+                },
+            }),
+            ..generator(&generator_client)
+        },
+        critic(&critic_client),
+        Count::Fixed(1),
+    )
+    .graph()
+    .unwrap();
+
+    let state = ended(call(&graph, question("explain")).await, "validated");
+
+    assert_eq!(state.str(&key("answer")).unwrap(), "answer");
+    assert!(state.bool(&key("limited")).unwrap());
+    assert_eq!(generator_client.calls(), 3);
+}

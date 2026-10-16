@@ -17,6 +17,7 @@ use crate::react::given::{Model, Reads};
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::*;
 use crate::react::react_durable_support::{Host, opening, said};
+use crate::react::test_gate::beside;
 use crate::react::test_support::*;
 use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, Value};
@@ -125,7 +126,13 @@ async fn given_durable_agents_as_a_map_body_with_a_concurrency_limit_when_run_th
     };
 
     let (outcome, started) =
-        futures_util::join!(run(&graph, &config, state, None, &ctx, &mut channel), check);
+        match beside(run(&graph, &config, state, None, &ctx, &mut channel), check).await {
+            Ok(both) => both,
+            Err(ended) => panic!(
+                "the run ended before {LIMIT} calls were held at the gate: {:?}",
+                ended.err().map(|failure| failure.error.to_string())
+            ),
+        };
 
     assert_eq!(
         started, LIMIT,

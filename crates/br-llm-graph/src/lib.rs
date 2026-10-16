@@ -52,6 +52,19 @@
 //! memory, for the current call only. The host's `IdSource` gives every
 //! thread id and turn id, the same id for the same request.
 //!
+//! # Description
+//!
+//! A built graph describes itself as data (`Graph::describe`): its entry,
+//! its signature, its schema and its nodes in registration order, each with
+//! its kind, its realizes labels, its edge's declared targets and the fields
+//! of its kind, nested graphs included; its JSON is versioned
+//! `br-llm-graph-description/1`, written and never reloaded. An edge may
+//! declare its targets (`Edge::declared`, `FnEdge::targets`; `Always`
+//! declares its own): the build refuses a declared node the graph does not
+//! hold (`EdgeToUnknownNode`) and the run a target the edge did not declare
+//! (`UndeclaredTarget`). A node says what it is (`Node::describe`) and may
+//! carry realizes labels (`Node::realizing`), which the library never reads.
+//!
 //! # Errors
 //!
 //! One error type, `GraphError`, with a variant per refused rule, and the
@@ -155,6 +168,8 @@
 #[cfg(test)]
 mod acceptance;
 #[cfg(doctest)]
+mod describe_write_only;
+#[cfg(doctest)]
 mod non_exhaustive;
 #[cfg(doctest)]
 mod tails;
@@ -169,6 +184,7 @@ mod typed_kinds;
 #[cfg(doctest)]
 mod typed_mappings;
 
+pub mod describe;
 pub mod error;
 pub mod graph;
 pub mod observe;
@@ -180,6 +196,7 @@ pub mod state;
 pub mod update;
 pub mod value;
 
+pub use describe::{DESCRIPTION_VERSION, GraphDescription, NodeDescription, Realizing};
 pub use error::{GraphError, NodeFault};
 pub use graph::{
     Always, CaptureSource, CaptureUpdate, CheckSite, Context, Count, Edge, FnEdge, FnNode, Graph,

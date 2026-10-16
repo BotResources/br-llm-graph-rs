@@ -3,6 +3,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::describe::{NodeDescription, Realizing};
 use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::state::{Config, Schema, State};
@@ -43,6 +44,28 @@ pub trait Node: Send + Sync {
     fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
         let _ = (schema, site);
         Ok(())
+    }
+
+    /// What the node says of itself in its graph's description
+    /// (`Graph::describe`): its kind, the fields of its kind and its realizes
+    /// labels; the graph adds its id and its edge. It runs nothing and reads
+    /// no state. The default: no kind of its own (`node`, or `join` when
+    /// registered as one), nothing nested, no label. A host's node may give
+    /// its own kind label and nested description
+    /// (`NodeDescription::labelled`, `NodeDescription::nesting`). A node that
+    /// wraps another forwards the call, as it forwards `check`.
+    fn describe(&self) -> NodeDescription {
+        NodeDescription::default()
+    }
+
+    /// This node, carrying `labels` as its realizes labels: the names of
+    /// what it implements, written in the description in the order given and
+    /// never read by the library (see `Realizing`).
+    fn realizing<L: Into<String>>(self, labels: impl IntoIterator<Item = L>) -> Realizing<Self>
+    where
+        Self: Sized,
+    {
+        Realizing::new(self, labels)
     }
 }
 

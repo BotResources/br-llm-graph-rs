@@ -89,6 +89,11 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
         tools: vec![Arc::new(EchoTool)],
         enabled: None,
         output_mode: OutputMode::Plain,
+        tool_concurrency: None,
+        round_limit: Some(RoundLimit {
+            max_rounds,
+            on_limit,
+        }),
         call: in_memory_call(),
         seat: None,
     };
@@ -96,11 +101,6 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
-        tool_concurrency: None,
-        round_limit: Some(RoundLimit {
-            max_rounds,
-            on_limit,
-        }),
         thread: None,
     };
     react

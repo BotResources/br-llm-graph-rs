@@ -69,6 +69,11 @@ impl Node for CheckNode {
             }
         })
     }
+
+    /// `node`, holding what the check reads.
+    fn describe(&self) -> crate::describe::NodeDescription {
+        self.description()
+    }
 }
 
 impl CheckNode {

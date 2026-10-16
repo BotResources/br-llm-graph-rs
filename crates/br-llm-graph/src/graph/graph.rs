@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
+use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
-use crate::graph::edge::Edge;
+use crate::graph::edge::{Edge, Target};
 use crate::graph::node::Node;
 use crate::graph::signature::Signature;
 use crate::run::Cursor;
@@ -11,6 +12,31 @@ use crate::value::{Key, NodeId};
 pub(crate) struct NodeEntry {
     pub node: Box<dyn Node>,
     pub is_join: bool,
+}
+
+/// The edge of a node, with the targets it declared when the graph was
+/// built: the run checks these, and the description writes them, so the two
+/// never disagree, whatever the edge declares afterwards.
+pub(crate) struct EdgeEntry {
+    pub edge: Box<dyn Edge>,
+    pub declared: Option<Vec<Target>>,
+}
+
+impl EdgeEntry {
+    /// The entry of `edge`, its declared targets asked once, in the order
+    /// given, a target declared twice kept once at its first place.
+    pub(crate) fn new(edge: Box<dyn Edge>) -> Self {
+        let declared = edge.declared().map(|targets| {
+            let mut kept: Vec<Target> = Vec::with_capacity(targets.len());
+            for target in targets {
+                if !kept.contains(target) {
+                    kept.push(target.clone());
+                }
+            }
+            kept
+        });
+        Self { edge, declared }
+    }
 }
 
 /// A built graph: a schema, an entry, nodes and one edge per node, and a
@@ -26,7 +52,10 @@ pub struct Graph {
     entry: NodeId,
     order: Vec<NodeId>,
     nodes: BTreeMap<NodeId, NodeEntry>,
-    edges: BTreeMap<NodeId, Box<dyn Edge>>,
+    edges: BTreeMap<NodeId, EdgeEntry>,
+    /// The agent that built the graph, if any: a call of it is described
+    /// with the agent's kind.
+    agent: Option<AgentKind>,
 }
 
 pub(crate) struct Parts {
@@ -37,7 +66,8 @@ pub(crate) struct Parts {
     pub entry: NodeId,
     pub order: Vec<NodeId>,
     pub nodes: BTreeMap<NodeId, NodeEntry>,
-    pub edges: BTreeMap<NodeId, Box<dyn Edge>>,
+    pub edges: BTreeMap<NodeId, EdgeEntry>,
+    pub agent: Option<AgentKind>,
 }
 
 impl Graph {
@@ -51,6 +81,7 @@ impl Graph {
             order: parts.order,
             nodes: parts.nodes,
             edges: parts.edges,
+            agent: parts.agent,
         }
     }
 
@@ -75,6 +106,11 @@ impl Graph {
     /// The keys it takes as inputs and gives back as outputs.
     pub fn signature(&self) -> &Signature {
         &self.signature
+    }
+
+    /// The agent that built the graph, if any.
+    pub(crate) fn agent(&self) -> Option<AgentKind> {
+        self.agent
     }
 
     /// Its entry node.
@@ -142,8 +178,10 @@ impl Graph {
             .unwrap_or(false)
     }
 
-    pub(crate) fn edge(&self, id: &NodeId) -> Option<&dyn Edge> {
-        self.edges.get(id).map(|edge| edge.as_ref())
+    /// The edge of `id`, with the targets it declared when the graph was
+    /// built.
+    pub(crate) fn edge(&self, id: &NodeId) -> Option<&EdgeEntry> {
+        self.edges.get(id)
     }
 
     /// Whether it holds the node `id`.

@@ -2,16 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use br_llm_messages::{Author, Text, ToolCall, ToolName, ToolResult, ToolResultBlock};
+use br_llm_messages::{Author, ToolCall, ToolName, ToolResult};
 use futures_util::future::join_all;
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Limit, Node, NodeError, NodeFuture};
 use crate::react::agent_call::ThreadBinding;
 use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, pending_calls};
-use crate::react::hook::{HookError, Judgment};
 use crate::react::round_writer::RoundWriters;
-use crate::react::tool::{Tool, ToolError, ToolOutput};
+use crate::react::tool::Tool;
+use crate::react::tool_answer::{Answer, error_result, judge_and_run, text_block, text_or};
 use crate::react::tool_gate::SharedGates;
 use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Schema, State};
@@ -79,21 +79,6 @@ pub(crate) struct DurableTools {
     pub(crate) node: usize,
 }
 
-/// How one owned call is answered.
-enum Answer {
-    /// The call names a tool the `enabled` key does not hold.
-    NotEnabled,
-    /// A hook of another call failed before this one started: it was not
-    /// started.
-    NotStarted,
-    /// The tool ran and gave this outcome.
-    Ran(Result<ToolOutput, ToolError>),
-    /// The hook refused the call, with this reason.
-    Refused(String),
-    /// The hook failed: the node fails.
-    HookFailed(HookError),
-}
-
 impl Node for ToolNode {
     fn run<'a>(
         &'a self,
@@ -110,6 +95,11 @@ impl Node for ToolNode {
             Some(limit) => limit.check(schema),
             None => Ok(()),
         }
+    }
+
+    /// `tools`: the names of the tools this node runs.
+    fn describe(&self) -> crate::describe::NodeDescription {
+        self.description()
     }
 }
 
@@ -247,37 +237,4 @@ impl ToolNode {
         }
         Ok(updates)
     }
-}
-
-/// Judges `call` by the tool's hook, when there is one, then runs it when it
-/// is accepted.
-async fn judge_and_run(tool: &dyn Tool, call: &ToolCall, state: &State, config: &Config) -> Answer {
-    if let Some(hook) = tool.hook() {
-        match hook.judge(&call.id, &call.arguments, state, config).await {
-            Ok(Judgment::Accept) => {}
-            Ok(Judgment::Refuse { reason }) => return Answer::Refused(reason),
-            Err(error) => return Answer::HookFailed(error),
-        }
-    }
-    Answer::Ran(tool.call(call.arguments.clone(), state, config).await)
-}
-
-/// One text block holding `text`; none when it is blank.
-fn text_block(text: &str) -> Vec<ToolResultBlock> {
-    Text::new(text)
-        .map(|text| vec![ToolResultBlock::text(text)])
-        .unwrap_or_default()
-}
-
-/// One text block holding `text`, or `fallback` when `text` is blank.
-fn text_or(text: &str, fallback: &str) -> Vec<ToolResultBlock> {
-    match Text::new(text) {
-        Ok(text) => vec![ToolResultBlock::text(text)],
-        Err(_) => text_block(fallback),
-    }
-}
-
-/// The error result of `call`, holding `content`.
-fn error_result(call: &ToolCall, content: Vec<ToolResultBlock>) -> ToolResult {
-    ToolResult::new(call.id.clone(), call.name.clone(), content, true)
 }

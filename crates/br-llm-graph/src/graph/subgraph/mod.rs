@@ -1,6 +1,7 @@
 //! A node that runs a graph to its end, as a nested run with private state.
 
 mod check;
+mod describe;
 mod run;
 mod typed;
 
@@ -14,6 +15,7 @@ use crate::value::Key;
 
 use check::check_call;
 pub(crate) use check::check_captures;
+pub(crate) use describe::capture_shapes;
 
 /// Where the value of a child input (or child configuration key) comes from.
 #[derive(Debug, Clone, PartialEq)]

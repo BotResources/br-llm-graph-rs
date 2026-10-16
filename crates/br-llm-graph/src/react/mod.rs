@@ -26,6 +26,7 @@ mod critic_view;
 mod critic_writer;
 mod critique;
 mod declarations;
+mod describe;
 mod duo;
 mod enter;
 mod generator_critic;
@@ -39,6 +40,7 @@ mod hook;
 mod llm_call;
 mod llm_call_check;
 mod llm_node;
+mod llm_node_target;
 mod react_agent;
 mod react_loop;
 mod rehydrate;
@@ -50,6 +52,7 @@ mod seats;
 mod sink;
 mod thread_store;
 mod tool;
+mod tool_answer;
 mod tool_gate;
 mod tool_node;
 mod turn_clients;
@@ -57,6 +60,18 @@ mod turn_ids;
 mod turn_writer;
 mod verdict;
 
+#[cfg(test)]
+mod declared_edges_tests;
+#[cfg(test)]
+mod describe_agent_tests;
+#[cfg(test)]
+mod describe_example_tests;
+#[cfg(test)]
+mod describe_generator_critic_tests;
+#[cfg(test)]
+mod describe_llm_call_tests;
+#[cfg(test)]
+mod describe_secret_tests;
 #[cfg(test)]
 mod generator_critic_bounds_tests;
 #[cfg(test)]
@@ -212,6 +227,8 @@ mod test_clients;
 #[cfg(test)]
 mod test_clients_tests;
 #[cfg(test)]
+mod test_gate;
+#[cfg(test)]
 mod test_support;
 #[cfg(test)]
 mod test_tools;
@@ -223,6 +240,7 @@ mod turn_client_scope_tests;
 mod turn_ids_tests;
 
 pub use generator_critic::GeneratorCritic;
+pub(crate) use given::Origin;
 pub use given::{
     AgentNode, Budgeted, GeneratorCriticNode, Given, History, LoopNode, Model, ModelNode, Prompt,
     Reads, RequestContext, Scheduled,

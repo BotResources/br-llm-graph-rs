@@ -7,6 +7,7 @@ use br_llm_clients_mock::{Gate, Reply, ReplySource, Rule, StateKind};
 use crate::error::GraphError;
 use crate::graph::{Always, CheckSite, GraphBuilder, Map, Node, Target};
 use crate::react::llm_call_support::*;
+use crate::react::test_gate::beside;
 use crate::react::test_support::{key, mock, mock_at, text_step};
 use crate::state::Value;
 use crate::value::EndLabel;
@@ -34,10 +35,18 @@ async fn given_an_append_call_as_a_map_body_when_run_then_one_call_per_item_appe
     };
 
     let ctx = ctx();
-    let (result, ()) = futures_util::join!(
+    let (result, ()) = match beside(
         run_in(&graph, state_with("", &["alpha", "beta", "gamma"]), &ctx),
-        release
-    );
+        release,
+    )
+    .await
+    {
+        Ok(both) => both,
+        Err(ended) => panic!(
+            "the run ended before beta was held at the gate: {:?}",
+            ended.err().map(|failure| failure.error.to_string())
+        ),
+    };
 
     let state = finished(result);
     assert_eq!(
@@ -70,10 +79,18 @@ async fn given_a_map_concurrency_limit_when_the_calls_run_then_at_most_that_many
     };
 
     let ctx = ctx();
-    let (result, started) = futures_util::join!(
+    let (result, started) = match beside(
         run_in(&graph, state_with("", &["a", "b", "c", "d"]), &ctx),
-        check
-    );
+        check,
+    )
+    .await
+    {
+        Ok(both) => both,
+        Err(ended) => panic!(
+            "the run ended before two calls were held at the gate: {:?}",
+            ended.err().map(|failure| failure.error.to_string())
+        ),
+    };
 
     assert_eq!(started, 2, "no third call begins while two are held");
     let state = finished(result);

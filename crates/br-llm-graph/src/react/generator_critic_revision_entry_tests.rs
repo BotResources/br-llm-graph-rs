@@ -85,3 +85,27 @@ async fn given_an_opening_ending_on_three_revisions_in_a_row_with_a_limit_of_two
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 3);
     assert_eq!((generator_client.calls(), critic_client.calls()), (0, 0));
 }
+
+#[tokio::test]
+async fn given_an_opening_ending_on_a_revision_past_the_limit_with_budget_left_when_called_then_route_goes_to_the_critic()
+ {
+    let conversation = opening_with(vec![
+        ("g1", writer(), text_step("a")),
+        ("r1", reviewer(), revision("Longer.")),
+        ("g2", writer(), text_step("aa")),
+        ("r2", reviewer(), revision("Longer.")),
+        ("g3", writer(), text_step("aaa")),
+        ("r3", reviewer(), revision("Longer.")),
+    ]);
+    let generator_client = mock(Vec::new());
+    let critic_client = mock(vec![verdict(true, "")]);
+    let graph = with_budget(&generator_client, &critic_client, Count::Fixed(1), false);
+
+    let state = ended(
+        call_with(&graph, conversation, Vec::new(), BTreeMap::new()).await,
+        "validated",
+    );
+
+    assert_eq!(state.str(&key("answer")).unwrap(), "aaa");
+    assert_eq!((generator_client.calls(), critic_client.calls()), (0, 1));
+}

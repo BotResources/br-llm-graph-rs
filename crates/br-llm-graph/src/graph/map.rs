@@ -3,11 +3,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures_util::StreamExt;
 use futures_util::stream;
 
+use crate::describe::NodeDescription;
+use crate::describe::shape::{ItemPolicy, MapShape, Shape};
 use crate::error::GraphError;
 use crate::graph::context::Context;
 use crate::graph::limit::Limit;
 use crate::graph::node::{CheckSite, Node, NodeError, NodeFuture};
-use crate::graph::subgraph::{CaptureUpdate, captured, check_captures};
+use crate::graph::subgraph::{CaptureUpdate, capture_shapes, captured, check_captures};
 use crate::state::{Config, Kind, Schema, State, StateKey, Value, ValueType};
 use crate::update::Update;
 use crate::value::Key;
@@ -122,6 +124,22 @@ impl Node for Map {
             check_captures(schema, captures, true)?;
         }
         self.body.check(schema, CheckSite::MapBody)
+    }
+
+    /// `map`: its list key, its item key, its concurrency limit, its
+    /// item-failure policy and the description of its body.
+    fn describe(&self) -> NodeDescription {
+        NodeDescription::of(Shape::Map(Box::new(MapShape {
+            list: self.list.clone(),
+            item: self.item.clone(),
+            max_concurrency: self.max_concurrency.clone(),
+            on_item_failure: match &self.on_item_failure {
+                ItemFailure::Finish => ItemPolicy::Finish,
+                ItemFailure::FailFast => ItemPolicy::FailFast,
+                ItemFailure::Capture(captures) => ItemPolicy::Capture(capture_shapes(captures)),
+            },
+            body: self.body.describe(),
+        })))
     }
 }
 

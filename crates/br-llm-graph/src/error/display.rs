@@ -48,10 +48,18 @@ impl std::fmt::Display for GraphError {
             GraphError::DuplicateEdge { id } => {
                 write!(f, "node {id} has more than one edge")
             }
+            GraphError::EdgeToUnknownNode { node, target } => write!(
+                f,
+                "the edge of node {node} declares node {target}, which is not in the graph"
+            ),
             GraphError::UnknownNode { id } => write!(f, "node {id} is not in the graph"),
             GraphError::EmptyEdge { node } => {
                 write!(f, "the edge of node {node} returned no target")
             }
+            GraphError::UndeclaredTarget { node, target } => write!(
+                f,
+                "the edge of node {node} returned {target}, which it does not declare"
+            ),
             GraphError::MapKeyMismatch { list, item } => write!(
                 f,
                 "map list {list} must be a list whose element kind is the kind of item {item}"

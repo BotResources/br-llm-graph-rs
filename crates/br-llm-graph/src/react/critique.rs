@@ -95,6 +95,11 @@ impl Node for CritiqueNode {
             .into())
         })
     }
+
+    /// `model_call`: the critic's seat and what the routing and the verdict read.
+    fn describe(&self) -> crate::describe::NodeDescription {
+        self.description()
+    }
 }
 
 impl CritiqueNode {

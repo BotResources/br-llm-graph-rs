@@ -25,6 +25,10 @@ mod command_tests;
 #[cfg(test)]
 pub(crate) mod counted;
 #[cfg(test)]
+mod declared_copy_tests;
+#[cfg(test)]
+mod declared_target_tests;
+#[cfg(test)]
 mod failure_tests;
 #[cfg(test)]
 mod gates;
