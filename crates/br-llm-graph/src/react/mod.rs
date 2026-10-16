@@ -206,6 +206,8 @@ mod react_tool_result_tests;
 #[cfg(test)]
 mod react_turn_client_tests;
 #[cfg(test)]
+mod test_call;
+#[cfg(test)]
 mod test_clients;
 #[cfg(test)]
 mod test_clients_tests;
