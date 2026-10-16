@@ -6,7 +6,7 @@ use br_llm_clients_core::{Parameter, ParameterKind, Parameters, StructuredShape}
 use serde_json::json;
 
 use crate::describe::NodeDescription;
-use crate::describe::test_support::{json, node_json};
+use crate::describe::test_support::{assert_written, json, node_json};
 use crate::graph::{
     Always, Context, Count, GraphBuilder, Input, Node, NodeFuture, SubGraph, Target,
 };
@@ -53,18 +53,18 @@ fn given_a_generator_critic_when_described_then_its_nodes_hold_its_seats_and_cou
         generate["author"],
         json!({"id": "writer", "name": "writer"})
     );
-    assert_eq!(
-        node_json(&described, "check"),
-        json!({
+    assert_written(
+        &node_json(&described, "check"),
+        &json!({
             "id": "check", "kind": "node",
             "edge": {"targets": [{"node": "generate"}, {"node": "critique"}, {"node": "finish"}]},
             "revision_limit": {"fixed": 2},
             "empty_answer_critique": "ready_made"
-        })
+        }),
     );
-    assert_eq!(
-        node_json(&described, "critique"),
-        json!({
+    assert_written(
+        &node_json(&described, "critique"),
+        &json!({
             "id": "critique", "kind": "model_call",
             "edge": {"targets": [{"node": "generate"}, {"node": "finish"}]},
             "author": {"id": "reviewer", "name": "reviewer"},
@@ -74,7 +74,7 @@ fn given_a_generator_critic_when_described_then_its_nodes_hold_its_seats_and_cou
             "verdict_retries": {"fixed": 0},
             "review_request": "ready_made",
             "verdict": "default"
-        })
+        }),
     );
 }
 
@@ -107,6 +107,10 @@ fn given_its_options_given_each_way_when_described_then_each_says_how() {
 #[test]
 fn given_the_critics_ready_made_histories_and_an_override_when_described_then_ready_made_and_override()
  {
+    let mut briefed = duo(&mock(Vec::new()), &mock(Vec::new()));
+    briefed.critic.history = CriticHistory::Brief(crate::react::test_support::skey("brief"));
+    let critique = node_json(&briefed.graph().unwrap().describe(), "critique");
+    assert_eq!(critique["history"], "ready_made");
     let mut duo = duo(&mock(Vec::new()), &mock(Vec::new()));
     duo.critic.history = CriticHistory::Latest;
     let params = Parameters::new(vec![
@@ -150,10 +154,10 @@ fn given_a_prepare_node_when_described_then_the_hosts_description_is_forwarded()
     duo.prepare = Some(Box::new(OpenDocument));
     let described = duo.graph().unwrap().describe();
     assert_eq!(json(&described)["entry"], "prepare");
-    assert_eq!(
-        node_json(&described, "prepare"),
-        json!({"id": "prepare", "kind": "loader", "realizes": ["OpenDocument"],
-               "edge": {"targets": [{"node": "route"}]}})
+    assert_written(
+        &node_json(&described, "prepare"),
+        &json!({"id": "prepare", "kind": "loader", "realizes": ["OpenDocument"],
+               "edge": {"targets": [{"node": "route"}]}}),
     );
 }
 

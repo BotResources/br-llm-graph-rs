@@ -27,3 +27,7 @@ impl Origin {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "origin_tests.rs"]
+mod tests;
