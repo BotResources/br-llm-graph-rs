@@ -217,15 +217,6 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
             enabled: None,
             output_mode: OutputMode::Plain,
             tool_concurrency: None,
-            round_limit: None,
-            call: in_memory_call(),
-            seat: None,
-        };
-        ReactLoop {
-            llm: nid("llm"),
-            tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
-            after: Target::End(EndLabel::new("done").unwrap()),
-            tool_concurrency: None,
             round_limit: Some(RoundLimit {
                 max_rounds,
                 on_limit: OnLimit::Continue {
@@ -233,6 +224,13 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
                     flag: key(flag),
                 },
             }),
+            call: in_memory_call(),
+            seat: None,
+        };
+        ReactLoop {
+            llm: nid("llm"),
+            tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
+            after: Target::End(EndLabel::new("done").unwrap()),
             thread: None,
         }
         .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)

@@ -224,8 +224,6 @@ async fn given_failing_model_in_react_loop_when_run_then_node_failed_not_looping
         llm: nid("llm"),
         tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
-        tool_concurrency: None,
-        round_limit: None,
         thread: None,
     };
     let graph = react

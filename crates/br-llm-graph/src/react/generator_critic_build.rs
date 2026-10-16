@@ -191,8 +191,6 @@ impl GeneratorCritic {
             llm: names.generate.clone(),
             tool_nodes,
             after: Target::Node(names.check.clone()),
-            tool_concurrency: generator.tool_concurrency.clone(),
-            round_limit: generator.round_limit.clone(),
             thread: call.thread.clone(),
         };
         let llm = LlmNode {

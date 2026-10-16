@@ -5,7 +5,7 @@ use br_llm_clients_core::BuildError;
 use br_llm_messages::{Author, ToolName, TurnState};
 
 use crate::error::GraphError;
-use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Limit, Target};
+use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Target};
 use crate::react::agent_call::ThreadBinding;
 use crate::react::given::LoopNode;
 use crate::react::helpers::{last_turn_state, pending_calls};
@@ -21,14 +21,14 @@ use crate::value::{Key, NodeId};
 /// `llm`, the tool nodes, the routing edge after the model call and, with a
 /// round limit that does not fail the run, its limit node. The building block
 /// of `ReactAgent` and of the generator's generations; not public. The tool
-/// nodes share one tool concurrency limit: at most `tool_concurrency` calls
-/// run at once across all of them.
+/// concurrency limit and the round limit are the model call's
+/// (`LlmNode::tool_concurrency`, `LlmNode::round_limit`), their one source:
+/// the tool nodes share that limit, at most that many calls at once across
+/// all of them.
 pub(crate) struct ReactLoop {
     pub(crate) llm: NodeId,
     pub(crate) tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
     pub(crate) after: Target,
-    pub(crate) tool_concurrency: Option<Limit>,
-    pub(crate) round_limit: Option<RoundLimit>,
     /// The thread of a durable agent, which its tool nodes and its limit
     /// node write to.
     pub(crate) thread: Option<ThreadBinding>,
@@ -42,10 +42,12 @@ impl ReactLoop {
     ) -> Result<GraphBuilder, GraphError> {
         self.check_names(&llm_node)?;
         self.check_partition(&llm_node)?;
-        if let Some(limit) = &self.tool_concurrency {
+        let tool_concurrency = llm_node.tool_concurrency.clone();
+        let round_limit = llm_node.round_limit.clone();
+        if let Some(limit) = &tool_concurrency {
             limit.check(builder.schema())?;
         }
-        if let Some(round_limit) = &self.round_limit {
+        if let Some(round_limit) = &round_limit {
             round_limit.check(builder.schema())?;
         }
 
@@ -67,7 +69,7 @@ impl ReactLoop {
                     key: key.clone(),
                     author: author.clone(),
                     tools: tools.clone(),
-                    max_concurrency: self.tool_concurrency.clone(),
+                    max_concurrency: tool_concurrency.clone(),
                     enabled: enabled.clone(),
                     gates: gates.clone(),
                     durable: self.thread.clone().map(|thread| DurableTools {
@@ -80,11 +82,14 @@ impl ReactLoop {
             );
         }
 
-        builder = builder.edge(self.llm.clone(), self.llm_edge(key.clone(), author.clone()));
+        builder = builder.edge(
+            self.llm.clone(),
+            self.llm_edge(key.clone(), author.clone(), round_limit.clone()),
+        );
         for (id, _) in &self.tool_nodes {
             builder = builder.edge(id.clone(), Always(Target::Node(self.llm.clone())));
         }
-        if let Some(round_limit) = &self.round_limit {
+        if let Some(round_limit) = &round_limit {
             builder = round_limit.add_limit_node(
                 builder,
                 key,
@@ -146,7 +151,12 @@ impl ReactLoop {
     /// The edge after the model call: to the tool nodes while the reply
     /// calls tools, to the round-limit node past the last allowed round,
     /// else where the loop ends (`after`). It declares all of them.
-    fn llm_edge(&self, key: Key, author: Author) -> impl Edge + 'static {
+    fn llm_edge(
+        &self,
+        key: Key,
+        author: Author,
+        round_limit: Option<RoundLimit>,
+    ) -> impl Edge + 'static {
         let tool_targets: Vec<Target> = self
             .tool_nodes
             .iter()
@@ -159,7 +169,6 @@ impl ReactLoop {
             .collect();
         let after = self.after.clone();
         let llm = self.llm.clone();
-        let round_limit = self.round_limit.clone();
         // The tool nodes, the round-limit node when it has one, then where
         // the loop ends.
         let limit_node = round_limit

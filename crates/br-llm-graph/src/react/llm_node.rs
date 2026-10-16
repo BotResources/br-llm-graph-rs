@@ -57,9 +57,12 @@ pub(crate) struct LlmNode<N: LoopNode> {
     /// (`EnabledKeyMismatch`).
     pub(crate) enabled: Option<Key>,
     pub(crate) output_mode: OutputMode,
-    /// The tool concurrency limit of the loop, for the description.
+    /// At most that many tool calls of the loop at once, across its tool
+    /// nodes: the one source the loop reads (`ReactLoop::add`) and the
+    /// description writes.
     pub(crate) tool_concurrency: Option<Limit>,
-    /// The round limit of the loop, for the description.
+    /// The bound on the tool rounds of one turn: the one source the loop
+    /// reads (`ReactLoop::add`) and the description writes.
     pub(crate) round_limit: Option<RoundLimit>,
     /// The call of the agent: the turn the reply goes to and, for a durable
     /// agent, the thread it streams into.

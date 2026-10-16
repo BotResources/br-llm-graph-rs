@@ -212,8 +212,6 @@ impl ReactAgent {
             llm: llm.clone(),
             tool_nodes,
             after: Target::Node(answer_node.clone()),
-            tool_concurrency: self.tool_concurrency.clone(),
-            round_limit: self.round_limit.clone(),
             thread: call.thread.clone(),
         };
         let llm_node = LlmNode {
