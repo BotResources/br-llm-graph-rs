@@ -1,20 +1,12 @@
 use std::sync::Arc;
 
-use crate::graph::{Always, Context, GraphBuilder};
-use crate::observe::NoopObserver;
+use crate::graph::{Always, GraphBuilder};
 use crate::run::control::control;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::Value;
 use crate::testkit::{Recorder, context};
-
-fn ctx() -> Context {
-    Context::new(
-        Arc::new(NoopObserver),
-        Arc::new(crate::testkit::SeqIds::new()),
-    )
-}
 
 #[tokio::test]
 async fn given_fan_out_then_join_when_run_then_join_runs_once() {

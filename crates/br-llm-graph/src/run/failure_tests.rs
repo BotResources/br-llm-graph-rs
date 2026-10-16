@@ -1,32 +1,10 @@
-use std::sync::Arc;
-
-use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
-
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Always, Context, FnNode, GraphBuilder, NodeFuture};
-use crate::observe::NoopObserver;
 use crate::run::control::control;
 use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::{Config, State};
 use crate::update::Update;
-
-fn ctx() -> Context {
-    Context::new(
-        Arc::new(NoopObserver),
-        Arc::new(crate::testkit::SeqIds::new()),
-    )
-}
-
-fn input(body: &str) -> UserInput {
-    UserInput::new(
-        InputId::new(format!("i-{body}")).unwrap(),
-        UserSource::Human,
-        None,
-        vec![UserBlock::text(Text::new(body).unwrap())],
-    )
-    .unwrap()
-}
 
 #[tokio::test]
 async fn given_node_returns_input_on_non_conversation_key_when_run_then_not_conversation() {

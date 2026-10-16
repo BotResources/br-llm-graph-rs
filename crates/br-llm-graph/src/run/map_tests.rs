@@ -2,20 +2,12 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{Context, FnNode, GraphBuilder, Map, Node, NodeFuture};
-use crate::observe::NoopObserver;
 use crate::run::control::control;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::{Config, State, Value};
 use crate::update::Update;
-
-fn ctx() -> Context {
-    Context::new(
-        Arc::new(NoopObserver),
-        Arc::new(crate::testkit::SeqIds::new()),
-    )
-}
 
 fn map_graph(body: Box<dyn Node>) -> crate::graph::Graph {
     let map = Map {

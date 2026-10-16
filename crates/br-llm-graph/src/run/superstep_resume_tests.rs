@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use futures_util::future::join;
 
 use crate::graph::{Context, FnEdge, FnNode, Graph, GraphBuilder, Map, Node, NodeFuture};
-use crate::observe::NoopObserver;
 use crate::run::Checkpoint;
 use crate::run::control::control;
 use crate::run::counted::{Counted, CountedBody};
@@ -17,10 +16,6 @@ use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::{Config, State, Value};
 use crate::update::Update;
-
-fn ctx() -> Context {
-    crate::testkit::context(Arc::new(NoopObserver))
-}
 
 /// Appends `mark` to `log` and counts its calls.
 fn counted_log(mark: &'static str, calls: &Arc<AtomicUsize>) -> impl Node + use<> {

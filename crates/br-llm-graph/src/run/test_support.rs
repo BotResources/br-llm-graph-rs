@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use crate::graph::{Edge, FnEdge, Target};
+use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
+
+use crate::graph::{Context, Edge, FnEdge, Target};
 use crate::graph::{FnNode, Node, NodeFuture};
+use crate::observe::NoopObserver;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -128,4 +132,23 @@ pub(crate) fn item_to_out_node() -> impl Node {
 
 pub(crate) fn edge(targets: Vec<Target>) -> impl Edge {
     FnEdge::new(move |_s: &State, _c: &Config| Ok(targets.clone()))
+}
+
+/// A context with no observer and sequential ids.
+pub(crate) fn ctx() -> Context {
+    Context::new(
+        Arc::new(NoopObserver),
+        Arc::new(crate::testkit::SeqIds::new()),
+    )
+}
+
+/// A human input of `body`, its id `i-{body}`.
+pub(crate) fn input(body: &str) -> UserInput {
+    UserInput::new(
+        InputId::new(format!("i-{body}")).unwrap(),
+        UserSource::Human,
+        None,
+        vec![UserBlock::text(Text::new(body).unwrap())],
+    )
+    .unwrap()
 }

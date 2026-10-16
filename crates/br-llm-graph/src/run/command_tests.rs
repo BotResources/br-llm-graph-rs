@@ -1,34 +1,14 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
-
-use crate::graph::{Always, Context, GraphBuilder};
+use crate::graph::{Always, GraphBuilder};
 use crate::graph::{FnNode, NodeFuture};
-use crate::observe::NoopObserver;
 use crate::run::control::control;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
 use crate::run::test_support::*;
 use crate::state::{Config, State, Value};
 use crate::update::Update;
-
-fn ctx() -> Context {
-    Context::new(
-        Arc::new(NoopObserver),
-        Arc::new(crate::testkit::SeqIds::new()),
-    )
-}
-
-fn input(body: &str) -> UserInput {
-    UserInput::new(
-        InputId::new(format!("i-{body}")).unwrap(),
-        UserSource::Human,
-        None,
-        vec![UserBlock::text(Text::new(body).unwrap())],
-    )
-    .unwrap()
-}
 
 #[tokio::test]
 async fn given_input_queued_when_run_then_drained_at_boundary() {

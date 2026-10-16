@@ -1,12 +1,10 @@
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 use futures_util::future::join;
 
 use crate::error::{GraphError, NodeFault};
 use crate::graph::{CaptureSource, CaptureUpdate};
-use crate::graph::{Context, Graph, GraphBuilder, ItemFailure, Limit, Map};
-use crate::observe::NoopObserver;
+use crate::graph::{Graph, GraphBuilder, ItemFailure, Limit, Map};
 use crate::run::Checkpoint;
 use crate::run::control::control;
 use crate::run::gates::{Gates, PickyBody};
@@ -17,10 +15,6 @@ use crate::state::{State, Value};
 use crate::update::Update;
 
 const ITEMS: [&str; 6] = ["a", "b", "c", "d", "e", "f"];
-
-fn ctx() -> Context {
-    crate::testkit::context(Arc::new(NoopObserver))
-}
 
 fn mapped(body: PickyBody, policy: ItemFailure) -> Result<Graph, GraphError> {
     mapped_within(
