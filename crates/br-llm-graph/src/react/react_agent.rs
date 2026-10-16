@@ -6,7 +6,7 @@ use br_llm_messages::Author;
 use crate::error::GraphError;
 use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Node, NodeFuture, Target};
 use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag, tools_node_clash};
-use crate::react::agent_call::{AgentCall, ThreadBinding};
+use crate::react::agent_call::{AgentCall, Position, ThreadBinding};
 use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
 use crate::react::given::{History, Model, Prompt};
@@ -209,6 +209,8 @@ impl ReactAgent {
         } else {
             self.tool_nodes
         };
+        let answer_call = call.clone();
+        let answer_flag = flag.clone().zip(self.round_limit.clone());
         let react = ReactLoop {
             llm: llm.clone(),
             tool_nodes,
@@ -264,6 +266,8 @@ impl ReactAgent {
                     conversation: keys.conversation,
                     answer: keys.answer,
                     author: self.author,
+                    call: answer_call,
+                    flag: answer_flag,
                 },
             )
             .edge(answer_node, Always(Target::End(EndLabel::new("done")?)))
@@ -272,31 +276,50 @@ impl ReactAgent {
     }
 }
 
-/// Sets `answer` to the text of the final step of the agent's last turn,
-/// empty when there is none.
+/// Sets `answer` to the text of the final step of the call's turn, empty
+/// when there is none: the turn the call wrote, the agent's last; or, for a
+/// call answered on entry, the completed turn of its rank, whatever turns of
+/// the agent the thread holds after it. A call answered on entry also sets
+/// the round limit's flag when the limit was reached in that turn, as the
+/// run that wrote it did.
 struct AnswerNode {
     conversation: Key,
     answer: Key,
     author: Author,
+    call: AgentCall,
+    /// The round limit and its flag, when it has one.
+    flag: Option<(Key, RoundLimit)>,
 }
 
 impl Node for AnswerNode {
-    fn run<'a>(
-        &'a self,
-        state: &'a State,
-        _config: &'a Config,
-        _ctx: &'a Context,
-    ) -> NodeFuture<'a> {
+    fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         Box::pin(async move {
             let conversation = state.conversation(&self.conversation)?;
-            let answer = last_turn_by_author(conversation, &self.author)
+            let answered = match self.call.position(state)? {
+                Position::Answered(rank) => Some(self.call.turn_id(state, ctx, rank)?),
+                Position::Writing(_) => None,
+            };
+            let turn = match &answered {
+                Some(id) => conversation.turn(id),
+                None => last_turn_by_author(conversation, &self.author),
+            };
+            let answer = turn
                 .and_then(final_step)
                 .map(answer_text)
                 .unwrap_or_default();
-            Ok(vec![Update::Set {
+            let mut updates = vec![Update::Set {
                 key: self.answer.clone(),
                 value: Value::str(answer),
-            }])
+            }];
+            if let (Some((flag, limit)), Some(turn), Some(_)) = (&self.flag, turn, &answered)
+                && limit.reached_in_turn(turn, config)?
+            {
+                updates.push(Update::Set {
+                    key: flag.clone(),
+                    value: Value::bool(true),
+                });
+            }
+            Ok(updates)
         })
     }
 }
