@@ -33,10 +33,12 @@ impl std::fmt::Display for Target {
 /// error; no target fails it (`EmptyEdge`).
 ///
 /// An edge may declare its targets, known without running it
-/// (`Edge::declared`). The graph takes them when it is built: a declared node
-/// target it does not hold is refused (`EdgeToUnknownNode`), and a target the
-/// edge returns without declaring it fails the run (`UndeclaredTarget`)
-/// before any target runs. The description of the graph writes them.
+/// (`Edge::declared`). The graph asks for them once, when it is built, and
+/// keeps them in the order given, a target declared twice once at its first
+/// place: a declared node target it does not hold is refused
+/// (`EdgeToUnknownNode`), and a target the edge returns without declaring it
+/// fails the run (`UndeclaredTarget`) before any target runs. The
+/// description of the graph writes them.
 pub trait Edge: Send + Sync {
     /// The targets after the node, read from the new state.
     fn next(&self, state: &State, config: &Config) -> Result<Vec<Target>, GraphError>;
@@ -65,9 +67,9 @@ where
         Self { f, declared: None }
     }
 
-    /// This edge, declaring `targets`, in the order given; a target given
-    /// twice is declared once, at its first place. A target `f` returns
-    /// without declaring it fails the run (`UndeclaredTarget`).
+    /// This edge, declaring `targets`, in the order given. A target `f`
+    /// returns without declaring it fails the run (`UndeclaredTarget`). The
+    /// graph keeps a target declared twice once, at its first place.
     ///
     /// ```
     /// use br_llm_graph::{Edge, EndLabel, FnEdge, NodeId, Target};
@@ -75,17 +77,11 @@ where
     /// let retry = Target::Node(NodeId::new("retry").unwrap());
     /// let done = Target::End(EndLabel::new("done").unwrap());
     /// let edge = FnEdge::new(|_, _| Ok(vec![Target::End(EndLabel::new("done").unwrap())]))
-    ///     .targets([retry.clone(), done.clone(), retry.clone()]);
+    ///     .targets([retry.clone(), done.clone()]);
     /// assert_eq!(edge.declared(), Some(&[retry, done][..]));
     /// ```
     pub fn targets(mut self, targets: impl IntoIterator<Item = Target>) -> Self {
-        let mut declared: Vec<Target> = Vec::new();
-        for target in targets {
-            if !declared.contains(&target) {
-                declared.push(target);
-            }
-        }
-        self.declared = Some(declared);
+        self.declared = Some(targets.into_iter().collect());
         self
     }
 }

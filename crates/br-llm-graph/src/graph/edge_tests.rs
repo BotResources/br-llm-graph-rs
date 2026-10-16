@@ -37,15 +37,17 @@ fn given_a_host_edge_without_declared_when_asked_then_undeclared_by_default() {
 }
 
 #[test]
-fn given_targets_when_declared_then_kept_in_the_order_given_each_once_at_its_first_place() {
+fn given_targets_when_declared_then_kept_as_given() {
     let edge = FnEdge::new(|_: &State, _: &Config| Ok(vec![end("done")])).targets([
         to("b"),
         end("done"),
         to("a"),
         to("b"),
-        end("done"),
     ]);
-    assert_eq!(edge.declared(), Some(&[to("b"), end("done"), to("a")][..]));
+    assert_eq!(
+        edge.declared(),
+        Some(&[to("b"), end("done"), to("a"), to("b")][..])
+    );
 }
 
 #[test]

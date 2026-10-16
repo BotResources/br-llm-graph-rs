@@ -16,15 +16,25 @@ pub(crate) struct NodeEntry {
 
 /// The edge of a node, with the targets it declared when the graph was
 /// built: the run checks these, and the description writes them, so the two
-/// never disagree.
+/// never disagree, whatever the edge declares afterwards.
 pub(crate) struct EdgeEntry {
     pub edge: Box<dyn Edge>,
     pub declared: Option<Vec<Target>>,
 }
 
 impl EdgeEntry {
+    /// The entry of `edge`, its declared targets asked once, in the order
+    /// given, a target declared twice kept once at its first place.
     pub(crate) fn new(edge: Box<dyn Edge>) -> Self {
-        let declared = edge.declared().map(<[Target]>::to_vec);
+        let declared = edge.declared().map(|targets| {
+            let mut kept: Vec<Target> = Vec::with_capacity(targets.len());
+            for target in targets {
+                if !kept.contains(target) {
+                    kept.push(target.clone());
+                }
+            }
+            kept
+        });
         Self { edge, declared }
     }
 }
