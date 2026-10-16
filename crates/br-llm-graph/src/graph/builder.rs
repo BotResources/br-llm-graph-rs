@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::GraphError;
-use crate::graph::edge::Edge;
+use crate::graph::edge::{Edge, Target};
 use crate::graph::graph::{EdgeEntry, Graph, NodeEntry, Parts};
 use crate::graph::map::Map;
 use crate::graph::node::{CheckSite, Node};
@@ -125,7 +125,11 @@ impl GraphBuilder {
     /// from an unknown node (`EdgeFromUnknownNode`), two edges from one node
     /// (`DuplicateEdge`); a node without an edge (`NodeWithoutEdge`); a node
     /// whose check fails, nodes taken in registration order (`InvalidNode`,
-    /// the reason as its source). Edge targets are not checked.
+    /// the reason as its source); then, after the nodes, a node target an
+    /// edge declares that is not a node of the graph (`EdgeToUnknownNode`,
+    /// edges in node registration order, targets in declared order). An
+    /// edge's undeclared targets, and the end labels it declares, are not
+    /// checked.
     pub fn build(self) -> Result<Graph, GraphError> {
         let GraphBuilder {
             schema,
@@ -187,6 +191,20 @@ impl GraphBuilder {
                         node: id.clone(),
                         source: Box::new(source),
                     })?;
+            }
+        }
+
+        for id in &order {
+            let declared = edges.get(id).and_then(|entry| entry.declared.as_deref());
+            for target in declared.unwrap_or_default() {
+                if let Target::Node(target) = target
+                    && !nodes.contains_key(target)
+                {
+                    return Err(GraphError::EdgeToUnknownNode {
+                        node: id.clone(),
+                        target: target.clone(),
+                    });
+                }
             }
         }
 
