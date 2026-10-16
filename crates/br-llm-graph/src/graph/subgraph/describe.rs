@@ -34,11 +34,14 @@ impl SubGraph {
     }
 }
 
+/// Where a child key takes its value; a fixed value as `kind`, the child's
+/// declared kind of the key, which the build guarantees (a mapped key that
+/// is not the child's is refused: `SubGraphNotAnInput`, `SubGraphNotAConfig`).
 fn source(input: &Input, kind: Option<&Kind>) -> Source {
     match input {
         Input::From(key) => Source::From(key.clone()),
         Input::Config(key) => Source::Config(key.clone()),
-        Input::Const(value) => Source::Const(kind.cloned().or_else(|| kind_of(value))),
+        Input::Const(_) => Source::Const(kind.cloned()),
     }
 }
 
@@ -58,8 +61,11 @@ pub(crate) fn capture_shapes(captures: &[CaptureUpdate]) -> Vec<CaptureShape> {
         .collect()
 }
 
-/// The kind of `value`; `None` for an empty list, or a list whose elements
-/// have no kind in common.
+/// The kind of `value`, a fixed value of a capture; `None` for an empty
+/// list, whose element kind the value does not say. A list takes the kind of
+/// its first element: the build refuses a capture whose value does not have
+/// its target's kind (`CaptureMismatch`), so every element of a list in a
+/// built graph has that kind.
 fn kind_of(value: &Value) -> Option<Kind> {
     match value {
         Value::Int(_) => Some(Kind::Int),
@@ -67,9 +73,6 @@ fn kind_of(value: &Value) -> Option<Kind> {
         Value::Str(_) => Some(Kind::Str),
         Value::Bool(_) => Some(Kind::Bool),
         Value::Conversation(_) => Some(Kind::Conversation),
-        Value::List(items) => {
-            let kind = Kind::list(kind_of(items.first()?)?);
-            value.matches(&kind).then_some(kind)
-        }
+        Value::List(items) => Some(Kind::list(kind_of(items.first()?)?)),
     }
 }
