@@ -107,6 +107,8 @@ mod react_agent_entry_tests;
 #[cfg(test)]
 mod react_agent_given_tests;
 #[cfg(test)]
+mod react_agent_keys_tests;
+#[cfg(test)]
 mod react_agent_support;
 #[cfg(test)]
 mod react_agent_tests;

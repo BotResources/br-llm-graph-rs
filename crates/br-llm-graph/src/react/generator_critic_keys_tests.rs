@@ -1,8 +1,11 @@
 //! The keys of the generator-critic's graph: its signature in memory and
-//! durable, the keys it merges, the keys it keeps for itself.
+//! durable, its outputs, the keys it merges, the keys it keeps for itself;
+//! and the authors of its seats.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+use br_llm_messages::Author;
 
 use crate::error::GraphError;
 use crate::graph::{Count, Limit};
@@ -10,7 +13,7 @@ use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::given::{Prompt, Reads};
 use crate::react::round_limit::{OnLimit, RoundLimit};
-use crate::react::seats::GeneratorSeat;
+use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
 use crate::state::{ConfigKey, Kind};
 use crate::testkit::TestStore;
@@ -183,4 +186,54 @@ fn given_a_generator_flag_naming_a_key_of_the_graph_when_built_then_key_collisio
             "{flag}"
         );
     }
+}
+
+#[test]
+fn given_a_generator_critic_when_built_then_its_outputs_are_plain_data() {
+    let graph = duo(&mock(Vec::new()), &mock(Vec::new())).graph().unwrap();
+    let outputs: Vec<(&str, &Kind)> = graph
+        .signature()
+        .outputs
+        .iter()
+        .map(|(key, kind)| (key.as_str(), kind))
+        .collect();
+    assert_eq!(
+        outputs,
+        [
+            ("answer", &Kind::Str),
+            ("is_validated", &Kind::Bool),
+            ("nb_generations", &Kind::Int),
+        ]
+    );
+}
+
+#[test]
+fn given_both_seats_with_one_author_when_built_then_same_author() {
+    // Two authors are one author when their ids are equal, whatever their
+    // names (br-llm-messages).
+    let renamed = Author::new("writer", "Editor in chief").unwrap();
+    for author in [writer(), renamed] {
+        let built = GeneratorCritic::new(
+            generator(&mock(Vec::new())),
+            CriticSeat {
+                author,
+                ..critic(&mock(Vec::new()))
+            },
+            Count::Fixed(1),
+        )
+        .graph();
+        assert!(matches!(built, Err(GraphError::SameAuthor { .. })));
+    }
+    // Positive control: one name, two ids, two authors.
+    let namesake = Author::new("another", "writer").unwrap();
+    let built = GeneratorCritic::new(
+        generator(&mock(Vec::new())),
+        CriticSeat {
+            author: namesake,
+            ..critic(&mock(Vec::new()))
+        },
+        Count::Fixed(1),
+    )
+    .graph();
+    assert!(built.is_ok());
 }

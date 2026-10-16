@@ -1,21 +1,19 @@
-//! The generator-critic graph: routing, its outputs, what each seat reads and
+//! The generator-critic graph: routing, its answer, what each seat reads and
 //! streams.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
-use br_llm_messages::Author;
 use serde_json::json;
 
-use crate::error::GraphError;
 use crate::graph::{Context, Count};
 use crate::observe::Observer;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
-use crate::react::seats::{CriticSeat, GeneratorSeat};
+use crate::react::seats::GeneratorSeat;
 use crate::react::test_support::*;
-use crate::state::{Config, Kind, Value};
+use crate::state::{Config, Value};
 use crate::testkit::SeqIds;
 
 #[tokio::test]
@@ -31,25 +29,6 @@ async fn given_a_valid_first_answer_when_run_then_validated_and_an_acceptance_is
         ["user", "writer:draft", "reviewer:Accepted."]
     );
     assert_eq!(state.str(&key("answer")).unwrap(), "draft");
-}
-
-#[test]
-fn given_a_generator_critic_when_built_then_its_outputs_are_plain_data() {
-    let graph = duo(&mock(Vec::new()), &mock(Vec::new())).graph().unwrap();
-    let outputs: Vec<(&str, &Kind)> = graph
-        .signature()
-        .outputs
-        .iter()
-        .map(|(key, kind)| (key.as_str(), kind))
-        .collect();
-    assert_eq!(
-        outputs,
-        [
-            ("answer", &Kind::Str),
-            ("is_validated", &Kind::Bool),
-            ("nb_generations", &Kind::Int),
-        ]
-    );
 }
 
 #[tokio::test]
@@ -233,37 +212,6 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
         ]
     );
     assert_eq!(requests(&generator_client).len(), 2);
-}
-
-#[test]
-fn given_both_seats_with_one_author_when_built_then_same_author() {
-    // Two authors are one author when their ids are equal, whatever their
-    // names (br-llm-messages).
-    let renamed = Author::new("writer", "Editor in chief").unwrap();
-    for author in [writer(), renamed] {
-        let built = GeneratorCritic::new(
-            generator(&mock(Vec::new())),
-            CriticSeat {
-                author,
-                ..critic(&mock(Vec::new()))
-            },
-            Count::Fixed(1),
-        )
-        .graph();
-        assert!(matches!(built, Err(GraphError::SameAuthor { .. })));
-    }
-    // Positive control: one name, two ids, two authors.
-    let namesake = Author::new("another", "writer").unwrap();
-    let built = GeneratorCritic::new(
-        generator(&mock(Vec::new())),
-        CriticSeat {
-            author: namesake,
-            ..critic(&mock(Vec::new()))
-        },
-        Count::Fixed(1),
-    )
-    .graph();
-    assert!(built.is_ok());
 }
 
 #[tokio::test]
