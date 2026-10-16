@@ -28,7 +28,8 @@ fn declared(graph: &Graph) -> Vec<(String, Vec<Target>)> {
         .iter()
         .map(|id| {
             let targets = graph
-                .declared(id)
+                .edge(id)
+                .and_then(|entry| entry.declared.as_deref())
                 .unwrap_or_else(|| panic!("the edge of {id} is undeclared"))
                 .to_vec();
             (id.as_str().to_owned(), targets)

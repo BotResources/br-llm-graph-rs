@@ -95,14 +95,14 @@ fn evaluate_edges(
         if !active.contains(id) {
             continue;
         }
-        let edge = graph
+        let entry = graph
             .edge(id)
             .ok_or_else(|| GraphError::NodeWithoutEdge { id: id.clone() })?;
-        let targets = edge.next(state, config)?;
+        let targets = entry.edge.next(state, config)?;
         if targets.is_empty() {
             return Err(GraphError::EmptyEdge { node: id.clone() });
         }
-        if let Some(declared) = graph.declared(id)
+        if let Some(declared) = &entry.declared
             && let Some(target) = targets.iter().find(|target| !declared.contains(target))
         {
             return Err(GraphError::UndeclaredTarget {

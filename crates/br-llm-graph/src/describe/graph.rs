@@ -48,7 +48,7 @@ impl Graph {
                 self.node(id).map(|node| DescribedNode {
                     id: id.clone(),
                     is_join: self.is_join(id),
-                    edge: self.declared(id).map(<[_]>::to_vec),
+                    edge: self.edge(id).and_then(|entry| entry.declared.clone()),
                     node: node.describe(),
                 })
             })

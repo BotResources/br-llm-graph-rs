@@ -168,16 +168,10 @@ impl Graph {
             .unwrap_or(false)
     }
 
-    pub(crate) fn edge(&self, id: &NodeId) -> Option<&dyn Edge> {
-        self.edges.get(id).map(|entry| entry.edge.as_ref())
-    }
-
-    /// The targets the edge of `id` declared when the graph was built;
-    /// `None` when they are undeclared.
-    pub(crate) fn declared(&self, id: &NodeId) -> Option<&[Target]> {
-        self.edges
-            .get(id)
-            .and_then(|entry| entry.declared.as_deref())
+    /// The edge of `id`, with the targets it declared when the graph was
+    /// built.
+    pub(crate) fn edge(&self, id: &NodeId) -> Option<&EdgeEntry> {
+        self.edges.get(id)
     }
 
     /// Whether it holds the node `id`.
