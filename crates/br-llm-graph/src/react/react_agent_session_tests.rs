@@ -10,6 +10,7 @@ use br_llm_clients_mock::{Gate, Reply, StateKind};
 
 use crate::react::react_agent_support::agent_config;
 use crate::react::react_durable_support::*;
+use crate::react::test_gate::beside;
 use crate::react::test_support::*;
 use crate::session::{Ended, Session, Start};
 use crate::testkit::TestStore;

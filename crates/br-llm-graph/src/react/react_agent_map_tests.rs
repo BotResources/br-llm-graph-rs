@@ -17,6 +17,7 @@ use crate::react::given::{Model, Reads};
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::*;
 use crate::react::react_durable_support::{Host, opening, said};
+use crate::react::test_gate::beside;
 use crate::react::test_support::*;
 use crate::run::{Outcome, control, run};
 use crate::state::{Config, Kind, Schema, Value};
