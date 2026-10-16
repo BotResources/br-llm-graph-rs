@@ -39,6 +39,8 @@ mod turn_writer;
 mod verdict;
 
 #[cfg(test)]
+mod generator_critic_bounds_tests;
+#[cfg(test)]
 mod generator_critic_budget_tests;
 #[cfg(test)]
 mod generator_critic_caller_tests;
@@ -94,6 +96,8 @@ mod llm_call_map_tests;
 mod llm_call_support;
 #[cfg(test)]
 mod llm_call_tests;
+#[cfg(test)]
+mod react_agent_bounds_tests;
 #[cfg(test)]
 mod react_agent_build_tests;
 #[cfg(test)]
