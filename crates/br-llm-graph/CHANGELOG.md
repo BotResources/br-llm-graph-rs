@@ -18,13 +18,20 @@ may declare their targets, which the build and the run then hold them to.
 ### Added
 
 - `Graph::describe` gives a `GraphDescription`: the graph's entry, its
-  signature, its schema (state and configuration keys with their kinds and
-  defaults; an agent's private keys are not part of it) and its nodes in
+  signature, its schema (state and configuration keys with their kinds,
+  and the keys that have a default, by kind; an agent's private keys are
+  not part of it) and its nodes in
   registration order, each with its id, its kind, its realizes labels, its
   edge's declared targets in the order given (or undeclared) and the
   fields of its kind, nested graphs included. It runs nothing, calls no
   client, reads no state and no configuration; two builds from the same
   parts give equal descriptions, in the same order.
+- A description writes no value. The schema is `{"state", "config",
+  "defaults"?}`, `defaults` mapping each state key that has a default to
+  its kind, never the default's value, whatever its kind (a string, a
+  list, a conversation). An author (of a model-calling node, of an LLM
+  call's conversation request) is written by its id, `{"id"}`, never its
+  name, which is rendered into what a model reads.
 - Its JSON, `br-llm-graph-description/1` (`DESCRIPTION_VERSION`):
   `{"description_version", "entry", "signature", "schema", "nodes"}`; a
   node `{"id", "kind", "realizes"?, "join"?, "edge", ...}`; an edge
@@ -46,7 +53,7 @@ may declare their targets, which the build and the run then hold them to.
     policy and its body, a node without id or edge;
   - an LLM call: how its model and system are given, its request and its
     output;
-  - a model-calling node: its author, how its model, system and history
+  - a model-calling node: its author's id, how its model, system and history
     are given (`fixed`, `ready_made` or `function`, never the value), its
     tool names, its enabled key, its tool concurrency and round limit. The
     critic's node adds the critique budget, `final_generation`, the verdict

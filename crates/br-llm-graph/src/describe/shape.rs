@@ -105,18 +105,17 @@ pub(crate) struct MapShape {
     pub(crate) body: crate::describe::NodeDescription,
 }
 
-/// Who speaks, by its id and its name.
+/// Who speaks, by its id alone: its name is rendered into what a model
+/// reads, so a description never writes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AuthorShape {
     pub(crate) id: String,
-    pub(crate) name: String,
 }
 
 impl AuthorShape {
     pub(crate) fn of(author: &Author) -> Self {
         Self {
             id: author.id().as_str().to_owned(),
-            name: author.name().as_str().to_owned(),
         }
     }
 }

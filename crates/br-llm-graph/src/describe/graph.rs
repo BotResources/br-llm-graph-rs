@@ -5,8 +5,9 @@ use crate::graph::Graph;
 
 impl Graph {
     /// What the graph says of itself as data: its entry, its signature, its
-    /// schema (its state and configuration keys with their kinds and
-    /// defaults; an agent's private keys are not part of it), and its nodes
+    /// schema (its state and configuration keys with their kinds, and the
+    /// keys that have a default, by kind, never the default's value; an
+    /// agent's private keys are not part of it), and its nodes
     /// in registration order, each with its kind, its realizes labels, its
     /// edge's declared targets (in the order given, or undeclared) and the
     /// fields of its kind, nested graphs included.

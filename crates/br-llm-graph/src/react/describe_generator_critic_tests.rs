@@ -49,10 +49,7 @@ fn given_a_generator_critic_when_described_then_its_nodes_hold_its_seats_and_cou
     );
     let generate = node_json(&described, "generate");
     assert_eq!(generate["join"], true);
-    assert_eq!(
-        generate["author"],
-        json!({"id": "writer", "name": "writer"})
-    );
+    assert_eq!(generate["author"], json!({"id": "writer"}));
     assert_written(
         &node_json(&described, "check"),
         &json!({
@@ -67,7 +64,7 @@ fn given_a_generator_critic_when_described_then_its_nodes_hold_its_seats_and_cou
         &json!({
             "id": "critique", "kind": "model_call",
             "edge": {"targets": [{"node": "generate"}, {"node": "finish"}]},
-            "author": {"id": "reviewer", "name": "reviewer"},
+            "author": {"id": "reviewer"},
             "model": "fixed", "system": "fixed", "history": "ready_made",
             "max_critiques": {"fixed": 3},
             "final_generation": true,

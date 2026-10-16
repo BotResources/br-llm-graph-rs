@@ -70,7 +70,7 @@ fn given_a_conversation_request_when_described_then_its_key_and_author_are_writt
     let node = described(call(request, LlmOutput::Append(skey("notes"))));
     assert_written(
         &node["request"],
-        &json!({"conversation": "chat", "author": {"id": "agent", "name": "agent"}}),
+        &json!({"conversation": "chat", "author": {"id": "agent"}}),
     );
     assert_eq!(node["output"], json!({"append": "notes"}));
 }

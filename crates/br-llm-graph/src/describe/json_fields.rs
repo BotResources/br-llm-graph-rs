@@ -82,10 +82,7 @@ pub(crate) fn llm_call_fields<M: SerializeMap>(
             "request",
             &Conversation {
                 conversation: key,
-                author: Author {
-                    id: &author.id,
-                    name: &author.name,
-                },
+                author: Author { id: &author.id },
             },
         )?,
     }
@@ -98,7 +95,6 @@ pub(crate) fn model_call_fields<M: SerializeMap>(
 ) -> Result<(), M::Error> {
     let author = Author {
         id: &call.author.id,
-        name: &call.author.name,
     };
     map.serialize_entry("author", &author)?;
     map.serialize_entry("model", call.model.as_str())?;

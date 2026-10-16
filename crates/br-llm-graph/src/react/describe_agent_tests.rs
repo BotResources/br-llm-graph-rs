@@ -40,7 +40,7 @@ fn given_a_react_agent_when_described_then_its_own_graph_and_nodes_are_written()
                  "edge": {"targets": [{"node": "llm"}, {"node": "answer"}]}},
                 {"id": "llm", "kind": "model_call", "join": true,
                  "edge": {"targets": [{"node": "tools"}, {"node": "answer"}]},
-                 "author": {"id": "agent", "name": "agent"},
+                 "author": {"id": "agent"},
                  "model": "fixed", "system": "ready_made", "history": "ready_made",
                  "tools": ["echo"]},
                 {"id": "tools", "kind": "tools", "edge": {"targets": [{"node": "llm"}]},

@@ -1,6 +1,8 @@
 //! The JSON of a description, `br-llm-graph-description/1`: the graph, its
 //! nodes and their edges. Written only: nothing here deserializes.
 
+use std::collections::BTreeMap;
+
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
 use crate::describe::json_fields::{
@@ -9,7 +11,8 @@ use crate::describe::json_fields::{
 use crate::describe::shape::Shape;
 use crate::describe::{DESCRIPTION_VERSION, DescribedNode, GraphDescription, NodeDescription};
 use crate::graph::Target;
-use crate::value::{EndLabel, NodeId};
+use crate::state::{Kind, Schema};
+use crate::value::{EndLabel, Key, NodeId};
 
 impl Serialize for GraphDescription {
     /// `{"description_version", "entry", "signature", "schema", "nodes"}`.
@@ -35,8 +38,31 @@ impl Serialize for Nested<'_> {
 fn graph_fields<M: SerializeMap>(graph: &GraphDescription, map: &mut M) -> Result<(), M::Error> {
     map.serialize_entry("entry", &graph.entry)?;
     map.serialize_entry("signature", &graph.signature)?;
-    map.serialize_entry("schema", &graph.schema)?;
+    map.serialize_entry("schema", &SchemaJson(&graph.schema))?;
     map.serialize_entry("nodes", &graph.nodes)
+}
+
+/// A schema as a description writes it: `{"state", "config", "defaults"?}`,
+/// `defaults` mapping each key that has a default to the key's kind, never
+/// the default's value, which may hold prompt text or a secret.
+struct SchemaJson<'a>(&'a Schema);
+
+impl Serialize for SchemaJson<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let schema = self.0;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("state", &schema.state)?;
+        map.serialize_entry("config", &schema.config)?;
+        let defaults: BTreeMap<&Key, &Kind> = schema
+            .defaults
+            .keys()
+            .filter_map(|key| schema.state.get(key).map(|kind| (key, kind)))
+            .collect();
+        if !defaults.is_empty() {
+            map.serialize_entry("defaults", &defaults)?;
+        }
+        map.end()
+    }
 }
 
 impl Serialize for DescribedNode {

@@ -145,9 +145,9 @@ pub(crate) fn round_limit_json(round_limit: &RoundLimit) -> RoundLimitJson<'_> {
 }
 
 #[derive(serde::Serialize)]
+/// `{"id"}`: an author by its id, never its name.
 pub(crate) struct Author<'a> {
     pub(crate) id: &'a str,
-    pub(crate) name: &'a str,
 }
 
 #[derive(serde::Serialize)]

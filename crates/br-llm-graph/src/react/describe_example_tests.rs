@@ -195,7 +195,7 @@ fn given_a_node_a_map_a_call_and_an_agent_when_described_then_the_json_is_the_pu
                               "edge": {"targets": [{"node": "llm"}, {"node": "answer"}]}},
                              {"id": "llm", "kind": "model_call", "join": true,
                               "edge": {"targets": [{"node": "tools"}, {"node": "answer"}]},
-                              "author": {"id": "researcher", "name": "Researcher"},
+                              "author": {"id": "researcher"},
                               "model": "fixed", "system": "fixed", "history": "ready_made",
                               "tools": ["search", "fetch"],
                               "round_limit": {"max_rounds": {"fixed": 4}, "on_limit": "error"}},

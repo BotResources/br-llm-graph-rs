@@ -58,7 +58,7 @@ fn given_a_graph_when_described_then_it_holds_its_entry_signature_schema_and_nod
                     "tries": {"type": "int"}
                 },
                 "config": {"width": {"type": "int"}},
-                "defaults": {"tries": {"type": "int", "value": 3}}
+                "defaults": {"tries": {"type": "int"}}
             },
             "nodes": [
                 {"id": "zeta", "kind": "node",

@@ -12,10 +12,12 @@
 //! `NodeDescription::nesting`). Realizes labels name what a node implements
 //! and the library never reads them (`Node::realizing`).
 //!
-//! Nothing a function computes, no prompt text, no client, no tool argument
-//! and no secret is part of a description: a subject is written as how it
-//! was given (`fixed`, `ready_made`, `function`), a fixed value of a call or
-//! a capture as its kind.
+//! A description writes no value: nothing a function computes, no prompt
+//! text, no client, no tool argument and no secret is part of it. A subject
+//! is written as how it was given (`fixed`, `ready_made`, `function`); a
+//! fixed value of a call or a capture, and a state key's default, as its
+//! kind; an author by its id, never its name, which is rendered into what a
+//! model reads.
 
 mod graph;
 mod json;
@@ -39,9 +41,12 @@ pub const DESCRIPTION_VERSION: &str = "br-llm-graph-description/1";
 /// the same parts give equal descriptions, in the same order.
 ///
 /// It is written, never reloaded: it implements `Serialize` only. Its JSON
-/// is `{"description_version", "entry", "signature", "schema", "nodes"}`,
-/// `signature` and `schema` in their own JSON shapes (an agent's private
-/// keys are not part of the schema). A nested graph is the same object
+/// is `{"description_version", "entry", "signature", "schema", "nodes"}`.
+/// `signature` is in its own JSON shape. `schema` is `{"state", "config",
+/// "defaults"?}`: `state` and `config` map each key to its kind, and
+/// `defaults` maps each state key that has a default to its kind, never the
+/// default's value (`"defaults": {"persona": {"type": "str"}}`); an agent's
+/// private keys are not part of it. A nested graph is the same object
 /// without `description_version`.
 ///
 /// A node of `nodes` is `{"id", "kind", "realizes"?, "join"?, "edge", ...}`,
@@ -63,8 +68,8 @@ pub const DESCRIPTION_VERSION: &str = "br-llm-graph-description/1";
 /// | `call` | `"inputs"?`, `"config"?`: `[{"child", "source"}]`, the source `{"from": key}`, `{"config": key}` or `{"const": kind}`; `"outputs"?`: `[{"child", "target"}]`, the target `{"set": key}` or `{"append": key}`; `"end_label"?`: a target; `"on_failure"`: `"propagate"` or `{"capture": [{"target", "source"}]}`, a capture's source also `{"reason": true}`; `"graph"`: the graph it runs |
 /// | `react_agent`, `generator_critic` | a call of an agent's graph: the fields of `call` |
 /// | `map` | `"list"`, `"item"`, `"max_concurrency"?`, `"on_item_failure"`: `"finish"`, `"fail_fast"` or `{"capture": [...]}`; `"body"`: its body, a node without `id`, `join` and `edge` |
-/// | `llm_call` | `"model"`, `"system"`; `"request"`: `{"text": subject}`, `{"conversation": key, "author": {"id", "name"}}` or `{"history": subject}`; `"output"`: a target |
-/// | `model_call` | `"author"`: `{"id", "name"}`; `"model"`, `"system"`, `"history"`; `"tools"?`: tool names; `"enabled"?`; `"tool_concurrency"?`; `"round_limit"?`: `{"max_rounds", "on_limit"}`, `on_limit` `"error"`, `{"continue": {"node", "flag"}}` or `{"end": {"node", "flag"}}`. The critic's adds `"max_critiques"`, `"final_generation"`, `"verdict_retries"`, `"review_request"`, `"verdict"` (`"default"` or `"override"`) |
+/// | `llm_call` | `"model"`, `"system"`; `"request"`: `{"text": subject}`, `{"conversation": key, "author": {"id"}}` or `{"history": subject}`; `"output"`: a target |
+/// | `model_call` | `"author"`: `{"id"}`, the author's id, never its name; `"model"`, `"system"`, `"history"`; `"tools"?`: tool names; `"enabled"?`; `"tool_concurrency"?`; `"round_limit"?`: `{"max_rounds", "on_limit"}`, `on_limit` `"error"`, `{"continue": {"node", "flag"}}` or `{"end": {"node", "flag"}}`. The critic's adds `"max_critiques"`, `"final_generation"`, `"verdict_retries"`, `"review_request"`, `"verdict"` (`"default"` or `"override"`) |
 /// | `tools` | `"tools"`: the names of the tools it runs |
 ///
 /// A subject (`model`, `system`, `history`, a request's text...) is written
