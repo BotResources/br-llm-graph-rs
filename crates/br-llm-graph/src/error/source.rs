@@ -26,8 +26,10 @@ impl std::error::Error for GraphError {
             | GraphError::NodeWithoutEdge { .. }
             | GraphError::EdgeFromUnknownNode { .. }
             | GraphError::DuplicateEdge { .. }
+            | GraphError::EdgeToUnknownNode { .. }
             | GraphError::UnknownNode { .. }
             | GraphError::EmptyEdge { .. }
+            | GraphError::UndeclaredTarget { .. }
             | GraphError::MapKeyMismatch { .. }
             | GraphError::AmbiguousEnd { .. }
             | GraphError::EmptyCursor

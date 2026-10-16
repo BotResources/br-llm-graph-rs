@@ -12,6 +12,7 @@ use br_llm_clients_core::{BuildError, ClientError};
 use br_llm_messages::MessageError;
 use br_llm_messages::{Author, ToolName};
 
+use crate::graph::Target;
 use crate::state::Kind;
 use crate::value::{EndLabel, Key, NodeId, ThreadId};
 
@@ -23,8 +24,8 @@ pub use fault::NodeFault;
 /// A build refusal of a node reaches the caller inside `InvalidNode`; a node
 /// failure inside `NodeFailed`; a failure of a called graph inside
 /// `SubGraphFailed`, inside the `NodeFailed` of the calling node. An edge
-/// refusal (`PendingToolUnsatisfiable`, `ToolLimitReached`, a refused
-/// `Count`) is the run's error itself, and so is a refusal before the first
+/// refusal (`UndeclaredTarget`, `PendingToolUnsatisfiable`, `ToolLimitReached`,
+/// a refused `Count`) is the run's error itself, and so is a refusal before the first
 /// superstep (`StateSchemaMismatch`, `ConfigSchemaMismatch`, `UnknownNode`,
 /// `EmptyCursor`). The source (`std::error::Error::source`) of `NodeFailed`
 /// is its fault, of `Message` the br-llm-messages error, of `Model` the
@@ -117,6 +118,14 @@ pub enum GraphError {
         /// The node.
         id: NodeId,
     },
+    /// A node target an edge declares that is not a node of the graph: a
+    /// build refusal of the graph, checked after the nodes.
+    EdgeToUnknownNode {
+        /// The node whose edge it is.
+        node: NodeId,
+        /// The node target the graph does not hold.
+        target: NodeId,
+    },
     /// A target, or a cursor, naming a node the graph does not hold.
     UnknownNode {
         /// The node named.
@@ -126,6 +135,14 @@ pub enum GraphError {
     EmptyEdge {
         /// The node whose edge it is.
         node: NodeId,
+    },
+    /// A target a declared edge returned without declaring it: the run's
+    /// error itself, raised before any target runs.
+    UndeclaredTarget {
+        /// The node whose edge it is.
+        node: NodeId,
+        /// The target returned.
+        target: Target,
     },
     /// A map whose list key is not a list of the item key's kind.
     MapKeyMismatch {

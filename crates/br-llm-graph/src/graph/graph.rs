@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::GraphError;
-use crate::graph::edge::Edge;
+use crate::graph::edge::{Edge, Target};
 use crate::graph::node::Node;
 use crate::graph::signature::Signature;
 use crate::run::Cursor;
@@ -11,6 +11,21 @@ use crate::value::{Key, NodeId};
 pub(crate) struct NodeEntry {
     pub node: Box<dyn Node>,
     pub is_join: bool,
+}
+
+/// The edge of a node, with the targets it declared when the graph was
+/// built: the run checks these, and the description writes them, so the two
+/// never disagree.
+pub(crate) struct EdgeEntry {
+    pub edge: Box<dyn Edge>,
+    pub declared: Option<Vec<Target>>,
+}
+
+impl EdgeEntry {
+    pub(crate) fn new(edge: Box<dyn Edge>) -> Self {
+        let declared = edge.declared().map(<[Target]>::to_vec);
+        Self { edge, declared }
+    }
 }
 
 /// A built graph: a schema, an entry, nodes and one edge per node, and a
@@ -26,7 +41,7 @@ pub struct Graph {
     entry: NodeId,
     order: Vec<NodeId>,
     nodes: BTreeMap<NodeId, NodeEntry>,
-    edges: BTreeMap<NodeId, Box<dyn Edge>>,
+    edges: BTreeMap<NodeId, EdgeEntry>,
 }
 
 pub(crate) struct Parts {
@@ -37,7 +52,7 @@ pub(crate) struct Parts {
     pub entry: NodeId,
     pub order: Vec<NodeId>,
     pub nodes: BTreeMap<NodeId, NodeEntry>,
-    pub edges: BTreeMap<NodeId, Box<dyn Edge>>,
+    pub edges: BTreeMap<NodeId, EdgeEntry>,
 }
 
 impl Graph {
@@ -143,7 +158,15 @@ impl Graph {
     }
 
     pub(crate) fn edge(&self, id: &NodeId) -> Option<&dyn Edge> {
-        self.edges.get(id).map(|edge| edge.as_ref())
+        self.edges.get(id).map(|entry| entry.edge.as_ref())
+    }
+
+    /// The targets the edge of `id` declared when the graph was built;
+    /// `None` when they are undeclared.
+    pub(crate) fn declared(&self, id: &NodeId) -> Option<&[Target]> {
+        self.edges
+            .get(id)
+            .and_then(|entry| entry.declared.as_deref())
     }
 
     /// Whether it holds the node `id`.

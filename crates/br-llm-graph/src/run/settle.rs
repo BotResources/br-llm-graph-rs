@@ -21,7 +21,11 @@ pub(crate) struct Settled {
 
 /// Applies the results of `active`'s nodes and the held inputs to a copy of
 /// `state`, evaluates the edges and, when nothing is left to run, the end
-/// label. Any failure leaves `state` as it was. The pending entry of a node
+/// label. The edges are evaluated in registration order; for each, its
+/// error, then no target (`EmptyEdge`), then a target a declared edge does
+/// not declare (`UndeclaredTarget`), then a node the graph does not hold
+/// (`UnknownNode`). The first refusal fails the superstep, so no target of
+/// any edge runs. Any failure leaves `state` as it was. The pending entry of a node
 /// whose updates are refused is forgotten, so a resume runs it again.
 pub(crate) fn settle(
     graph: &Graph,
@@ -97,6 +101,14 @@ fn evaluate_edges(
         let targets = edge.next(state, config)?;
         if targets.is_empty() {
             return Err(GraphError::EmptyEdge { node: id.clone() });
+        }
+        if let Some(declared) = graph.declared(id)
+            && let Some(target) = targets.iter().find(|target| !declared.contains(target))
+        {
+            return Err(GraphError::UndeclaredTarget {
+                node: id.clone(),
+                target: target.clone(),
+            });
         }
         for target in targets {
             match target {

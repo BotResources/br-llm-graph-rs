@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::error::GraphError;
 use crate::graph::edge::Edge;
-use crate::graph::graph::{Graph, NodeEntry, Parts};
+use crate::graph::graph::{EdgeEntry, Graph, NodeEntry, Parts};
 use crate::graph::map::Map;
 use crate::graph::node::{CheckSite, Node};
 use crate::graph::signature::Signature;
@@ -169,7 +169,7 @@ impl GraphBuilder {
             if edges.contains_key(&from) {
                 return Err(GraphError::DuplicateEdge { id: from });
             }
-            edges.insert(from, edge);
+            edges.insert(from, EdgeEntry::new(edge));
         }
 
         for id in &order {
