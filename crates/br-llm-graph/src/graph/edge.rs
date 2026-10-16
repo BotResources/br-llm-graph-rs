@@ -111,3 +111,7 @@ impl Edge for Always {
         Some(std::slice::from_ref(&self.0))
     }
 }
+
+#[cfg(test)]
+#[path = "edge_tests.rs"]
+mod tests;
