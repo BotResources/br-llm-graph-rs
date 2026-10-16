@@ -1,11 +1,16 @@
 //! The critique budget of the generator-critic: zero gives one generation
-//! and no critic call; a budget may be read from the configuration (its
+//! and no critic call; the largest one does not overflow the calls a tail
+//! schedule counts; a budget may be read from the configuration (its
 //! refusal is pinned with the other bounds, `generator_critic_bounds_tests`).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use crate::graph::Count;
+use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
+use crate::react::given::Model;
+use crate::react::seats::GeneratorSeat;
 use crate::react::test_support::*;
 use crate::state::{Kind, Value};
 
@@ -58,4 +63,31 @@ async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_
         "validated",
     );
     assert_eq!(requests(&critic_client).len(), 1);
+}
+
+#[tokio::test]
+async fn given_the_largest_budget_and_a_final_generation_when_the_generator_ends_with_a_tail_then_its_first_generation_calls_the_primary()
+ {
+    let primary = mock(vec![text_step("draft")]);
+    let tail = mock(Vec::new());
+    let critic_client = mock(vec![verdict(true, "")]);
+    let graph = GeneratorCritic::new(
+        GeneratorSeat {
+            model: Model::ending_with(Arc::new(primary.clone()), vec![Arc::new(tail.clone())]),
+            ..generator(&primary)
+        },
+        critic(&critic_client),
+        Count::Fixed(usize::MAX),
+    )
+    .graph()
+    .unwrap();
+
+    let state = ended(call(&graph, question("explain")).await, "validated");
+
+    assert_eq!(state.str(&key("answer")).unwrap(), "draft");
+    assert_eq!(
+        (primary.calls(), tail.calls()),
+        (1, 0),
+        "the budget plus one saturates: the tail is for the last calls only"
+    );
 }
