@@ -43,6 +43,10 @@ mod generator_critic_caller_tests;
 #[cfg(test)]
 mod generator_critic_cut_tests;
 #[cfg(test)]
+mod generator_critic_durable_support;
+#[cfg(test)]
+mod generator_critic_durable_tests;
+#[cfg(test)]
 mod generator_critic_empty_tests;
 #[cfg(test)]
 mod generator_critic_entry_tests;

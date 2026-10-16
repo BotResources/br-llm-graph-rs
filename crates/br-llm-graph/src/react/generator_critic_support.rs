@@ -21,7 +21,7 @@ use crate::react::given::{Model, Prompt};
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, control, run};
+use crate::run::{Control, Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
 use crate::testkit::{SeqIds, Transcript};
 use crate::value::{Key, NodeId};
@@ -162,11 +162,22 @@ impl std::ops::Deref for Done {
 
 /// Runs `graph` on `state` with `config` in `ctx`, keeping its conversation.
 pub(crate) async fn run_in(graph: &Graph, state: State, config: &Config, ctx: &Context) -> Ran {
+    let (_sender, mut channel) = control();
+    run_with_channel(graph, state, config, ctx, &mut channel).await
+}
+
+/// `run_in`, listening to `channel`.
+pub(crate) async fn run_with_channel(
+    graph: &Graph,
+    state: State,
+    config: &Config,
+    ctx: &Context,
+    channel: &mut Control,
+) -> Ran {
     let transcript = Arc::new(Transcript::new(ctx.observer.clone()));
     let mut ctx = ctx.clone();
     ctx.observer = transcript.clone();
-    let (_sender, mut channel) = control();
-    let result = run(graph, config, state, None, &ctx, &mut channel).await;
+    let result = run(graph, config, state, None, &ctx, channel).await;
     Ran { result, transcript }
 }
 
