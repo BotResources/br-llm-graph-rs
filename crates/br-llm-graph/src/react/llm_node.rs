@@ -15,7 +15,7 @@ use crate::react::sink::complete_in;
 use crate::react::thread_store::TurnEnd;
 use crate::react::tool::Tool;
 use crate::react::turn_clients::TurnClients;
-use crate::react::turn_ids::{agent_origin, id_request, next_rank_in_memory, trigger};
+use crate::react::turn_ids::{id_request, next_rank_in_memory, trigger};
 use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Schema, State};
 use crate::update::Update;
@@ -65,9 +65,6 @@ pub(crate) struct LlmNode<N: LoopNode> {
     /// For the generator of a generator-critic: where the call stands, for
     /// the generator's context.
     pub(crate) seat: Option<Duo>,
-    /// The client of the turn under way, asked at its first round and kept
-    /// for its other rounds; the agent's entry forgets it.
-    pub(crate) clients: Arc<TurnClients>,
 }
 
 impl<N: LoopNode> Node for LlmNode<N> {
@@ -112,7 +109,7 @@ impl<N: LoopNode> Node for LlmNode<N> {
             let step =
                 complete_in(client.as_ref(), &request, ctx, &self.key, writer.as_ref()).await?;
             if !matches!(step.stop_reason(), StopReason::AwaitingToolResults) {
-                self.clients.forget(&agent_origin(ctx));
+                TurnClients::of(ctx).forget(ctx);
             }
             if let Some(writer) = &writer
                 && !matches!(step.stop_reason(), StopReason::AwaitingToolResults)
@@ -174,8 +171,9 @@ fn answered_rounds(turn: &Turn) -> usize {
 impl<N: LoopNode> LlmNode<N> {
     /// The client called for this model call: the one `model` gave for the
     /// turn `turn`, asked at the turn's first round (in this call, for a turn
-    /// it continues) for the context of that round, and kept for the turn's
-    /// other rounds, so a turn is run by one client.
+    /// it continues) for the context of that round, and kept in the call's
+    /// run for the turn's other rounds, so a turn is run by one client (see
+    /// `TurnClients`).
     fn client<'a>(
         &'a self,
         state: &'a State,
@@ -184,12 +182,12 @@ impl<N: LoopNode> LlmNode<N> {
         facts: N::Facts<'a>,
         turn: &TurnId,
     ) -> Result<Arc<dyn br_llm_clients_core::Client>, crate::graph::NodeError> {
-        let origin = agent_origin(ctx);
-        if let Some(kept) = self.clients.kept(&origin, turn) {
+        let clients = TurnClients::of(ctx);
+        if let Some(kept) = clients.kept(ctx, turn) {
             return Ok(kept);
         }
         let client = self.model.give(state, config, facts)?;
-        self.clients.keep(origin, turn.clone(), client.clone());
+        clients.keep(ctx, turn.clone(), client.clone());
         Ok(client)
     }
 

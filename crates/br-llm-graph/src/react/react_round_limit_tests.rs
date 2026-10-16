@@ -216,7 +216,6 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
             output_mode: OutputMode::Plain,
             call: None,
             seat: None,
-            clients: Default::default(),
         };
         ReactLoop {
             llm: nid("llm"),

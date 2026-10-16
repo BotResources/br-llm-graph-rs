@@ -23,7 +23,6 @@ use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::OnLimit;
 use crate::react::seats::CriticHistory;
-use crate::react::turn_clients::TurnClients;
 use crate::react::verdict::VerdictForm;
 use crate::state::{Kind, Schema};
 
@@ -186,7 +185,6 @@ impl GeneratorCritic {
         );
         let tool_nodes = split_tools(generator.tool_nodes, &generator.tools, &names.tools);
         let flag_limit = flag.zip(generator.round_limit.clone());
-        let clients = Arc::new(TurnClients::default());
         let react = ReactLoop {
             llm: names.generate.clone(),
             tool_nodes,
@@ -206,7 +204,6 @@ impl GeneratorCritic {
             output_mode: generator.output_mode,
             call: Some(call),
             seat: Some(duo.clone()),
-            clients: clients.clone(),
         };
         let mut builder = react.add(builder, llm)?;
         if let Some(clash) = clash {
@@ -221,13 +218,7 @@ impl GeneratorCritic {
 
         let (entry, checked, judged) = (router.clone(), router.clone(), router);
         let graph = builder
-            .node(
-                names.route.clone(),
-                RouteNode {
-                    duo: duo.clone(),
-                    clients,
-                },
-            )
+            .node(names.route.clone(), RouteNode { duo: duo.clone() })
             .edge(
                 names.route,
                 FnEdge::new(move |state, config| entry.entry(state, config)),

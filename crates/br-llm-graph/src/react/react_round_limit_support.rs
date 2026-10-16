@@ -87,7 +87,6 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
         output_mode: OutputMode::Plain,
         call: None,
         seat: None,
-        clients: Default::default(),
     };
     let react = ReactLoop {
         llm: nid("llm"),

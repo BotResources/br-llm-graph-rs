@@ -80,7 +80,8 @@ pub async fn run(
 /// run records under the caller's occurrence, into the caller's checkpoint.
 ///
 /// The run works on the state with the graph's private keys, and takes them
-/// out of every state it gives back (see `graph/private.rs`).
+/// out of every state it gives back (see `graph/private.rs`). It has run
+/// slots of its own, dropped when it returns, however it ends.
 pub(crate) async fn run_nested(
     graph: &Graph,
     config: &Config,
@@ -89,6 +90,7 @@ pub(crate) async fn run_nested(
     ctx: &Context,
     control: &mut Control,
 ) -> Result<Outcome, RunFailure> {
+    let ctx = &ctx.for_run();
     let (mut active, mut deferred) = match cursor {
         Some(cursor) if cursor.is_empty() => {
             return Err(fail(graph, state, ctx, &[], &[], GraphError::EmptyCursor));

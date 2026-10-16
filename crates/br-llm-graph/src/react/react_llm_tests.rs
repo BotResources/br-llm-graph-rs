@@ -44,7 +44,6 @@ pub(crate) fn llm(client: &MockClient, system: Prompt<ReactAgent>) -> LlmNode<Re
         output_mode: OutputMode::Plain,
         call: None,
         seat: None,
-        clients: Default::default(),
     }
 }
 

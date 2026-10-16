@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::graph::ids::IdSource;
+use crate::graph::run_local::RunLocal;
 use crate::observe::Observer;
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
 use crate::run::{PendingEntry, PendingWrites};
@@ -19,6 +20,11 @@ use crate::value::NodeId;
 /// the pending writes this context holds (empty unless set with
 /// `with_pending`).
 ///
+/// What a part of the library keeps for one run (the client of an agent's
+/// turn) lives in the run's own slots: every run, a nested one included,
+/// starts with empty slots, shared by the contexts of its nodes and map
+/// items, and drops them when it returns.
+///
 /// Pending writes belong to the run being resumed. A called graph restarts
 /// whole: inside it recording is off, for every context derived from it, so
 /// `record` and `record_item` do nothing and `recorded` and `recorded_item`
@@ -32,6 +38,7 @@ pub struct Context {
     origin: Origin,
     pending: Arc<Mutex<PendingWrites>>,
     recording: bool,
+    local: RunLocal,
 }
 
 impl Context {
@@ -44,6 +51,7 @@ impl Context {
             origin: Origin::default(),
             pending: Arc::default(),
             recording: true,
+            local: RunLocal::default(),
         }
     }
 
@@ -192,6 +200,19 @@ impl Context {
         let mut context = self.clone().with_pending(PendingWrites::default());
         context.recording = false;
         context
+    }
+
+    /// This context with empty run slots of its own: the context a run,
+    /// nested or not, gives its nodes.
+    pub(crate) fn for_run(&self) -> Context {
+        let mut context = self.clone();
+        context.local = RunLocal::default();
+        context
+    }
+
+    /// The slot of type `T` of the run this context belongs to.
+    pub(crate) fn run_local<T: std::any::Any + Default + Send + Sync>(&self) -> Arc<T> {
+        self.local.slot()
     }
 
     fn store(&self) -> MutexGuard<'_, PendingWrites> {

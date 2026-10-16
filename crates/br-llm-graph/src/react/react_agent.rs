@@ -18,7 +18,6 @@ use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
 use crate::react::thread_store::ThreadStore;
 use crate::react::tool::Tool;
-use crate::react::turn_clients::TurnClients;
 use crate::state::{Kind, Schema};
 use crate::value::{EndLabel, Key, NodeId};
 
@@ -196,7 +195,6 @@ impl ReactAgent {
         keys.release(&mut schema);
 
         let call = keys.call(self.thread_store);
-        let clients = Arc::new(TurnClients::default());
         let tools_node = NodeId::new("tools")?;
         let clash = tools_node_clash(&self.tool_nodes, self.round_limit.as_ref(), &tools_node);
         let tool_nodes = split_tools(self.tool_nodes, &self.tools, &tools_node);
@@ -228,7 +226,6 @@ impl ReactAgent {
             output_mode: self.output_mode,
             call: Some(call.clone()),
             seat: None,
-            clients: clients.clone(),
         };
 
         let builder = keys
@@ -239,7 +236,6 @@ impl ReactAgent {
                 EnterNode {
                     conversation: keys.conversation.clone(),
                     call: call.clone(),
-                    clients,
                 },
             )
             .edge(

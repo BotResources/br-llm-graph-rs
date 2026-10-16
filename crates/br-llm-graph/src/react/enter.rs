@@ -3,8 +3,6 @@
 //! the route to the model call or, when the call was answered on entry, to
 //! the answer.
 
-use std::sync::Arc;
-
 use br_llm_messages::Conversation;
 
 use crate::graph::{Context, Edge, FnEdge, Node, NodeFuture, Target};
@@ -12,8 +10,6 @@ use crate::react::agent_call::{AgentCall, Position};
 use crate::react::bounds::Bounds;
 use crate::react::rehydrate::{enter_thread, opening_inputs};
 use crate::react::thread_store::MessageStatus;
-use crate::react::turn_clients::TurnClients;
-use crate::react::turn_ids::agent_origin;
 use crate::state::{Config, State, Value};
 use crate::update::Update;
 use crate::value::{Key, NodeId};
@@ -31,9 +27,6 @@ use crate::value::{Key, NodeId};
 pub(crate) struct EnterNode {
     pub(crate) conversation: Key,
     pub(crate) call: AgentCall,
-    /// The clients of the model call's turns: entering, the call forgets
-    /// its client, so its first round asks the model again.
-    pub(crate) clients: Arc<TurnClients>,
 }
 
 impl Node for EnterNode {
@@ -44,7 +37,6 @@ impl Node for EnterNode {
         ctx: &'a Context,
     ) -> NodeFuture<'a> {
         Box::pin(async move {
-            self.clients.forget(&agent_origin(ctx));
             let opening = state.conversation(&self.call.opening)?;
             let Some(binding) = &self.call.thread else {
                 return Ok(vec![
