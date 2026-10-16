@@ -58,6 +58,8 @@ fn parent_schema() -> Schema {
         .state_by_name(key("error"), Kind::Str)
         .state_by_name(key("errors"), Kind::list(Kind::Str))
         .state_by_name(key("batches"), Kind::list(Kind::list(Kind::Str)))
+        .state_by_name(key("matrix"), Kind::list(Kind::list(Kind::Str)))
+        .state_by_name(key("grid"), Kind::list(Kind::list(Kind::Str)))
         .config_by_name(key("rounds"), Kind::Int)
         .build()
 }
@@ -197,4 +199,33 @@ fn given_a_description_of_a_call_when_nesting_a_graph_then_it_is_unchanged() {
     let call = SubGraph::call(bare_child());
     let described = crate::graph::Node::describe(&call);
     assert_eq!(described.clone().nesting(child().describe()), described);
+}
+
+#[test]
+fn given_capture_lists_of_lists_when_described_then_the_element_kind_is_the_first_one_a_value_gives()
+ {
+    let words = |items: &[&str]| Value::list(items.iter().map(|item| Value::str(*item)).collect());
+    let call = SubGraph::call(bare_child()).on_failure(OnFailure::Capture(vec![
+        CaptureUpdate::Set(
+            key("matrix"),
+            CaptureSource::Const(Value::list(vec![words(&["a"])])),
+        ),
+        CaptureUpdate::Set(
+            key("grid"),
+            CaptureSource::Const(Value::list(vec![words(&[]), words(&["a"])])),
+        ),
+        CaptureUpdate::Set(
+            key("batches"),
+            CaptureSource::Const(Value::list(vec![words(&[]), words(&[])])),
+        ),
+    ]));
+    let nested = json!({"type": "list", "element": {"type": "list", "element": {"type": "str"}}});
+    assert_written(
+        &described(call)["on_failure"],
+        &json!({"capture": [
+            {"target": {"set": "matrix"}, "source": {"const": nested}},
+            {"target": {"set": "grid"}, "source": {"const": nested}},
+            {"target": {"set": "batches"}, "source": {"const": {"type": "list"}}}
+        ]}),
+    );
 }
