@@ -1,3 +1,22 @@
+//! The conversions into `GraphError` of the dependencies' own errors.
+//!
+//! A thread store's error has none: `ThreadError` is any boxed error, so a
+//! conversion would turn the error of a node, a tool or a hook into
+//! `Thread` as well. The library wraps a store's error itself.
+//!
+//! ```
+//! # use std::sync::Arc;
+//! # use br_llm_graph::*;
+//! let failed: ThreadError = "the store is down".into();
+//! let _ = GraphError::Thread { source: Arc::from(failed) };
+//! ```
+//!
+//! ```compile_fail,E0277
+//! # use br_llm_graph::*;
+//! let failed: ThreadError = "the store is down".into();
+//! let _ = GraphError::from(failed);
+//! ```
+
 use br_llm_clients_core::{BuildError, ClientError};
 use br_llm_messages::MessageError;
 
@@ -18,14 +37,5 @@ impl From<ClientError> for GraphError {
 impl From<BuildError> for GraphError {
     fn from(error: BuildError) -> Self {
         GraphError::Request(error)
-    }
-}
-
-impl From<crate::react::ThreadError> for GraphError {
-    /// The error of a thread store: `Thread`, carrying it.
-    fn from(error: crate::react::ThreadError) -> Self {
-        GraphError::Thread {
-            source: std::sync::Arc::from(error),
-        }
     }
 }

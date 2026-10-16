@@ -4,7 +4,7 @@
 use br_llm_messages::{Author, BlockKind, StopReason, StreamEvent, Text, ToolResult, TurnId};
 
 use crate::error::GraphError;
-use crate::react::thread_store::{ThreadStore, TurnEnd};
+use crate::react::thread_store::{ThreadStore, TurnEnd, thread_failed};
 use crate::value::ThreadId;
 
 /// The turn `turn` of the thread `thread`, in `store`.
@@ -17,18 +17,18 @@ pub(crate) struct TurnWriter<'a> {
 impl TurnWriter<'_> {
     /// Opens the turn for `author`.
     pub(crate) async fn open(&self, author: &Author) -> Result<(), GraphError> {
-        Ok(self
-            .store
+        self.store
             .open_turn(&self.thread, &self.turn, author)
-            .await?)
+            .await
+            .map_err(thread_failed)
     }
 
     /// Pushes a stream event of the step under way.
     pub(crate) async fn push_event(&self, event: &StreamEvent) -> Result<(), GraphError> {
-        Ok(self
-            .store
+        self.store
             .push_event(&self.thread, &self.turn, event)
-            .await?)
+            .await
+            .map_err(thread_failed)
     }
 
     /// Pushes `results`, one tool results item, at `index` among the turn's
@@ -38,10 +38,10 @@ impl TurnWriter<'_> {
         index: usize,
         results: &[ToolResult],
     ) -> Result<(), GraphError> {
-        Ok(self
-            .store
+        self.store
             .push_results(&self.thread, &self.turn, index, results)
-            .await?)
+            .await
+            .map_err(thread_failed)
     }
 
     /// Streams a step the library writes itself, one text block with
@@ -59,7 +59,10 @@ impl TurnWriter<'_> {
 
     /// Completes, fails or cancels the turn.
     pub(crate) async fn end(&self, end: TurnEnd) -> Result<(), GraphError> {
-        Ok(self.store.end_turn(&self.thread, &self.turn, end).await?)
+        self.store
+            .end_turn(&self.thread, &self.turn, end)
+            .await
+            .map_err(thread_failed)
     }
 }
 

@@ -13,6 +13,16 @@ use crate::value::ThreadId;
 /// node with `GraphError::Thread`, where the host can downcast it.
 pub type ThreadError = Box<dyn std::error::Error + Send + Sync>;
 
+/// The error `error` of a thread store as the agent's node fails with it:
+/// `Thread`, carrying it. A function, not a `From`: `ThreadError` is any
+/// boxed error, so a conversion would turn the error of a node, a tool or a
+/// hook into `Thread` as well.
+pub(crate) fn thread_failed(error: ThreadError) -> crate::error::GraphError {
+    crate::error::GraphError::Thread {
+        source: std::sync::Arc::from(error),
+    }
+}
+
 /// One operation of a thread store under way.
 pub type ThreadFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ThreadError>> + Send + 'a>>;
 

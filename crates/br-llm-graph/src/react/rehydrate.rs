@@ -7,7 +7,7 @@ use br_llm_messages::{Conversation, Entry, TurnId, UserInput};
 use crate::error::GraphError;
 use crate::graph::Context;
 use crate::react::agent_call::ThreadBinding;
-use crate::react::thread_store::{MessageStatus, ThreadView, TurnEnd};
+use crate::react::thread_store::{MessageStatus, ThreadView, TurnEnd, thread_failed};
 use crate::react::turn_ids::{agent_origin, id_request};
 use crate::value::ThreadId;
 
@@ -68,7 +68,10 @@ pub(crate) async fn enter_thread(
     let store = binding.store.as_ref();
     let thread = if given.is_empty() {
         let thread = ctx.ids.thread_id(&id_request(ctx, trigger, 0));
-        store.create(&thread, &agent_origin(ctx)).await?;
+        store
+            .create(&thread, &agent_origin(ctx))
+            .await
+            .map_err(thread_failed)?;
         thread
     } else {
         ThreadId::new(given)?
@@ -76,7 +79,10 @@ pub(crate) async fn enter_thread(
     let mut view = read(binding, &thread).await?;
     for input in inputs {
         if view.message(input.id().as_str()).is_none() {
-            store.store_input(&thread, input).await?;
+            store
+                .store_input(&thread, input)
+                .await
+                .map_err(thread_failed)?;
             view.conversation.push_input((*input).clone())?;
         }
     }
@@ -93,7 +99,10 @@ pub(crate) async fn enter_thread(
     if let Some((_, id, status)) = turns.last_mut()
         && *status == MessageStatus::Streaming
     {
-        store.end_turn(&thread, id, TurnEnd::Failed).await?;
+        store
+            .end_turn(&thread, id, TurnEnd::Failed)
+            .await
+            .map_err(thread_failed)?;
         view = read(binding, &thread).await?;
         *status = view
             .message(id.as_str())
@@ -111,7 +120,8 @@ async fn read(binding: &ThreadBinding, thread: &ThreadId) -> Result<ThreadView, 
     binding
         .store
         .read(thread)
-        .await?
+        .await
+        .map_err(thread_failed)?
         .ok_or_else(|| GraphError::ThreadNotFound {
             thread: thread.clone(),
         })
