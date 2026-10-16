@@ -16,7 +16,6 @@ use crate::state::{Config, State};
 pub(crate) use context::AgentFacts;
 pub use context::{AgentNode, Budgeted, ModelNode, RequestContext, Scheduled};
 pub use reads::Reads;
-pub(crate) use reads::declare_reads;
 
 /// A function given to a model-calling node: it reads the node's context and
 /// gives one subject of the request, or an error that fails the node as

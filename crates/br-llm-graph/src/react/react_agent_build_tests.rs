@@ -178,7 +178,6 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
         "answer",
         "conversation",
         "turn_rank",
-        "persona",
         "offered",
         "limit_reached",
     ] {
@@ -188,6 +187,10 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
             "{name}"
         );
     }
+    let built = flagged(vec![(key("persona"), Kind::Int)]);
+    assert!(
+        matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key("persona"))
+    );
     let built = flagged(vec![(key("scope"), Kind::Str), (key("scope"), Kind::Int)]);
     assert!(matches!(built, Err(GraphError::KeyCollision { .. })));
     assert!(flagged(vec![(key("scope"), Kind::Str)]).is_ok());

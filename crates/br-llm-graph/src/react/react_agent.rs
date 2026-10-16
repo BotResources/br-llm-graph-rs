@@ -5,12 +5,11 @@ use br_llm_messages::Author;
 
 use crate::error::GraphError;
 use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Node, NodeFuture, Target};
-use crate::react::agent_build::{
-    AgentKeys, declare_input, declare_limit, round_limit_flag, tools_node_clash,
-};
+use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag, tools_node_clash};
 use crate::react::agent_call::{AgentCall, ThreadBinding};
+use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
-use crate::react::given::{History, Model, Prompt, declare_reads};
+use crate::react::given::{History, Model, Prompt};
 use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
@@ -73,14 +72,16 @@ use crate::value::{EndLabel, Key, NodeId};
 ///
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
-/// executed. A key read by several functions, with one kind, is declared
-/// once; a key the functions declare, `enabled` or a key of `inputs` that the
-/// graph already has is refused (`KeyCollision`): `opening`, `answer`,
+/// executed. One key given twice with one kind, and so one meaning, is
+/// declared once: a key read by several functions, a key a function reads
+/// that is also `enabled` or a key of `inputs`, a configuration key a
+/// function reads that is also the key of a limit. A key given with another
+/// kind than the graph already has is refused (`KeyCollision`), and so is a
+/// key the graph keeps for itself, whatever its kind: `opening`, `answer`,
 /// `conversation`, `turn_rank` (the private key where the call stands among
-/// its turns), `thread` when durable, the limit keys and the round limit's
-/// flag included; and so is a key two functions declare with two kinds. A
-/// flag that names `answer`, `opening`, `thread` or `conversation` is
-/// refused (`FlagKeyMismatch`), before the rules of the ReAct loop below.
+/// its turns), `thread` when durable and the round limit's flag. A flag that
+/// names `answer`, `opening`, `thread` or `conversation` is refused
+/// (`FlagKeyMismatch`), before the rules of the ReAct loop below.
 ///
 /// `output_mode` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
@@ -151,26 +152,29 @@ impl ReactAgent {
         if let Some(flag) = &flag {
             schema.state.entry(flag.clone()).or_insert(Kind::Bool);
         }
-        let mut inputs = vec![keys.opening.clone()];
-        inputs.extend(keys.thread.clone());
+        let mut declarations = Declarations::new(schema, keys.reserved(flag.as_ref()));
         let reads = [self.model.reads(), self.system.reads()]
             .into_iter()
             .chain(self.history.as_ref().map(History::reads));
-        inputs.extend(declare_reads(&mut schema, reads)?);
+        for reads in reads {
+            declarations.reads(reads)?;
+        }
         if let Some(key) = &self.enabled {
-            declare_input(&mut schema, key, Kind::list(Kind::Str))?;
-            inputs.push(key.clone());
+            declarations.input(key, Kind::list(Kind::Str))?;
         }
         for (key, kind) in self.inputs {
-            declare_input(&mut schema, &key, kind)?;
-            inputs.push(key);
+            declarations.input(&key, kind)?;
         }
         if let Some(flag) = &flag
             && keys.names_flag(flag)
         {
             return Err(GraphError::FlagKeyMismatch { key: flag.clone() });
         }
+        let (mut schema, declared) = declarations.finish();
         keys.release(&mut schema);
+        let mut inputs = vec![keys.opening.clone()];
+        inputs.extend(keys.thread.clone());
+        inputs.extend(declared);
 
         let call = AgentCall {
             opening: keys.opening.clone(),

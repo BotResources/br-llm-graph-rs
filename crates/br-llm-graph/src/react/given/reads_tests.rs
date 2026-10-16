@@ -1,8 +1,8 @@
-//! The keys a function declares: checked against the graph of an LLM call,
-//! declared by the graph of an agent.
+//! The keys a function declares, checked against the graph of an LLM call
+//! (an agent's graph declares them: see `declarations_tests.rs`).
 
 use crate::error::GraphError;
-use crate::react::given::reads::{Reads, declare_reads};
+use crate::react::given::reads::Reads;
 use crate::react::test_support::{ckey, key, skey};
 use crate::state::{Kind, Schema};
 
@@ -65,85 +65,4 @@ fn given_a_read_of_another_kind_when_checked_then_kind_mismatch_naming_both_kind
         Err(GraphError::KindMismatch { key: named, expected: Kind::Str, found: "int" })
             if named == key("width")
     ));
-}
-
-#[test]
-fn given_keys_read_by_several_functions_when_declared_then_each_once_inputs_in_order() {
-    let mut first = Reads::new();
-    first.read_state(&skey::<String>("persona"));
-    first.read_config(&ckey::<String>("tone"));
-    let mut second = Reads::new();
-    second.read_state(&skey::<Vec<String>>("notes"));
-    second.read_state(&skey::<String>("persona"));
-    second.read_config(&ckey::<String>("tone"));
-    let mut schema = Schema::builder()
-        .state_by_name(key("answer"), Kind::Str)
-        .build();
-
-    let inputs = declare_reads(&mut schema, [&first, &second]).unwrap();
-
-    assert_eq!(inputs, vec![key("persona"), key("notes")]);
-    assert_eq!(schema.state.get(&key("persona")), Some(&Kind::Str));
-    assert_eq!(
-        schema.state.get(&key("notes")),
-        Some(&Kind::list(Kind::Str))
-    );
-    assert_eq!(schema.config.get(&key("tone")), Some(&Kind::Str));
-    assert_eq!(schema.config.len(), 1);
-}
-
-#[test]
-fn given_a_key_the_graph_already_has_when_declared_then_key_collision() {
-    for reads in [
-        {
-            let mut reads = Reads::new();
-            reads.read_state(&skey::<String>("topic"));
-            reads
-        },
-        {
-            let mut reads = Reads::new();
-            reads.read_config(&ckey::<i64>("width"));
-            reads
-        },
-    ] {
-        let mut schema = graph_schema();
-        assert!(matches!(
-            declare_reads(&mut schema, [&reads]),
-            Err(GraphError::KeyCollision { .. })
-        ));
-    }
-}
-
-#[test]
-fn given_one_key_declared_with_two_kinds_when_declared_then_key_collision() {
-    let mut first = Reads::new();
-    first.read_state(&skey::<String>("persona"));
-    let mut second = Reads::new();
-    second.read_state(&skey::<Vec<String>>("persona"));
-    let mut schema = Schema::default();
-    assert!(matches!(
-        declare_reads(&mut schema, [&first, &second]),
-        Err(GraphError::KeyCollision { key: found }) if found == key("persona")
-    ));
-    let mut alone = Reads::new();
-    alone.read_config(&ckey::<String>("tone"));
-    alone.read_config(&ckey::<i64>("tone"));
-    let mut schema = Schema::default();
-    assert!(matches!(
-        declare_reads(&mut schema, [&alone]),
-        Err(GraphError::KeyCollision { key: found }) if found == key("tone")
-    ));
-}
-
-#[test]
-fn given_a_state_key_and_a_configuration_key_of_one_name_when_declared_then_both() {
-    let mut reads = Reads::new();
-    reads.read_state(&skey::<String>("tone"));
-    reads.read_config(&ckey::<String>("tone"));
-    let mut schema = Schema::default();
-    assert_eq!(
-        declare_reads(&mut schema, [&reads]).unwrap(),
-        vec![key("tone")]
-    );
-    assert_eq!(schema.config.get(&key("tone")), Some(&Kind::Str));
 }

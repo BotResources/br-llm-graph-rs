@@ -46,6 +46,17 @@ impl AgentKeys {
         ]
     }
 
+    /// The state keys the graph keeps for itself, which nothing given may
+    /// name: `opening`, `answer`, the private keys, `thread` when durable and
+    /// the round limit's `flag`, if any.
+    pub(crate) fn reserved(&self, flag: Option<&Key>) -> Vec<Key> {
+        let mut reserved = vec![self.opening.clone(), self.answer.clone()];
+        reserved.extend(self.private().into_iter().map(|(key, _)| key.clone()));
+        reserved.extend(self.thread.clone());
+        reserved.extend(flag.cloned());
+        reserved
+    }
+
     /// Declares the private keys in `schema` while the other keys are
     /// declared, so a key that takes their name collides with them.
     pub(crate) fn reserve(&self, schema: &mut Schema) {
@@ -90,16 +101,6 @@ pub(crate) fn declare_limit(schema: SchemaBuilder, limit: Option<&Limit>) -> Sch
         Some(Limit::Config(key)) => schema.config_by_name(key.clone(), Kind::Int),
         Some(Limit::Fixed(_)) | None => schema,
     }
-}
-
-/// Declares a state key the graph takes from its caller. A key the graph
-/// already has is refused.
-pub(crate) fn declare_input(schema: &mut Schema, key: &Key, kind: Kind) -> Result<(), GraphError> {
-    if schema.state.contains_key(key) {
-        return Err(GraphError::KeyCollision { key: key.clone() });
-    }
-    schema.state.insert(key.clone(), kind);
-    Ok(())
 }
 
 /// Declares the configuration key a count reads, as an int.

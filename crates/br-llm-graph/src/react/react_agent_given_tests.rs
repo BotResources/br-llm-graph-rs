@@ -205,9 +205,23 @@ async fn given_keys_its_functions_declare_when_the_agent_is_built_then_inputs_an
 }
 
 #[test]
-fn given_a_function_that_reads_the_enabled_key_when_the_agent_is_built_then_key_collision() {
-    let built = ReactAgent {
+fn given_a_function_that_reads_the_enabled_key_when_the_agent_is_built_then_one_input_of_its_kind_or_key_collision()
+ {
+    let graph = ReactAgent {
         system: Prompt::from_state_list(&skey("offered")),
+        enabled: Some(key("offered")),
+        ..agent(&mock(Vec::new()))
+    }
+    .graph()
+    .unwrap();
+    assert_eq!(
+        graph.signature().inputs.get(&key("offered")),
+        Some(&Kind::list(Kind::Str))
+    );
+    assert_eq!(graph.signature().inputs.len(), 2);
+
+    let built = ReactAgent {
+        system: Prompt::from_state(&skey("offered")),
         enabled: Some(key("offered")),
         ..agent(&mock(Vec::new()))
     }

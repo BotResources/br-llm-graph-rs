@@ -1,6 +1,7 @@
 mod agent_build;
 mod agent_call;
 mod critique;
+mod declarations;
 mod enter;
 mod generator_critic;
 mod generator_critic_nodes;

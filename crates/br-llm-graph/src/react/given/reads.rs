@@ -20,8 +20,9 @@ use crate::value::Key;
 /// declare (`UnknownKey`) or declares with another kind (`KindMismatch`). An
 /// agent runs as a called graph: each state key becomes an input of its
 /// graph and each configuration key a configuration key of it; a key read by
-/// several functions is declared once, and a key the graph already has with
-/// another meaning is refused (`KeyCollision`).
+/// several functions, or also given as the enabled key or an extra input,
+/// with one kind, is declared once; a key of another kind, or a key the graph
+/// keeps for itself, is refused (`KeyCollision`).
 ///
 /// ```
 /// use br_llm_graph::{ConfigKey, Reads, StateKey};
@@ -91,6 +92,17 @@ impl Reads {
         reads
     }
 
+    /// The state keys declared, each with its kind, in order of declaration.
+    pub(crate) fn state_reads(&self) -> &[(Key, Kind)] {
+        &self.state
+    }
+
+    /// The configuration keys declared, each with its kind, in order of
+    /// declaration.
+    pub(crate) fn config_reads(&self) -> &[(Key, Kind)] {
+        &self.config
+    }
+
     /// Whether the state key named `key` is declared.
     pub(crate) fn reads_state(&self, key: &Key) -> bool {
         self.state.iter().any(|(read, _)| read == key)
@@ -126,52 +138,6 @@ fn check_one(declared: &BTreeMap<Key, Kind>, key: &Key, kind: &Kind) -> Result<(
         }),
         None => Err(GraphError::UnknownKey { key: key.clone() }),
     }
-}
-
-/// Declares the keys `reads` read in the schema of an agent's graph: each
-/// state key as an input, each configuration key as a configuration key. A
-/// key read by several functions, with one kind, is declared once; a key
-/// the schema already has, or one declared again with another kind, is
-/// refused (`KeyCollision`). Gives the input keys, in order of declaration.
-pub(crate) fn declare_reads<'r>(
-    schema: &mut Schema,
-    reads: impl IntoIterator<Item = &'r Reads>,
-) -> Result<Vec<Key>, GraphError> {
-    let mut state: BTreeMap<Key, Kind> = BTreeMap::new();
-    let mut config: BTreeMap<Key, Kind> = BTreeMap::new();
-    let mut inputs = Vec::new();
-    for reads in reads {
-        for (key, kind) in &reads.state {
-            if declare_once(&mut schema.state, &mut state, key, kind)? {
-                inputs.push(key.clone());
-            }
-        }
-        for (key, kind) in &reads.config {
-            declare_once(&mut schema.config, &mut config, key, kind)?;
-        }
-    }
-    Ok(inputs)
-}
-
-/// Declares `key` in `declared` unless this declaration already did, with
-/// the same kind. Whether it declared it now.
-fn declare_once(
-    declared: &mut BTreeMap<Key, Kind>,
-    seen: &mut BTreeMap<Key, Kind>,
-    key: &Key,
-    kind: &Kind,
-) -> Result<bool, GraphError> {
-    match seen.get(key) {
-        Some(earlier) if earlier == kind => return Ok(false),
-        Some(_) => return Err(GraphError::KeyCollision { key: key.clone() }),
-        None => {}
-    }
-    if declared.contains_key(key) {
-        return Err(GraphError::KeyCollision { key: key.clone() });
-    }
-    declared.insert(key.clone(), kind.clone());
-    seen.insert(key.clone(), kind.clone());
-    Ok(true)
 }
 
 #[cfg(test)]

@@ -4,13 +4,12 @@ use br_llm_clients_core::ReasoningLevel;
 
 use crate::error::GraphError;
 use crate::graph::{Always, Count, FnEdge, Graph, GraphBuilder, Node, Target};
-use crate::react::agent_build::{
-    declare_count, declare_input, declare_limit, round_limit_flag, tools_node_clash,
-};
+use crate::react::agent_build::{declare_count, declare_limit, round_limit_flag, tools_node_clash};
 use crate::react::critique::{CritiqueNode, EMPTY_ANSWER_CRITIQUE, REVIEW_REQUEST};
+use crate::react::declarations::Declarations;
 use crate::react::generator_critic_nodes::{FinishNode, Prepare, PublishNode, RouteNode};
 use crate::react::generator_critic_routing::Router;
-use crate::react::given::{Model, Prompt, declare_reads};
+use crate::react::given::{Model, Prompt};
 use crate::react::llm_node::LlmNode;
 use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::OnLimit;
@@ -229,13 +228,28 @@ impl GeneratorCritic {
             empty_answer_critique.reads(),
         ];
         reads.extend(verdict.reads());
-        let text_inputs = declare_reads(&mut schema, reads)?;
+        let reserved = [
+            &names.conversation,
+            &names.generator_history,
+            &names.answer,
+            &names.validated,
+            &names.generations,
+        ]
+        .into_iter()
+        .chain(flag.as_ref())
+        .cloned()
+        .collect();
+        let mut declarations = Declarations::new(schema, reserved);
+        for reads in reads {
+            declarations.reads(reads)?;
+        }
         if let Some(key) = &generator.enabled {
-            declare_input(&mut schema, key, Kind::list(Kind::Str))?;
+            declarations.input(key, Kind::list(Kind::Str))?;
         }
         for (key, kind) in &self.inputs {
-            declare_input(&mut schema, key, kind.clone())?;
+            declarations.input(key, kind.clone())?;
         }
+        let (schema, inputs) = declarations.finish();
         self.max_critiques.check(&schema)?;
 
         let router = Router {
@@ -263,13 +277,7 @@ impl GeneratorCritic {
         if let Some(flag) = flag {
             builder = builder.output(flag);
         }
-        for key in text_inputs {
-            builder = builder.input(key);
-        }
-        if let Some(key) = &generator.enabled {
-            builder = builder.input(key.clone());
-        }
-        for (key, _) in self.inputs {
+        for key in inputs {
             builder = builder.input(key);
         }
 
