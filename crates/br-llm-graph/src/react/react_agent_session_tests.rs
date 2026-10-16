@@ -45,7 +45,11 @@ async fn given_a_session_serving_a_durable_agent_when_an_input_arrives_mid_turn_
         sender.cancel();
     };
 
-    let (ended, ()) = futures_util::join!(session.serve(Start::Now), drive);
+    let ended = match beside(session.serve(Start::Now), drive).await {
+        Ok((ended, ())) => ended,
+        Err(Ended::Failed { error, .. }) => panic!("serving failed before the gate: {error}"),
+        Err(_) => panic!("serving ended before the gate"),
+    };
 
     let Ended::Cancelled { checkpoint } = ended else {
         panic!("expected serving to end on the cancel");

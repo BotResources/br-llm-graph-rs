@@ -125,7 +125,13 @@ async fn given_durable_agents_as_a_map_body_with_a_concurrency_limit_when_run_th
     };
 
     let (outcome, started) =
-        futures_util::join!(run(&graph, &config, state, None, &ctx, &mut channel), check);
+        match beside(run(&graph, &config, state, None, &ctx, &mut channel), check).await {
+            Ok(both) => both,
+            Err(ended) => panic!(
+                "the run ended before {LIMIT} calls were held at the gate: {:?}",
+                ended.err().map(|failure| failure.error.to_string())
+            ),
+        };
 
     assert_eq!(
         started, LIMIT,
