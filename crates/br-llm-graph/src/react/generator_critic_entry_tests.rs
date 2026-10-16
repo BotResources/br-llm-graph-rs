@@ -185,3 +185,74 @@ async fn given_an_opening_ending_on_an_answer_when_called_then_the_critic_judges
     );
     assert!(requests(&generator_client).is_empty());
 }
+
+/// `question("explain")` followed by turns of `(id, author, step)`.
+fn opening_with(
+    turns: Vec<(&str, Author, br_llm_messages::Step)>,
+) -> br_llm_messages::Conversation {
+    let mut conversation = question("explain");
+    for (id, author, step) in turns {
+        conversation
+            .push_turn(Turn::new(TurnId::new(id).unwrap(), Some(author), step))
+            .unwrap();
+    }
+    conversation
+}
+
+/// A step of the critic's of the stop reason `other(reason)`.
+fn message_of(text: &str, reason: &str) -> br_llm_messages::Step {
+    br_llm_messages::Step::new(
+        vec![br_llm_messages::AssistantBlock::Text {
+            text: Text::new(text).unwrap(),
+        }],
+        br_llm_messages::StopReason::Other {
+            reason: reason.to_owned(),
+        },
+        None,
+        None,
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn given_an_opening_ending_on_an_acceptance_when_called_then_it_finishes_validated_without_a_model_call()
+ {
+    let conversation = opening_with(vec![
+        ("g1", writer(), text_step("kept")),
+        ("c1", reviewer(), message_of("Accepted.", "accepted")),
+    ]);
+    let generator_client = mock(Vec::new());
+    let critic_client = mock(Vec::new());
+    let graph = duo(&generator_client, &critic_client).graph().unwrap();
+
+    let state = ended(
+        call_with(&graph, conversation, Vec::new(), BTreeMap::new()).await,
+        "validated",
+    );
+
+    assert!(state.bool(&key("is_validated")).unwrap());
+    assert_eq!(state.str(&key("answer")).unwrap(), "kept");
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
+    assert_eq!((generator_client.calls(), critic_client.calls()), (0, 0));
+}
+
+#[tokio::test]
+async fn given_an_opening_ending_on_a_revision_with_a_budget_of_zero_when_called_then_the_generator_answers_again()
+ {
+    let conversation = opening_with(vec![
+        ("g1", writer(), text_step("a")),
+        ("c1", reviewer(), message_of("Longer.", "rule_check")),
+    ]);
+    let generator_client = mock(vec![text_step("a longer answer")]);
+    let critic_client = mock(Vec::new());
+    let graph = with_budget(&generator_client, &critic_client, Count::Fixed(0), true);
+
+    let state = ended(
+        call_with(&graph, conversation, Vec::new(), BTreeMap::new()).await,
+        "exhausted",
+    );
+
+    assert_eq!(state.str(&key("answer")).unwrap(), "a longer answer");
+    assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
+    assert_eq!(critic_client.calls(), 0);
+}
