@@ -9,6 +9,8 @@ mod settle;
 mod superstep;
 
 #[cfg(test)]
+mod cancel_tests;
+#[cfg(test)]
 mod command_tests;
 #[cfg(test)]
 pub(crate) mod counted;
@@ -30,6 +32,8 @@ mod map_window_tests;
 mod nested_map_tests;
 #[cfg(test)]
 mod origin_tests;
+#[cfg(test)]
+mod panic_tests;
 #[cfg(test)]
 mod record_event_tests;
 #[cfg(test)]
