@@ -22,6 +22,9 @@ use crate::value::ThreadId;
 /// The same request gives the same id: a resumed run, which keeps its run
 /// id, receives the ids it had. A new trigger, a new run or another
 /// occurrence receives new ones.
+///
+/// Its fields are read by the host's id source and built with `new`: it may
+/// gain fields in a later version.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct IdRequest {

@@ -40,7 +40,11 @@ pub enum LlmRequest {
 
 /// Where the answer of an `LlmCall` goes: a string state key it sets, or a
 /// list of strings it appends to.
+///
+/// More outputs may come in a later version: a `match` on it outside the crate
+/// needs a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LlmOutput {
     /// Sets a string state key to the answer.
     Set(StateKey<String>),

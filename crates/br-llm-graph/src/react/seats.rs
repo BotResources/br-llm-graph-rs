@@ -63,6 +63,10 @@ pub struct GeneratorSeat {
 ///
 /// The defaults keep a stable beginning across the critic's requests, so a
 /// provider can reuse its cache. A function gives that up.
+///
+/// More histories may come in a later version: a `match` on it outside the crate
+/// needs a wildcard arm.
+#[non_exhaustive]
 pub enum CriticHistory {
     /// The entries of `conversation` before the answer, each generator turn
     /// reduced to its final step, rendered as the generator sees them

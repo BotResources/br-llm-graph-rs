@@ -1,5 +1,6 @@
-//! Doctests only (`cfg(doctest)`): `Judgment` and `LlmRequest` may gain
-//! variants in a later version. A host builds their variants as before, and
+//! Doctests only (`cfg(doctest)`): the enums a runner builds to configure a
+//! node, `Judgment`, `LlmRequest`, `LlmOutput`, `Ruling` and
+//! `CriticHistory`, may gain variants in a later version. A host builds their variants as before, and
 //! a `match` outside the crate needs a wildcard arm: one without it does not
 //! compile (E0004; rustdoc checks the code itself only on nightly).
 //!
@@ -53,6 +54,78 @@
 //!         br_llm_graph::LlmRequest::Text(_) => true,
 //!         br_llm_graph::LlmRequest::Conversation { .. } => false,
 //!         br_llm_graph::LlmRequest::History(_) => false,
+//!     }
+//! }
+//! ```
+//!
+//! The enums of 0.5 a runner builds, matched with a wildcard arm.
+//!
+//! ```
+//! use br_llm_graph::{CriticHistory, LlmOutput, Ruling, Schema};
+//! use br_llm_messages::Text;
+//!
+//! let mut schema = Schema::builder();
+//! let outputs = [
+//!     LlmOutput::Set(schema.state("summary").unwrap()),
+//!     LlmOutput::Append(schema.state("summaries").unwrap()),
+//! ];
+//! let rulings = [Ruling::Pass, Ruling::Revise(Text::new("Longer.").unwrap())];
+//! let histories = [
+//!     CriticHistory::History,
+//!     CriticHistory::Latest,
+//!     CriticHistory::Brief(schema.state("brief").unwrap()),
+//! ];
+//! let sets = outputs
+//!     .iter()
+//!     .filter(|output| match output {
+//!         LlmOutput::Set(_) => true,
+//!         LlmOutput::Append(_) => false,
+//!         _ => false,
+//!     })
+//!     .count();
+//! let passes = rulings
+//!     .iter()
+//!     .filter(|ruling| match ruling {
+//!         Ruling::Pass => true,
+//!         Ruling::Revise(_) => false,
+//!         _ => false,
+//!     })
+//!     .count();
+//! let briefs = histories
+//!     .iter()
+//!     .filter(|history| match history {
+//!         CriticHistory::Brief(_) => true,
+//!         CriticHistory::History | CriticHistory::Latest | CriticHistory::Given(_) => false,
+//!         _ => false,
+//!     })
+//!     .count();
+//! assert_eq!((sets, passes, briefs), (1, 1, 1));
+//! ```
+//!
+//! ```compile_fail,E0004
+//! fn set(output: &br_llm_graph::LlmOutput) -> bool {
+//!     match output {
+//!         br_llm_graph::LlmOutput::Set(_) => true,
+//!         br_llm_graph::LlmOutput::Append(_) => false,
+//!     }
+//! }
+//! ```
+//!
+//! ```compile_fail,E0004
+//! fn pass(ruling: &br_llm_graph::Ruling) -> bool {
+//!     match ruling {
+//!         br_llm_graph::Ruling::Pass => true,
+//!         br_llm_graph::Ruling::Revise(_) => false,
+//!     }
+//! }
+//! ```
+//!
+//! ```compile_fail,E0004
+//! fn brief(history: &br_llm_graph::CriticHistory) -> bool {
+//!     use br_llm_graph::CriticHistory;
+//!     match history {
+//!         CriticHistory::Brief(_) => true,
+//!         CriticHistory::History | CriticHistory::Latest | CriticHistory::Given(_) => false,
 //!     }
 //! }
 //! ```

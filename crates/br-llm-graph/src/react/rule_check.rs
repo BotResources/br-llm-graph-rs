@@ -9,7 +9,11 @@ use crate::react::given::Given;
 /// What the rule check gives for a generation: a pass, or a revision with
 /// the text the generator reads. A failure is the function's error, which
 /// fails the run as returned.
+///
+/// More rulings may come in a later version: a `match` on it outside the crate
+/// needs a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Ruling {
     /// The generation goes on to the critic, or finishes when the critiques
     /// have reached the budget.

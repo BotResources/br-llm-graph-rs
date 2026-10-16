@@ -29,6 +29,10 @@ pub type ThreadFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ThreadError
 /// Where a message of a thread stands. A user input is `Completed` once
 /// stored; an agent's turn is `Streaming` from the moment it is opened until
 /// it is completed, failed or cancelled.
+///
+/// Exhaustive on purpose, unlike the enums a runner builds: a host's store
+/// matches it to keep each status, so a status added in a later version is
+/// a breaking change its build must flag, not one a wildcard arm hides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageStatus {
     /// The turn is open: its steps are streaming.
@@ -42,6 +46,9 @@ pub enum MessageStatus {
 }
 
 /// How an open turn ends.
+///
+/// Exhaustive on purpose, as `MessageStatus`: a host's store matches it to
+/// apply each end, so an end added in a later version must break its build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnEnd {
     /// The turn ended as it should.
@@ -64,6 +71,7 @@ impl TurnEnd {
 }
 
 /// One message of a thread: a user input or an agent's turn, under its id.
+/// A store builds it with `new`: it may gain fields in a later version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ThreadMessage {
@@ -94,6 +102,8 @@ impl ThreadMessage {
 /// is still streaming, or a turn left without any step once repaired. The
 /// conversation holds the finished steps and the tool results of every
 /// other turn, open ones included.
+///
+/// A store builds it with `new`: it may gain fields in a later version.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ThreadView {
