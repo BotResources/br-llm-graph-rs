@@ -15,6 +15,7 @@ use crate::react::critique::{CritiqueNode, REVIEW_REQUEST};
 use crate::react::declarations::Declarations;
 use crate::react::duo::Duo;
 use crate::react::generator_critic::GeneratorCritic;
+use crate::react::generator_critic_names::Names;
 use crate::react::generator_critic_nodes::{FinishNode, Prepare, RouteNode};
 use crate::react::generator_critic_routing::Router;
 use crate::react::given::{History, Prompt, Reads};
@@ -25,38 +26,7 @@ use crate::react::seats::CriticHistory;
 use crate::react::turn_clients::TurnClients;
 use crate::react::verdict::VerdictForm;
 use crate::state::{Kind, Schema};
-use crate::value::{EndLabel, Key, NodeId};
-
-/// The names of the graph's own keys and nodes, beside an agent's.
-struct Names {
-    validated: Key,
-    generations: Key,
-    critic_stream: Key,
-    prepare: NodeId,
-    route: NodeId,
-    generate: NodeId,
-    check: NodeId,
-    critique: NodeId,
-    finish: NodeId,
-    tools: NodeId,
-}
-
-impl Names {
-    fn new() -> Result<Self, GraphError> {
-        Ok(Self {
-            validated: Key::new("is_validated")?,
-            generations: Key::new("nb_generations")?,
-            critic_stream: Key::new("critic")?,
-            prepare: NodeId::new("prepare")?,
-            route: NodeId::new("route")?,
-            generate: NodeId::new("generate")?,
-            check: NodeId::new("check")?,
-            critique: NodeId::new("critique")?,
-            finish: NodeId::new("finish")?,
-            tools: NodeId::new("tools")?,
-        })
-    }
-}
+use crate::value::EndLabel;
 
 impl GeneratorCritic {
     /// The graph of this generator-critic, or the first refusal of its
