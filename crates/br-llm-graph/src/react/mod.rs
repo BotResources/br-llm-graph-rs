@@ -55,6 +55,8 @@ mod generator_critic_given_tests;
 #[cfg(test)]
 mod generator_critic_history_tests;
 #[cfg(test)]
+mod generator_critic_keys_tests;
+#[cfg(test)]
 mod generator_critic_override_tests;
 #[cfg(test)]
 mod generator_critic_prepare_tests;
