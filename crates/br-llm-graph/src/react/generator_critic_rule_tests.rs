@@ -20,7 +20,7 @@ use crate::state::{ConfigKey, Kind, StateKey, Value};
 /// `length` characters.
 fn at_least(length: usize, revision: &'static str) -> RuleCheck {
     RuleCheck::from_fn(Reads::new(), move |ctx| {
-        let text: String = ctx.answer().text().map(Text::as_str).collect();
+        let text: String = ctx.answer_step().text().map(Text::as_str).collect();
         Ok(if text.len() < length {
             Ruling::Revise(Text::new(revision)?)
         } else {
@@ -275,7 +275,7 @@ async fn given_a_rule_check_when_it_judges_then_its_context_holds_the_answer_the
         // `style` is also an extra input, for the tools: declared once.
         inputs: vec![(key("style"), Kind::Str)],
         rule_check: Some(RuleCheck::from_fn(reads, move |ctx| {
-            let answer = ctx.answer();
+            let answer = ctx.answer_step();
             kept.lock().unwrap().push((
                 answer.text().map(Text::as_str).collect::<String>(),
                 answer.structured().next().cloned(),

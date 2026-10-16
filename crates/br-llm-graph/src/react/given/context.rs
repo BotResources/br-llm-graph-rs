@@ -25,7 +25,7 @@ use crate::state::{Config, ConfigKey, State, StateKey, ValueType};
 /// - a generator-critic's adds the generation number and the budget
 ///   (`GeneratorCriticNode`): the generator's, the critic's and the
 ///   generator-critic's own, which its rule check and its empty-answer
-///   critique read with the answer judged (`RequestContext::answer`);
+///   critique read with the answer judged (`RequestContext::answer_step`);
 /// - the critic's adds the answer it judges and the attempt number.
 pub struct RequestContext<'a, N: ModelNode> {
     state: &'a State,
@@ -129,8 +129,9 @@ impl<'a> RequestContext<'a, CriticSeat> {
 
 impl<'a> RequestContext<'a, GeneratorCritic> {
     /// The final step of the generation judged: its text, its structured
-    /// block and its stop reason.
-    pub fn answer(&self) -> &'a Step {
+    /// block and its stop reason. (The critic's context gives the answer as
+    /// the critic reads it, `answer`.)
+    pub fn answer_step(&self) -> &'a Step {
         let CheckFacts { answer, .. } = self.facts;
         answer
     }

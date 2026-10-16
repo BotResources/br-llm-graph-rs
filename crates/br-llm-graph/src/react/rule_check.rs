@@ -23,7 +23,7 @@ pub enum Ruling {
 
 /// The rule check, a function of the generator-critic's context: the state,
 /// the configuration, the conversation, the generation number, the budget
-/// and the final step of the generation judged (`RequestContext::answer`:
+/// and the final step of the generation judged (`RequestContext::answer_step`:
 /// its text, its structured block, its stop reason). It does not read an
 /// empty answer, which is rejected before it.
 pub type RuleCheck = Given<GeneratorCritic, Ruling>;

@@ -44,7 +44,7 @@ fn writes(store: &TestStore) -> Vec<String> {
 /// A rule check asking for a revision of the answer `short`.
 fn no_short_answer() -> RuleCheck {
     RuleCheck::from_fn(Reads::new(), |ctx| {
-        let text: String = ctx.answer().text().map(Text::as_str).collect();
+        let text: String = ctx.answer_step().text().map(Text::as_str).collect();
         Ok(if text == "short" {
             Ruling::Revise(Text::new("Write more.")?)
         } else {
