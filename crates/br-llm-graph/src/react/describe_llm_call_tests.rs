@@ -83,3 +83,29 @@ fn given_a_history_request_when_described_then_how_it_is_given() {
         json!({"history": "fixed"})
     );
 }
+
+#[test]
+fn given_functions_that_panic_when_described_then_none_is_called() {
+    let call = LlmCall {
+        model: Model::from_fn(Reads::new(), |_| panic!("a description asks no model")),
+        system: Prompt::from_fn(Reads::new(), |_| panic!("a description builds no system")),
+        request: LlmRequest::History(History::from_fn(Reads::new(), |_| {
+            panic!("a description builds no request")
+        })),
+        output_mode: OutputMode::Plain,
+        output: LlmOutput::Set(skey("note")),
+    };
+    let node = described(call);
+    assert_eq!(
+        (
+            node["model"].clone(),
+            node["system"].clone(),
+            node["request"].clone()
+        ),
+        (
+            json!("function"),
+            json!("function"),
+            json!({"history": "function"})
+        )
+    );
+}

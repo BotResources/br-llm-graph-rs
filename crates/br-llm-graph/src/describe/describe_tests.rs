@@ -273,3 +273,18 @@ fn given_a_host_description_with_labels_when_wrapped_in_realizing_then_its_label
         vec!["Own".to_owned(), "Added".to_owned()]
     );
 }
+
+#[test]
+fn given_an_edge_declaring_no_target_when_described_then_its_targets_are_an_empty_list() {
+    let none = FnEdge::new(|_s: &State, _c: &Config| Ok(vec![end("done")])).targets([]);
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("a"))
+        .node(nid("a"), noop())
+        .edge(nid("a"), none)
+        .build()
+        .unwrap();
+    assert_eq!(
+        node_json(&graph.describe(), "a")["edge"],
+        json!({"targets": []})
+    );
+}
