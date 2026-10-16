@@ -149,7 +149,13 @@ br-llm-clients-core 0.4.
   turns of the call, revisions included. A turn of the call found on entry
   is routed as it would have been: a revision sends the generator back
   whatever the budget, an acceptance finishes `validated` without a model
-  call. `GeneratorSeat { model, system, history, .. }` and `CriticSeat {
+  call. A turn found open on entry is repaired, then routed by its kind: a
+  repaired generation goes to the check, which may judge it empty or pass
+  it on its partial text; a message of the critic is a judgment only with
+  its exact stop reason (`end_turn`, `other(rule_check)`,
+  `other(accepted)`), so a repaired one is no judgment: the critic judges
+  the same answer again, and it is not counted against the budget.
+  `GeneratorSeat { model, system, history, .. }` and `CriticSeat {
   model, system, history, review_request, thinking_description,
   is_valid_description, message_description, verdict }`, the texts
   `Prompt`s of their seat, `empty_answer_critique` a

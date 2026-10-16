@@ -154,9 +154,14 @@ impl Duo {
         Ok(CallTurns { turns })
     }
 
-    /// The kind of `turn`: a turn of the generator is a generation; a turn
-    /// of the critic is told by the stop reason of its final step; any other
-    /// turn is not the call's.
+    /// The kind of `turn`: a turn of the generator is a generation, whatever
+    /// its status (a repaired one goes to the check like any other); a turn
+    /// of the critic is told by the stop reason of its final step, exactly
+    /// one of the three a message of the critic is written with
+    /// (`end_turn`, `other(rule_check)`, `other(accepted)`). Any other turn
+    /// is not one of the call's: another author's, and a message of the
+    /// critic with no final step or another stop reason, such as one cut
+    /// while it was written and repaired by the store, which is no judgment.
     pub(crate) fn kind(&self, turn: &Turn) -> Option<TurnKind> {
         let author = turn.author()?;
         if *author == self.generator {
@@ -165,11 +170,12 @@ impl Duo {
         if *author != self.critic {
             return None;
         }
-        Some(match final_step(turn).map(Step::stop_reason) {
-            Some(StopReason::Other { reason }) if reason == RULE_CHECK => TurnKind::Revision,
-            Some(StopReason::Other { reason }) if reason == ACCEPTED => TurnKind::Acceptance,
-            Some(_) | None => TurnKind::Critique,
-        })
+        match final_step(turn).map(Step::stop_reason)? {
+            StopReason::EndTurn => Some(TurnKind::Critique),
+            StopReason::Other { reason } if reason == RULE_CHECK => Some(TurnKind::Revision),
+            StopReason::Other { reason } if reason == ACCEPTED => Some(TurnKind::Acceptance),
+            _ => None,
+        }
     }
 
     /// Whether `turn` is a generation the round limit cut.
