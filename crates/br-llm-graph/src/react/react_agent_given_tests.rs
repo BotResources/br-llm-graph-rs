@@ -1,13 +1,13 @@
-//! A ReAct agent built from functions of its context: the client of each
-//! round, the round and the conversation its functions read, a history that
-//! shapes the request only, and the keys its functions declare.
+//! A ReAct agent built from functions of its context: the round and the
+//! conversation its functions read, a history that shapes the request only,
+//! and the keys its functions declare (the client of each turn:
+//! `react_turn_client_tests.rs`).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use br_llm_clients_core::{Client, ReasoningLevel};
-use br_llm_clients_mock::Reply;
-use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource, WireMessage};
+use br_llm_clients_core::Client;
+use br_llm_messages::{Text, WireMessage};
 use serde_json::json;
 
 use crate::error::GraphError;
@@ -18,70 +18,6 @@ use crate::react::react_agent_support::*;
 use crate::react::test_support::*;
 use crate::run::{control, run};
 use crate::state::{Config, ConfigKey, Kind, StateKey, Value};
-
-/// The conversation of a finished call, followed by a new question.
-fn and_then(state: &Done, body: &str) -> br_llm_messages::Conversation {
-    let mut history = state.transcript().clone();
-    history
-        .push_input(
-            UserInput::new(
-                InputId::new(format!("i-{body}")).unwrap(),
-                UserSource::Human,
-                None,
-                vec![UserBlock::text(Text::new(body).unwrap())],
-            )
-            .unwrap(),
-        )
-        .unwrap();
-    history
-}
-
-#[tokio::test]
-async fn given_a_schedule_from_the_start_when_the_agent_runs_then_each_round_calls_its_client_and_a_new_turn_starts_over()
- {
-    let first = mock(vec![
-        tool_call_step("c1", "echo", json!({})),
-        text_step("second turn, first client"),
-    ]);
-    // Its tool call ids are renamed apart from the first client's.
-    let then = mock_at(ReasoningLevel::Medium);
-    for step in [
-        tool_call_step("c1", "echo", json!({})),
-        text_step("first turn done"),
-    ] {
-        then.push_reply(
-            Reply::success(step)
-                .rename_tool_call_ids("then")
-                .build()
-                .unwrap(),
-        );
-    }
-    let graph = ReactAgent {
-        model: Model::schedule(Arc::new(first.clone()), vec![Arc::new(then.clone())]),
-        ..agent(&first)
-    }
-    .graph()
-    .unwrap();
-
-    // One id source for both calls, as a host keeps.
-    let ctx = ctx();
-    let state = finished(call_in(&graph, question("hi"), &ctx).await);
-
-    assert_eq!(state.str(&key("answer")).unwrap(), "first turn done");
-    assert_eq!(
-        (first.calls(), then.calls()),
-        (1, 2),
-        "round 0 on the first client, rounds 1 and 2 on the last, which repeats"
-    );
-
-    let state = finished(call_in(&graph, and_then(&state, "again"), &ctx).await);
-
-    assert_eq!(
-        state.str(&key("answer")).unwrap(),
-        "second turn, first client"
-    );
-    assert_eq!((first.calls(), then.calls()), (2, 2));
-}
 
 #[tokio::test]
 async fn given_functions_reading_the_round_and_the_conversation_when_the_agent_runs_then_each_call_sees_its_own()

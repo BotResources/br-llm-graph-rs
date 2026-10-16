@@ -64,6 +64,7 @@ pub(crate) fn llm_node(client: Arc<dyn Client>, system: Prompt<ReactAgent>) -> L
         output_mode: OutputMode::Plain,
         call: None,
         seat: None,
+        clients: Default::default(),
     }
 }
 

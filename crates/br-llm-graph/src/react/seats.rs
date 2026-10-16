@@ -22,9 +22,10 @@ use crate::value::{Key, NodeId};
 /// client never changes the seat's author.
 pub struct GeneratorSeat {
     pub author: Author,
-    /// The client called for each round of each generation. A schedule
-    /// counts the generations, revisions not counted (`Scheduled`), and a
-    /// tail takes the last generations the budget allows (`Budgeted`).
+    /// The client of each generation, asked at its first round and kept for
+    /// its other rounds. A schedule counts the generations, revisions not
+    /// counted (`Scheduled`), and a tail takes the last generations the
+    /// budget allows (`Budgeted`).
     pub model: Model<GeneratorSeat>,
     /// The generator's system text; one that resolves to a blank text gives
     /// no system text.

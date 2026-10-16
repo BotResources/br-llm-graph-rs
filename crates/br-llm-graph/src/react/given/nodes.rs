@@ -13,11 +13,13 @@ use crate::react::seats::{CriticSeat, GeneratorSeat};
 pub(crate) mod facts {
     use br_llm_messages::{Conversation, Step};
 
-    /// What a ReAct agent's context adds: its conversation and the round.
+    /// What a ReAct agent's context adds: its conversation and the round;
+    /// and, for its schedule, the 0-based index of its turn in the call.
     #[derive(Clone, Copy)]
     pub struct AgentFacts<'a> {
         pub(crate) conversation: &'a Conversation,
         pub(crate) round: usize,
+        pub(crate) turn: usize,
     }
 
     /// Where a generator-critic's call stands: the generation, the budget,
@@ -101,6 +103,7 @@ pub trait LoopNode: AgentNode {
     fn loop_facts<'a>(
         conversation: &'a Conversation,
         round: usize,
+        turn: usize,
         count: SeatCount,
     ) -> Self::Facts<'a>;
 }
@@ -113,10 +116,13 @@ pub trait GeneratorCriticNode: AgentNode {
 }
 
 /// A node whose calls follow one another, so a schedule of clients from the
-/// start (`Given::schedule`) knows the index of each call. For the ReAct
-/// agent, a call's index is its round; for each seat of the generator-critic,
-/// the number of critiques recorded before it, so a revision or a verdict
-/// retry keeps the client of its call.
+/// start (`Given::schedule`) knows the index of each call. The model of an
+/// agent is asked once per turn, at its first round, and its client kept for
+/// the turn's other rounds. For the ReAct agent, a call's index is the index
+/// of its turn among the call's turns (a turn opened after a repaired one
+/// gets the next client); for each seat of the generator-critic, the number
+/// of critiques recorded before it, so a revision or a verdict retry keeps
+/// the client of its call.
 pub trait Scheduled: ModelNode {
     #[doc(hidden)]
     fn call_index<'a>(facts: Self::Facts<'a>) -> usize;
@@ -155,18 +161,20 @@ impl LoopNode for ReactAgent {
     fn loop_facts<'a>(
         conversation: &'a Conversation,
         round: usize,
+        turn: usize,
         _count: SeatCount,
     ) -> Self::Facts<'a> {
         AgentFacts {
             conversation,
             round,
+            turn,
         }
     }
 }
 
 impl Scheduled for ReactAgent {
     fn call_index<'a>(facts: Self::Facts<'a>) -> usize {
-        facts.round
+        facts.turn
     }
 }
 
@@ -188,6 +196,7 @@ impl LoopNode for GeneratorSeat {
     fn loop_facts<'a>(
         conversation: &'a Conversation,
         round: usize,
+        _turn: usize,
         count: SeatCount,
     ) -> Self::Facts<'a> {
         GeneratorFacts {

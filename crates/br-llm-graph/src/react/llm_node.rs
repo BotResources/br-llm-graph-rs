@@ -14,14 +14,16 @@ use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, s
 use crate::react::sink::complete_in;
 use crate::react::thread_store::TurnEnd;
 use crate::react::tool::Tool;
-use crate::react::turn_ids::{id_request, next_rank_in_memory, trigger};
+use crate::react::turn_clients::TurnClients;
+use crate::react::turn_ids::{agent_origin, id_request, next_rank_in_memory, trigger};
 use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Schema, State};
 use crate::update::Update;
 use crate::value::Key;
 
 /// The model-call step of the ReAct loop of the agent `N`: calls the client
-/// its `model` gives for this round, for `author`, on the conversation `key`,
+/// its `model` gives for the turn (asked at the turn's first round, kept for
+/// its other rounds), for `author`, on the conversation `key`,
 /// and adds the reply.
 ///
 /// The request holds the text `system` gives (a blank one gives no system
@@ -63,6 +65,9 @@ pub(crate) struct LlmNode<N: LoopNode> {
     /// For the generator of a generator-critic: where the call stands, for
     /// the generator's context.
     pub(crate) seat: Option<Duo>,
+    /// The client of the turn under way, asked at its first round and kept
+    /// for its other rounds; the agent's entry forgets it.
+    pub(crate) clients: Arc<TurnClients>,
 }
 
 impl<N: LoopNode> Node for LlmNode<N> {
@@ -75,7 +80,7 @@ impl<N: LoopNode> Node for LlmNode<N> {
                 Target::Open { .. } => 0,
             };
             let count = self.count(state, config, &target)?;
-            let facts = N::loop_facts(conversation, round, count);
+            let facts = N::loop_facts(conversation, round, self.turn_index(state, &target)?, count);
             let messages = match &self.history {
                 Some(history) => history.give(state, config, facts)?,
                 None => wire(conversation, &self.author)?,
@@ -87,12 +92,12 @@ impl<N: LoopNode> Node for LlmNode<N> {
                 self.output_mode.clone(),
             )
             .map_err(GraphError::Request)?;
-            let client = self.client(state, config, facts)?;
-
             let turn_id = match &target {
                 Target::Step(turn) => turn.id().clone(),
                 Target::Open { id, .. } => id.clone(),
             };
+            let client = self.client(state, config, ctx, facts, &turn_id)?;
+
             let writer = match self.call.as_ref().and_then(|call| call.thread.as_ref()) {
                 Some(binding) => Some(TurnWriter {
                     store: binding.store.as_ref(),
@@ -106,6 +111,9 @@ impl<N: LoopNode> Node for LlmNode<N> {
             }
             let step =
                 complete_in(client.as_ref(), &request, ctx, &self.key, writer.as_ref()).await?;
+            if !matches!(step.stop_reason(), StopReason::AwaitingToolResults) {
+                self.clients.forget(&agent_origin(ctx));
+            }
             if let Some(writer) = &writer
                 && !matches!(step.stop_reason(), StopReason::AwaitingToolResults)
             {
@@ -164,16 +172,45 @@ fn answered_rounds(turn: &Turn) -> usize {
 }
 
 impl<N: LoopNode> LlmNode<N> {
-    /// The client called for this model call: the one `model` gives for
-    /// the context of this round. The one point where the model is
-    /// resolved, at each round of a turn.
+    /// The client called for this model call: the one `model` gave for the
+    /// turn `turn`, asked at the turn's first round (in this call, for a turn
+    /// it continues) for the context of that round, and kept for the turn's
+    /// other rounds, so a turn is run by one client.
     fn client<'a>(
         &'a self,
         state: &'a State,
         config: &'a Config,
+        ctx: &Context,
         facts: N::Facts<'a>,
+        turn: &TurnId,
     ) -> Result<Arc<dyn br_llm_clients_core::Client>, crate::graph::NodeError> {
-        self.model.give(state, config, facts)
+        let origin = agent_origin(ctx);
+        if let Some(kept) = self.clients.kept(&origin, turn) {
+            return Ok(kept);
+        }
+        let client = self.model.give(state, config, facts)?;
+        self.clients.keep(origin, turn.clone(), client.clone());
+        Ok(client)
+    }
+
+    /// The 0-based index of the turn the reply goes to among the call's
+    /// turns, as the call ranks them: 0 for a node outside an agent's graph
+    /// and for a turn the call continues in memory.
+    fn turn_index(&self, state: &State, target: &Target<'_>) -> Result<usize, GraphError> {
+        let Some(call) = &self.call else {
+            return Ok(0);
+        };
+        let rank = match (target, call.position(state)?) {
+            (
+                Target::Open {
+                    moved: Some(Position::Writing(rank)),
+                    ..
+                },
+                _,
+            ) => *rank,
+            (_, Position::Writing(rank) | Position::Answered(rank)) => rank,
+        };
+        Ok(rank.saturating_sub(1))
     }
 
     /// Where the call of a generator-critic stands for the generator's

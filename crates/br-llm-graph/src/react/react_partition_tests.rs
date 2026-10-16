@@ -39,6 +39,7 @@ fn llm_node(
         output_mode: OutputMode::Plain,
         call: None,
         seat: None,
+        clients: Default::default(),
     }
 }
 

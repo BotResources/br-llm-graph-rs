@@ -2,6 +2,8 @@
 //! `prepare` node, the routing node that starts `conversation`, and the
 //! outputs written on finishing.
 
+use std::sync::Arc;
+
 use br_llm_messages::{Conversation, Entry};
 
 use crate::error::GraphError;
@@ -11,6 +13,8 @@ use crate::react::duo::{Duo, TurnKind};
 use crate::react::helpers::{answer_text, final_step};
 use crate::react::rehydrate::{enter_thread, opening_inputs};
 use crate::react::round_limit::RoundLimit;
+use crate::react::turn_clients::TurnClients;
+use crate::react::turn_ids::agent_origin;
 use crate::state::{Config, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
@@ -41,6 +45,9 @@ impl Node for Prepare {
 /// `Router::entry`).
 pub(crate) struct RouteNode {
     pub(crate) duo: Duo,
+    /// The clients of the generator's turns: entering, the call forgets its
+    /// client, so its first round asks the model again.
+    pub(crate) clients: Arc<TurnClients>,
 }
 
 impl Node for RouteNode {
@@ -51,6 +58,7 @@ impl Node for RouteNode {
         ctx: &'a Context,
     ) -> NodeFuture<'a> {
         Box::pin(async move {
+            self.clients.forget(&agent_origin(ctx));
             let call = &self.duo.call;
             let opening = state.conversation(&call.opening)?;
             let Some(binding) = &call.thread else {

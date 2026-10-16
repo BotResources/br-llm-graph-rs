@@ -16,6 +16,7 @@ use crate::react::react_loop::ReactLoop;
 use crate::react::round_limit::RoundLimit;
 use crate::react::thread_store::ThreadStore;
 use crate::react::tool::Tool;
+use crate::react::turn_clients::TurnClients;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -46,9 +47,15 @@ use crate::value::{EndLabel, Key, NodeId};
 /// The model call is built from what the runner gives it (see `Given`), each
 /// subject a value or a function of the agent's context, which holds the
 /// state, the configuration, the agent's conversation and the round (the
-/// rounds already answered in the agent's turn): `model` gives the client
-/// called for that round, `system` the system text (one that resolves blank
-/// gives none), `history` the messages, by default the conversation rendered
+/// rounds already answered in the agent's turn): `model` gives the client of
+/// the turn, asked once at the turn's first round and kept for its other
+/// rounds, so a turn is run by one client (a turn continued in memory is
+/// asked at its first round of this call, and its function then reads the
+/// rounds the turn had already answered); a schedule (`Given::schedule`)
+/// advances per turn of the call, so a turn opened after a repaired one gets
+/// the next client. `system` gives the system text, asked at each round
+/// (one that resolves blank gives none), `history` the messages, also asked
+/// at each round, by default the conversation rendered
 /// for `author`. A function shapes the request only: the reply is added to
 /// the conversation whatever the history sent. A change of client never
 /// changes the author.
@@ -108,7 +115,7 @@ use crate::value::{EndLabel, Key, NodeId};
 /// The round limit counts the rounds of the agent's turn (see `RoundLimit`).
 pub struct ReactAgent {
     pub author: Author,
-    /// The client called for each round.
+    /// The client of each turn, asked at its first round.
     pub model: Model<ReactAgent>,
     /// The system text; one that resolves blank gives none.
     pub system: Prompt<ReactAgent>,
@@ -194,6 +201,7 @@ impl ReactAgent {
             },
             turns: None,
         };
+        let clients = Arc::new(TurnClients::default());
         let tools_node = NodeId::new("tools")?;
         let clash = tools_node_clash(&self.tool_nodes, self.round_limit.as_ref(), &tools_node);
         let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {
@@ -220,6 +228,7 @@ impl ReactAgent {
             output_mode: self.output_mode,
             call: Some(call.clone()),
             seat: None,
+            clients: clients.clone(),
         };
 
         let mut builder = keys
@@ -230,6 +239,7 @@ impl ReactAgent {
                 EnterNode {
                     conversation: keys.conversation.clone(),
                     call: call.clone(),
+                    clients,
                 },
             )
             .edge(enter, enter_edge(call, llm.clone(), answer_node.clone()));

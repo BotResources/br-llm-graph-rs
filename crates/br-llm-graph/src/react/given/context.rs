@@ -86,7 +86,10 @@ impl<'a, N: AgentNode> RequestContext<'a, N> {
 impl<'a, N: LoopNode> RequestContext<'a, N> {
     /// The round of this model call: the number of rounds the turn the reply
     /// goes to has already answered, 0 for the first call of a turn. A round
-    /// is one reply that calls tools plus the execution of its calls.
+    /// is one reply that calls tools plus the execution of its calls. The
+    /// model is asked once per turn, so its function reads the round of the
+    /// turn's first call in this call of the agent: 0, or for a turn the
+    /// agent continues in memory, the rounds it had already answered.
     pub fn round(&self) -> usize {
         N::round(self.facts)
     }
