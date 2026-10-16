@@ -83,6 +83,8 @@ mod generator_critic_tools_tests;
 #[cfg(test)]
 mod generator_critic_verdict_tests;
 #[cfg(test)]
+mod generator_critic_view_support;
+#[cfg(test)]
 mod generator_critic_view_tests;
 #[cfg(test)]
 mod llm_call_check_tests;

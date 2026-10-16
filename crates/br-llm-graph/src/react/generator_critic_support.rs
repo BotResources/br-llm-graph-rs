@@ -1,5 +1,6 @@
-//! What the generator-critic tests share: the two seats on mock clients, the
-//! calls, and a compact view of the conversation.
+//! What the generator-critic tests share: the two seats on mock clients and
+//! the calls; the compact view of the conversation is in
+//! `generator_critic_view_support`, re-exported here.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -8,8 +9,7 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
-    AssistantBlock, Author, Conversation, Entry, InputId, Step, StopReason, Text, Turn, TurnItem,
-    UserBlock, UserInput, UserSource, WireMessage, WireUserBlock,
+    Author, Conversation, InputId, Step, Text, UserBlock, UserInput, UserSource,
 };
 use serde_json::json;
 
@@ -17,6 +17,7 @@ use crate::error::{GraphError, NodeFault};
 use crate::graph::{Context, Count, Graph, Limit};
 use crate::observe::NoopObserver;
 use crate::react::generator_critic::GeneratorCritic;
+pub(crate) use crate::react::generator_critic_view_support::*;
 use crate::react::given::{Model, Prompt};
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
@@ -234,70 +235,6 @@ pub(crate) fn failed_in(ran: Ran, node: &str) -> (Conversation, GraphError) {
         }
         other => panic!("expected node {node} to fail, got: {other}"),
     }
-}
-
-/// Each entry as `user`, or `author:text` with the text of the turn's final
-/// step, or `author:[n items] text` for a turn of several items.
-pub(crate) fn shape(conversation: &Conversation) -> Vec<String> {
-    conversation
-        .entries()
-        .iter()
-        .map(|entry| match entry {
-            Entry::UserInput(_) => "user".to_owned(),
-            Entry::Turn(turn) if turn.items().len() > 1 => {
-                format!(
-                    "{}:[{} items] {}",
-                    turn.author().unwrap(),
-                    turn.items().len(),
-                    turn_text(turn)
-                )
-            }
-            Entry::Turn(turn) => format!("{}:{}", turn.author().unwrap(), turn_text(turn)),
-        })
-        .collect()
-}
-
-fn turn_text(turn: &Turn) -> String {
-    match turn.items().last() {
-        Some(TurnItem::Step(step)) => step.text().map(Text::as_str).collect::<Vec<_>>().join(" "),
-        Some(TurnItem::ToolResults(_)) | None => String::new(),
-    }
-}
-
-pub(crate) fn user_message(text: &str) -> WireMessage {
-    WireMessage::User {
-        content: vec![WireUserBlock::Text {
-            text: Text::new(text).unwrap(),
-        }],
-    }
-}
-
-pub(crate) fn assistant_message(blocks: Vec<AssistantBlock>) -> WireMessage {
-    WireMessage::Assistant { content: blocks }
-}
-
-pub(crate) fn text_block(text: &str) -> AssistantBlock {
-    AssistantBlock::Text {
-        text: Text::new(text).unwrap(),
-    }
-}
-
-pub(crate) fn thinking_block(text: &str) -> AssistantBlock {
-    AssistantBlock::Thinking(br_llm_messages::Thinking {
-        text: text.to_owned(),
-        signature: None,
-    })
-}
-
-/// An answer whose reasoning comes before its text.
-pub(crate) fn thought_step(thinking: &str, text: &str) -> Step {
-    Step::new(
-        vec![thinking_block(thinking), text_block(text)],
-        StopReason::EndTurn,
-        None,
-        None,
-    )
-    .unwrap()
 }
 
 /// A generator-critic on the two clients, with `max_critiques` and
