@@ -5,7 +5,7 @@
 //! A conforming client never gives a step without text, tool call or
 //! structured value: it refuses it (`ReplyUnusable`), and the generation
 //! fails. A step holding only thinking comes from `LaxClient`, which serves
-//! it as it is, or from a history the host gives back.
+//! it as it is, or from an opening the caller gives.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -167,9 +167,9 @@ async fn given_a_reply_holding_only_thinking_from_a_conforming_client_when_the_g
 }
 
 #[tokio::test]
-async fn given_histories_ending_on_an_answer_holding_only_thinking_when_called_again_then_it_is_rejected_without_the_critic()
+async fn given_an_opening_ending_on_an_answer_holding_only_thinking_when_called_then_it_is_rejected_without_the_critic()
  {
-    // A conforming client on both seats: the empty answer is a stored one.
+    // A conforming client on both seats: the empty answer is in the opening.
     let mut conversation = question("explain");
     conversation
         .push_turn(Turn::new(

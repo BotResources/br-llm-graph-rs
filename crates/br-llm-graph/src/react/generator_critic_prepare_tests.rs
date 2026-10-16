@@ -104,8 +104,7 @@ async fn open(graph: &crate::graph::Graph, document_id: &str) -> Ran {
 }
 
 #[tokio::test]
-async fn given_a_prepare_node_and_an_empty_conversation_when_run_then_it_opens_the_conversation_once()
- {
+async fn given_a_prepare_node_and_an_empty_opening_when_run_then_it_writes_the_opening_once() {
     let documents = Documents::new();
     let generator_client = mock(vec![text_step("The moon pulls.")]);
     let critic_client = mock(vec![verdict(true, "")]);
