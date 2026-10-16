@@ -90,6 +90,8 @@ mod generator_critic_resume_tests;
 #[cfg(test)]
 mod generator_critic_retry_tests;
 #[cfg(test)]
+mod generator_critic_revision_entry_tests;
+#[cfg(test)]
 mod generator_critic_rule_context_tests;
 #[cfg(test)]
 mod generator_critic_rule_tests;
