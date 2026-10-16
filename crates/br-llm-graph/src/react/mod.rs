@@ -131,6 +131,8 @@ mod react_helper_tests;
 #[cfg(test)]
 mod react_hook_failure_tests;
 #[cfg(test)]
+mod react_hook_node_support;
+#[cfg(test)]
 mod react_hook_slot_tests;
 #[cfg(test)]
 mod react_hook_stop_tests;
