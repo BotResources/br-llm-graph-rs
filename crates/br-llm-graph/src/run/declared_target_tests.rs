@@ -240,3 +240,24 @@ async fn given_an_undeclared_target_in_a_called_graph_when_run_then_it_is_the_so
         GraphError::UndeclaredTarget { node, target } if *node == nid("inner") && *target == end("other")
     ));
 }
+
+#[test]
+fn given_an_undeclared_target_when_displayed_then_it_names_the_node_and_the_target_as_edge_to_unknown_node_does()
+ {
+    let node = GraphError::UndeclaredTarget {
+        node: nid("a"),
+        target: to("ghost"),
+    };
+    assert_eq!(
+        node.to_string(),
+        "the edge of node a returned node ghost, which it does not declare"
+    );
+    let end_label = GraphError::UndeclaredTarget {
+        node: nid("a"),
+        target: end("other"),
+    };
+    assert_eq!(
+        end_label.to_string(),
+        "the edge of node a returned end other, which it does not declare"
+    );
+}

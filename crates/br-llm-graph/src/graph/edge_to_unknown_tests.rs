@@ -146,8 +146,7 @@ fn given_a_node_without_edge_and_an_edge_to_a_missing_node_when_build_then_node_
 }
 
 #[test]
-fn given_the_refusals_of_declared_targets_when_displayed_then_they_name_the_node_and_the_target_alike()
- {
+fn given_an_edge_to_an_unknown_node_when_displayed_then_it_names_the_node_and_the_target() {
     let unknown = GraphError::EdgeToUnknownNode {
         node: nid("a"),
         target: nid("ghost"),
@@ -155,21 +154,5 @@ fn given_the_refusals_of_declared_targets_when_displayed_then_they_name_the_node
     assert_eq!(
         unknown.to_string(),
         "the edge of node a declares node ghost, which is not in the graph"
-    );
-    let undeclared = GraphError::UndeclaredTarget {
-        node: nid("a"),
-        target: to("ghost"),
-    };
-    assert_eq!(
-        undeclared.to_string(),
-        "the edge of node a returned node ghost, which it does not declare"
-    );
-    let end_label = GraphError::UndeclaredTarget {
-        node: nid("a"),
-        target: end("other"),
-    };
-    assert_eq!(
-        end_label.to_string(),
-        "the edge of node a returned end other, which it does not declare"
     );
 }
