@@ -68,8 +68,10 @@ may declare their targets, which the build and the run then hold them to.
   them. `NodeDescription::realizing` adds labels to a description.
 - `Edge::declared`, a provided method: the targets an edge may give, known
   without running it; `None` by default (undeclared). `Always` declares its
-  target; `FnEdge::targets` declares an edge built from a function (in the
-  order given, a repeated target once at its first place).
+  target; `FnEdge::targets` declares an edge built from a function, its list
+  kept as given. The graph asks for the declared targets once, at build,
+  and keeps them in the order given, a repeated target once at its first
+  place: the run checks that copy and the description writes it.
 - `GraphError::UndeclaredTarget { node, target }`: a declared edge that
   returns a target it did not declare fails the run, the run's error
   itself, before any target runs. Per edge, in registration order: the
@@ -83,7 +85,16 @@ may declare their targets, which the build and the run then hold them to.
   (`route`, `check`, `critique`, `finish` with its labels `validated` and
   `exhausted`, `prepare`).
 - `Target` is displayed (`node {id}`, `end {label}`) and serialized
-  (`{"node": id}`, `{"end": label}`).
+  (`{"node": id}`, `{"end": label}`). The two new refusals read alike: "the
+  edge of node a declares node ghost, which is not in the graph", "the edge
+  of node a returned node ghost, which it does not declare".
+- The public module `describe` holds `GraphDescription`, `NodeDescription`,
+  `Realizing` and `DESCRIPTION_VERSION`, all re-exported at the root.
+  `GraphDescription` derives `Debug`, `Clone` and `PartialEq`;
+  `NodeDescription` derives `Debug`, `Clone`, `PartialEq` and `Default` (the
+  description of a node without a kind of its own). `Realizing::labels`
+  gives a wrapped node's labels, `Realizing::node` the node it carries. The
+  rustdoc of `GraphDescription` tables the fields of each kind.
 - The example `describe` prints the description of a graph with declared
   edges, a call, a map and an agent.
 
