@@ -1,7 +1,7 @@
 [package]
 name = "br-llm-graph"
-version = "0.4.0"
-description = "LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: typed state, async nodes, sync edges, supersteps, LLM calls, react loop"
+version = "0.5.0"
+description = "LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: typed state and keys, async nodes, sync edges, supersteps, LLM calls, ReAct and generator-critic agents, durable in a host's thread store"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
