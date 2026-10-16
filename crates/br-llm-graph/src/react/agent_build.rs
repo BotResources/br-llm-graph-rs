@@ -13,20 +13,26 @@ use crate::value::{Key, NodeId};
 
 /// The keys every agent has: its inputs `opening` and, durable, `thread`
 /// (also an output), its output `answer`, and its private keys
-/// `conversation` and `turn_rank` (where the call stands among its turns,
-/// see `Position`).
+/// `conversation`, `turn_rank` (where the call stands among its turns, see
+/// `Position`) and, for the generator-critic, `call_turns` (the ids of the
+/// call's turns).
 pub(crate) struct AgentKeys {
     pub(crate) opening: Key,
     pub(crate) answer: Key,
     pub(crate) conversation: Key,
     pub(crate) position: Key,
+    /// `call_turns`, a private key of the generator-critic only.
+    pub(crate) turns: Key,
+    /// Whether the agent keeps the ids of its call's turns in `turns`.
+    keeps_turns: bool,
     /// `Some` when the agent is durable.
     pub(crate) thread: Option<Key>,
     /// `thread`, which no flag may name, durable or not.
-    thread_name: Key,
+    pub(crate) thread_name: Key,
 }
 
 impl AgentKeys {
+    /// The keys of a ReAct agent.
     pub(crate) fn new(durable: bool) -> Result<Self, GraphError> {
         let thread_name = Key::new("thread")?;
         Ok(Self {
@@ -34,16 +40,30 @@ impl AgentKeys {
             answer: Key::new("answer")?,
             conversation: Key::new("conversation")?,
             position: Key::new("turn_rank")?,
+            turns: Key::new("call_turns")?,
+            keeps_turns: false,
             thread: durable.then(|| thread_name.clone()),
             thread_name,
         })
     }
 
-    fn private(&self) -> [(&Key, Kind); 2] {
-        [
+    /// The keys of a generator-critic: a ReAct agent's, and `call_turns`.
+    pub(crate) fn with_turns(durable: bool) -> Result<Self, GraphError> {
+        Ok(Self {
+            keeps_turns: true,
+            ..Self::new(durable)?
+        })
+    }
+
+    fn private(&self) -> Vec<(&Key, Kind)> {
+        let mut private = vec![
             (&self.conversation, Kind::Conversation),
             (&self.position, Kind::Int),
-        ]
+        ];
+        if self.keeps_turns {
+            private.push((&self.turns, Kind::list(Kind::Str)));
+        }
+        private
     }
 
     /// The state keys the graph keeps for itself, which nothing given may

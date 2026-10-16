@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use br_llm_messages::{InputId, TurnId, UserInput};
+use br_llm_messages::{Conversation, InputId, TurnId, UserInput};
 
 use crate::error::GraphError;
 use crate::graph::Context;
@@ -38,6 +38,9 @@ pub(crate) struct AgentCall {
     pub(crate) position: Key,
     /// The agent's thread, when it is durable.
     pub(crate) thread: Option<ThreadBinding>,
+    /// The private key listing the ids of the call's turns, for an agent
+    /// that keeps it (the generator-critic): each new turn is added to it.
+    pub(crate) turns: Option<Key>,
 }
 
 /// Where the call of an agent stands among its turns, the ranks counted as
@@ -91,6 +94,36 @@ impl AgentCall {
     /// `opening`, if any.
     pub(crate) fn trigger<'a>(&self, state: &'a State) -> Result<Option<&'a InputId>, GraphError> {
         Ok(trigger(state.conversation(&self.opening)?).map(UserInput::id))
+    }
+
+    /// The rank and the id of the next turn the call opens in
+    /// `conversation`: the turn of the call's rank when it is not in the
+    /// conversation yet, else the turn of the next rank.
+    pub(crate) fn next_turn(
+        &self,
+        state: &State,
+        ctx: &Context,
+        conversation: &Conversation,
+    ) -> Result<(usize, TurnId), GraphError> {
+        let rank = match self.position(state)? {
+            Position::Writing(rank) | Position::Answered(rank) => rank,
+        };
+        let id = self.turn_id(state, ctx, rank)?;
+        if conversation.turn(&id).is_none() {
+            return Ok((rank, id));
+        }
+        Ok((rank + 1, self.turn_id(state, ctx, rank + 1)?))
+    }
+
+    /// The update that adds the turn `id` to the call's turns, for an agent
+    /// that keeps them.
+    pub(crate) fn add_turn(&self, id: &TurnId) -> Option<crate::update::Update> {
+        self.turns
+            .as_ref()
+            .map(|key| crate::update::Update::Append {
+                key: key.clone(),
+                value: Value::str(id.as_str()),
+            })
     }
 
     /// The id of the turn of rank `rank` of this call.

@@ -90,6 +90,17 @@ impl RoundLimit {
         }
     }
 
+    /// Whether this limit was reached in `turn`, its limit read from
+    /// `config`: never for `Error`, which fails the run instead.
+    pub(crate) fn reached_in_turn(&self, turn: &Turn, config: &Config) -> Result<bool, GraphError> {
+        match &self.on_limit {
+            OnLimit::Error => Ok(false),
+            OnLimit::Continue { .. } | OnLimit::End { .. } => {
+                Ok(reached_in(turn, self.max_rounds.resolve(config)?.get()))
+            }
+        }
+    }
+
     /// Adds the limit node, when `on_limit` has one, writing to `thread` for
     /// a durable agent.
     pub(crate) fn add_limit_node(
@@ -124,15 +135,67 @@ impl RoundLimit {
 /// The stop reason of the step that closes a turn cut by `OnLimit::End`.
 const LIMIT_REACHED: &str = "tool_round_limit";
 
-/// Whether `step` is the step `OnLimit::End` closes a turn with: its stop
-/// reason, and only the marks the limit node writes, no model and no usage. A
-/// client's step always carries a model (br-llm-clients-core), so a
-/// provider's reply that keeps this stop reason verbatim is not taken for it.
-/// Callers ask it only of a generator whose round limit is `End`.
-pub(crate) fn closes_on_limit(step: &Step) -> bool {
-    matches!(step.stop_reason(), StopReason::Other { reason } if reason == LIMIT_REACHED)
+/// The first and last parts of the text of the step that closes a turn cut
+/// by `OnLimit::End`; the limit, a number, stands between them.
+const CLOSING_HEAD: &str = "Tool round limit reached (";
+const CLOSING_TAIL: &str = "): no final reply.";
+
+/// The text of the step that closes a turn cut by `OnLimit::End`.
+fn closing(max: usize) -> String {
+    format!("{CLOSING_HEAD}{max}{CLOSING_TAIL}")
+}
+
+/// Whether `turn` is a turn `OnLimit::End` cut: its final step is the step
+/// the limit node closes it with and nothing else (the stop reason
+/// `other(tool_round_limit)`, one text block holding the closing text, no
+/// model and no usage), and the item before it holds only the limit's
+/// refusals.
+///
+/// A client's step carries a model (br-llm-clients-core), but a step read
+/// back from a thread does not: a store folds stream events, which carry
+/// none. So the step alone cannot tell a provider's reply that keeps this
+/// stop reason verbatim from the limit's closing step once a durable agent
+/// rehydrates; the refusals before it can, since tool nodes never answer a
+/// round with the limit's refusal alone. Callers ask it only of a generator
+/// whose round limit is `End`.
+pub(crate) fn cut_by_limit(turn: &Turn) -> bool {
+    let [.., TurnItem::ToolResults(results), TurnItem::Step(step)] = turn.items() else {
+        return false;
+    };
+    let closes = matches!(step.stop_reason(), StopReason::Other { reason } if reason == LIMIT_REACHED)
         && step.model().is_none()
         && step.usage().is_none()
+        && matches!(step.content(), [AssistantBlock::Text { text }] if is_closing(text.as_str()));
+    closes && refusals_only(results.results())
+}
+
+/// Whether `text` is the closing text of some limit, written as the node
+/// writes it.
+fn is_closing(text: &str) -> bool {
+    text.strip_prefix(CLOSING_HEAD)
+        .and_then(|rest| rest.strip_suffix(CLOSING_TAIL))
+        .and_then(|max| max.parse::<usize>().ok())
+        .is_some_and(|max| closing(max) == text)
+}
+
+/// Whether `results` is a round the limit node answered: not empty, and
+/// every result its refusal.
+fn refusals_only(results: &[ToolResult]) -> bool {
+    !results.is_empty() && results.iter().all(is_refusal)
+}
+
+/// Whether the round limit was reached in `turn` under a limit of `max`: a
+/// round at 0-based index `max` or more holds only its refusals. Tool nodes
+/// never run past the limit, so only the limit node answers those rounds.
+pub(crate) fn reached_in(turn: &Turn, max: usize) -> bool {
+    turn.items()
+        .iter()
+        .filter_map(|item| match item {
+            TurnItem::ToolResults(results) => Some(results.results()),
+            TurnItem::Step(_) => None,
+        })
+        .skip(max)
+        .any(refusals_only)
 }
 
 /// The rounds answered in `author`'s open turn: none when the last turn of
@@ -147,20 +210,9 @@ pub(crate) fn completed_rounds(conversation: &Conversation, author: &Author) -> 
 }
 
 /// Whether the limit node has answered calls in `author`'s open turn under a
-/// limit of `max`: a round at 0-based index `max` or more holds only its
-/// refusals. Tool nodes never run past the limit, so only the limit node
-/// answers those rounds.
+/// limit of `max` (see `reached_in`).
 fn answered_by_limit(conversation: &Conversation, author: &Author, max: usize) -> bool {
-    open_turn(conversation, author).is_some_and(|turn| {
-        turn.items()
-            .iter()
-            .filter_map(|item| match item {
-                TurnItem::ToolResults(results) => Some(results.results()),
-                TurnItem::Step(_) => None,
-            })
-            .skip(max)
-            .any(|results| !results.is_empty() && results.iter().all(is_refusal))
-    })
+    open_turn(conversation, author).is_some_and(|turn| reached_in(turn, max))
 }
 
 fn open_turn<'a>(conversation: &'a Conversation, author: &Author) -> Option<&'a Turn> {
@@ -231,9 +283,7 @@ impl Node for LimitNode {
                 })
                 .collect();
             let closing = if self.end {
-                Some(Text::new(format!(
-                    "Tool round limit reached ({max}): no final reply."
-                ))?)
+                Some(Text::new(closing(max))?)
             } else {
                 None
             };

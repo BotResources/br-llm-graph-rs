@@ -18,7 +18,7 @@ use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
-use crate::react::given::Prompt;
+use crate::react::given::{Model, Prompt};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
 
@@ -26,7 +26,7 @@ use crate::react::test_support::*;
 fn lax_generator(steps: Vec<br_llm_messages::Step>) -> (GeneratorSeat, Arc<LaxClient>) {
     let client = Arc::new(LaxClient::new(steps));
     let seat = GeneratorSeat {
-        client: client.clone(),
+        model: Model::client(client.clone()),
         ..generator(&mock(Vec::new()))
     };
     (seat, client)
@@ -47,9 +47,9 @@ async fn given_an_empty_answer_then_a_valid_one_when_run_then_the_empty_one_is_r
         "writer:".to_owned(),
         empty_critique(),
         "writer:full".to_owned(),
+        "reviewer:Accepted.".to_owned(),
     ];
-    assert_eq!(shape_of(&state, "conversation"), expected);
-    assert_eq!(shape_of(&state, "generator_history"), expected);
+    assert_eq!(shape(state.transcript()), expected);
     assert_eq!(state.str(&key("answer")).unwrap(), "full");
     assert_eq!(requests(&critic_client).len(), 1);
     assert_eq!(generator_client.requests().len(), 2);
@@ -70,7 +70,7 @@ async fn given_an_empty_answer_on_the_last_judged_generation_when_run_then_exhau
     assert!(!state.bool(&key("is_validated")).unwrap());
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         ["user".to_owned(), "writer:".to_owned(), empty_critique()]
     );
     assert!(requests(&critic_client).is_empty());
@@ -87,7 +87,7 @@ async fn given_an_empty_unassessed_final_generation_when_run_then_exhausted_with
     let state = ended(call(&graph, question("explain")).await, "exhausted");
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         ["user", "writer:a", "reviewer:fix it", "writer:"]
     );
     assert_eq!(requests(&critic_client).len(), 1);
@@ -111,12 +111,13 @@ async fn given_a_generation_cut_by_the_round_limit_when_run_then_rejected_as_emp
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "validated");
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         [
             "user".to_owned(),
-            format!("writer:{CUT}"),
+            format!("writer:[5 items] {CUT}"),
             empty_critique(),
-            "writer:full".to_owned()
+            "writer:full".to_owned(),
+            "reviewer:Accepted.".to_owned()
         ]
     );
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
@@ -141,8 +142,8 @@ async fn given_a_last_generation_cut_by_the_round_limit_when_run_then_the_answer
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "exhausted");
     assert_eq!(
-        shape_of(&state, "conversation"),
-        ["user".to_owned(), format!("writer:{CUT}")]
+        shape(state.transcript()),
+        ["user".to_owned(), format!("writer:[5 items] {CUT}")]
     );
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
     assert_eq!(state.str(&key("answer")).unwrap(), "");
@@ -156,12 +157,12 @@ async fn given_a_reply_holding_only_thinking_from_a_conforming_client_when_the_g
     let generator_client = mock(vec![thinking_only_step()]);
     let critic_client = mock(Vec::new());
     let graph = duo(&generator_client, &critic_client).graph().unwrap();
-    let (state, error) = failed_in(call(&graph, question("explain")).await, "generate");
+    let (conversation, error) = failed_in(call(&graph, question("explain")).await, "generate");
     assert!(
         matches!(error, GraphError::Model(ClientError::ReplyUnusable { .. })),
         "{error}"
     );
-    assert_eq!(shape_of(&state, "conversation"), ["user"]);
+    assert_eq!(shape(&conversation), ["user"]);
     assert!(requests(&critic_client).is_empty());
 }
 
@@ -188,7 +189,7 @@ async fn given_histories_ending_on_an_answer_holding_only_thinking_when_called_a
     .unwrap();
 
     let state = ended(
-        call_with(&graph, conversation.clone(), conversation, BTreeMap::new()).await,
+        call_with(&graph, conversation, Vec::new(), BTreeMap::new()).await,
         "validated",
     );
 
@@ -197,9 +198,9 @@ async fn given_histories_ending_on_an_answer_holding_only_thinking_when_called_a
         "writer:".to_owned(),
         empty_critique(),
         "writer:full".to_owned(),
+        "reviewer:Accepted.".to_owned(),
     ];
-    assert_eq!(shape_of(&state, "conversation"), expected);
-    assert_eq!(shape_of(&state, "generator_history"), expected);
+    assert_eq!(shape(state.transcript()), expected);
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
     assert_eq!(state.str(&key("answer")).unwrap(), "full");
     assert_eq!(
@@ -226,7 +227,7 @@ async fn given_a_blank_critic_system_text_when_an_empty_answer_is_rejected_witho
             cut_generator(&generator_client),
             CriticSeat::new(
                 reviewer(),
-                Arc::new(critic_client.clone()),
+                Model::client(Arc::new(critic_client.clone())),
                 Prompt::text(" "),
             ),
             Count::Fixed(1),
@@ -238,8 +239,12 @@ async fn given_a_blank_critic_system_text_when_an_empty_answer_is_rejected_witho
     let state = ended(call(&graph, question("explain")).await, "exhausted");
 
     assert_eq!(
-        shape_of(&state, "conversation"),
-        ["user".to_owned(), format!("writer:{CUT}"), empty_critique()]
+        shape(state.transcript()),
+        [
+            "user".to_owned(),
+            format!("writer:[5 items] {CUT}"),
+            empty_critique()
+        ]
     );
     assert_eq!(critic_client.calls(), 0);
 }

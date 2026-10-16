@@ -4,8 +4,6 @@
 
 use std::collections::BTreeMap;
 
-use br_llm_messages::Conversation;
-
 use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic_support::*;
@@ -27,7 +25,7 @@ async fn given_a_critique_budget_of_zero_when_run_then_one_generation_no_critic_
         assert!(!state.bool(&key("is_validated")).unwrap());
         assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
         assert_eq!(state.str(&key("answer")).unwrap(), "draft");
-        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+        assert_eq!(shape(state.transcript()), ["user", "writer:draft"]);
         assert_eq!(requests(&generator_client).len(), 1);
         assert!(requests(&critic_client).is_empty());
     }
@@ -46,7 +44,7 @@ async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_
     );
     let config = BTreeMap::from([(key("critiques"), Value::int(0))]);
     let state = ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
+        call_with(&graph, question("explain"), Vec::new(), config).await,
         "exhausted",
     );
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
@@ -57,7 +55,7 @@ async fn given_a_critique_budget_read_from_the_configuration_when_run_then_zero_
     let graph = with_budget(&generator_client, &critic_client, budget(), true);
     let config = BTreeMap::from([(key("critiques"), Value::int(1))]);
     ended(
-        call_with(&graph, question("explain"), Conversation::new(), config).await,
+        call_with(&graph, question("explain"), Vec::new(), config).await,
         "validated",
     );
     assert_eq!(requests(&critic_client).len(), 1);
@@ -74,14 +72,20 @@ async fn given_a_negative_critique_budget_in_the_configuration_when_run_then_cou
         true,
     );
     let config = BTreeMap::from([(key("critiques"), Value::int(-1))]);
-    let failure = call_with(&graph, question("explain"), Conversation::new(), config)
+    let failure = call_with(&graph, question("explain"), Vec::new(), config)
         .await
+        .result
         .err()
         .unwrap();
+    // The generator's context reads the budget: its node meets the refusal.
     assert!(
-        matches!(failure.error, GraphError::CountNegative { value: -1, .. }),
+        matches!(
+            returned(&failure.error),
+            GraphError::CountNegative { value: -1, .. }
+        ),
         "{}",
         failure.error
     );
+    assert!(requests(&generator_client).is_empty());
     assert!(requests(&critic_client).is_empty());
 }

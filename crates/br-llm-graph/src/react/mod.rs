@@ -1,9 +1,14 @@
 mod agent_build;
 mod agent_call;
+mod check;
+mod critic_view;
+mod critic_writer;
 mod critique;
 mod declarations;
+mod duo;
 mod enter;
 mod generator_critic;
+mod generator_critic_build;
 mod generator_critic_nodes;
 mod generator_critic_routing;
 mod given;
@@ -17,6 +22,7 @@ mod react_loop;
 mod rehydrate;
 mod round_limit;
 mod round_writer;
+mod rule_check;
 mod seats;
 mod sink;
 mod thread_store;
@@ -144,14 +150,16 @@ mod turn_ids_tests;
 
 pub use generator_critic::GeneratorCritic;
 pub use given::{
-    AgentNode, Budgeted, Given, History, Model, ModelNode, Prompt, Reads, RequestContext, Scheduled,
+    AgentNode, Budgeted, GeneratorCriticNode, Given, History, LoopNode, Model, ModelNode, Prompt,
+    Reads, RequestContext, Scheduled,
 };
 pub use helpers::{pending_calls, structured, wire};
 pub use hook::{Hook, HookError, HookFuture, Judgment};
 pub use llm_call::{LlmCall, LlmOutput, LlmRequest};
 pub use react_agent::ReactAgent;
 pub use round_limit::{OnLimit, RoundLimit};
-pub use seats::{CriticSeat, GeneratorSeat};
+pub use rule_check::{RuleCheck, Ruling};
+pub use seats::{CriticHistory, CriticSeat, GeneratorSeat};
 pub use sink::complete;
 pub use thread_store::{
     MessageStatus, ThreadError, ThreadFuture, ThreadMessage, ThreadStore, ThreadView, TurnEnd,

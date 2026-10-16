@@ -2,7 +2,7 @@
 //! created, the opening stored, and the turns of this call found by their
 //! ids, rank after rank, a turn left open failed so the store repairs it.
 
-use br_llm_messages::{Conversation, Entry, UserInput};
+use br_llm_messages::{Conversation, Entry, TurnId, UserInput};
 
 use crate::error::GraphError;
 use crate::graph::Context;
@@ -18,9 +18,17 @@ pub(crate) struct Entered {
     /// The thread as it stands, the opening stored: what the agent keeps in
     /// `conversation`.
     pub(crate) conversation: Conversation,
+    /// The turns of this call the thread holds, rank after rank: each rank,
+    /// id and status (a last turn found open has been failed and repaired).
+    pub(crate) turns: Vec<(usize, TurnId, MessageStatus)>,
+}
+
+impl Entered {
     /// The last of the turns of this call the thread holds, with its rank
-    /// and its status (a turn found open has been failed and repaired).
-    pub(crate) last: Option<(usize, MessageStatus)>,
+    /// and its status.
+    pub(crate) fn last(&self) -> Option<(usize, MessageStatus)> {
+        self.turns.last().map(|(rank, _, status)| (*rank, *status))
+    }
 }
 
 /// The user inputs of a durable agent's `opening`, ending with its trigger:
@@ -73,30 +81,28 @@ pub(crate) async fn enter_thread(
         }
     }
 
-    let mut last = None;
+    let mut turns = Vec::new();
     for rank in 1.. {
         let id = ctx.ids.turn_id(&id_request(ctx, trigger, rank));
         let Some(message) = view.message(id.as_str()) else {
             break;
         };
-        last = Some((rank, id, message.status));
+        let status = message.status;
+        turns.push((rank, id, status));
     }
-    let last = match last {
-        Some((rank, id, MessageStatus::Streaming)) => {
-            store.end_turn(&thread, &id, TurnEnd::Failed).await?;
-            view = read(binding, &thread).await?;
-            let status = view
-                .message(id.as_str())
-                .map_or(MessageStatus::Failed, |message| message.status);
-            Some((rank, status))
-        }
-        Some((rank, _, status)) => Some((rank, status)),
-        None => None,
-    };
+    if let Some((_, id, status)) = turns.last_mut()
+        && *status == MessageStatus::Streaming
+    {
+        store.end_turn(&thread, id, TurnEnd::Failed).await?;
+        view = read(binding, &thread).await?;
+        *status = view
+            .message(id.as_str())
+            .map_or(MessageStatus::Failed, |message| message.status);
+    }
     Ok(Entered {
         thread,
         conversation: view.conversation,
-        last,
+        turns,
     })
 }
 

@@ -2,6 +2,7 @@
 //! system, its history...) a value, or a function of the node's context.
 
 mod context;
+mod nodes;
 mod reads;
 mod ready;
 
@@ -13,8 +14,9 @@ use br_llm_messages::WireMessage;
 use crate::graph::NodeError;
 use crate::state::{Config, State};
 
-pub(crate) use context::AgentFacts;
-pub use context::{AgentNode, Budgeted, ModelNode, RequestContext, Scheduled};
+pub use context::RequestContext;
+pub use nodes::{AgentNode, Budgeted, GeneratorCriticNode, LoopNode, ModelNode, Scheduled};
+pub(crate) use nodes::{CheckFacts, CriticFacts, SeatCount};
 pub use reads::Reads;
 
 /// A function given to a model-calling node: it reads the node's context and
@@ -35,7 +37,7 @@ type GiveFn<N, T> = dyn for<'a> Fn(&RequestContext<'a, N>) -> Result<T, NodeErro
 /// - reads the context of its node (`RequestContext`), and only that: the
 ///   state and the configuration through typed keys, and only the keys
 ///   declared with it in its `Reads`; an agent's context adds its
-///   conversation and the round;
+///   conversation, and more for some nodes (see `RequestContext`);
 /// - is synchronous and does no I/O: what it needs for every run (prompts,
 ///   clients, catalogues) is given to it when the node is built, typed by the
 ///   runner, as what the closure captures; it never goes through the state.
@@ -47,8 +49,8 @@ type GiveFn<N, T> = dyn for<'a> Fn(&RequestContext<'a, N>) -> Result<T, NodeErro
 ///
 /// The common values are ready-made: a fixed text and a text read from a
 /// key (`Given::text`, `Given::from_state`...), a fixed client
-/// (`Given::client`) and schedules of clients (`Given::schedule`,
-/// `Given::ending_with`).
+/// (`Given::client`) and schedules of clients (`Given::schedule`, and
+/// `Given::ending_with` for the two seats of the generator-critic).
 ///
 /// The system text of a ReAct agent, from a catalogue the runner holds and
 /// the state key `topic`, which becomes an input of the agent's graph:

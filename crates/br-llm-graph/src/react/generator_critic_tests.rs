@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
-use br_llm_messages::{Author, Conversation};
+use br_llm_messages::Author;
 use serde_json::json;
 
 use crate::error::GraphError;
@@ -15,22 +15,20 @@ use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
-use crate::run::{control, run};
 use crate::state::{Config, Kind, Value};
 use crate::testkit::SeqIds;
 
 #[tokio::test]
-async fn given_a_valid_first_answer_when_run_then_validated_and_nothing_is_appended() {
+async fn given_a_valid_first_answer_when_run_then_validated_and_an_acceptance_is_recorded() {
     let generator_client = mock(vec![text_step("draft")]);
     let critic_client = mock(vec![verdict(true, "")]);
     let graph = duo(&generator_client, &critic_client).graph().unwrap();
     let state = ended(call(&graph, question("explain")).await, "validated");
     assert!(state.bool(&key("is_validated")).unwrap());
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 1);
-    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
     assert_eq!(
-        shape_of(&state, "generator_history"),
-        ["user", "writer:draft"]
+        shape(state.transcript()),
+        ["user", "writer:draft", "reviewer:Accepted."]
     );
     assert_eq!(state.str(&key("answer")).unwrap(), "draft");
 }
@@ -120,14 +118,16 @@ async fn given_a_rejection_then_a_validation_when_run_then_each_seat_reads_its_o
     let graph = duo(&generator_client, &critic_client).graph().unwrap();
     let state = ended(call(&graph, question("explain")).await, "validated");
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
-    let expected = [
-        "user",
-        "writer:first",
-        "reviewer:add an example",
-        "writer:second",
-    ];
-    assert_eq!(shape_of(&state, "conversation"), expected);
-    assert_eq!(shape_of(&state, "generator_history"), expected);
+    assert_eq!(
+        shape(state.transcript()),
+        [
+            "user",
+            "writer:first",
+            "reviewer:add an example",
+            "writer:second",
+            "reviewer:Accepted.",
+        ]
+    );
 
     let opening = user_message("<message role=\"user\">explain</message>");
     let critique =
@@ -194,7 +194,7 @@ async fn given_every_answer_rejected_with_a_final_generation_when_run_then_exhau
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
     assert_eq!(state.str(&key("answer")).unwrap(), "b");
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         ["user", "writer:a", "reviewer:fix it", "writer:b"]
     );
     assert_eq!(requests(&critic_client).len(), 1);
@@ -223,7 +223,7 @@ async fn given_every_answer_rejected_without_a_final_generation_when_run_then_ex
     assert_eq!(state.int(&key("nb_generations")).unwrap(), 2);
     assert_eq!(state.str(&key("answer")).unwrap(), "b");
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         [
             "user",
             "writer:a",
@@ -267,7 +267,7 @@ fn given_both_seats_with_one_author_when_built_then_same_author() {
 }
 
 #[tokio::test]
-async fn given_a_generator_critic_when_both_seats_stream_then_the_generator_carries_generator_history_and_the_critic_conversation()
+async fn given_a_generator_critic_when_both_seats_stream_then_the_generator_carries_conversation_and_the_critic_critic()
  {
     let recorder = Arc::new(StreamRecorder::default());
     let observer: Arc<dyn Observer> = recorder.clone();
@@ -279,36 +279,23 @@ async fn given_a_generator_critic_when_both_seats_stream_then_the_generator_carr
     .graph()
     .unwrap();
     let state = graph
-        .start_state([
-            (
-                key("conversation"),
-                Value::conversation(question("explain")),
-            ),
-            (
-                key("generator_history"),
-                Value::conversation(Conversation::new()),
-            ),
-        ])
+        .start_state([(key("opening"), Value::conversation(question("explain")))])
         .unwrap();
     let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut channel) = control();
 
-    ended(
-        run(&graph, &config, state, None, &ctx, &mut channel).await,
-        "validated",
-    );
+    ended(run_in(&graph, state, &config, &ctx).await, "validated");
 
     let keys: Vec<(String, String)> = recorder
         .events()
         .into_iter()
         .map(|(occurrence, key, _)| (occurrence, key))
         .collect();
-    assert!(keys.contains(&("generate".to_owned(), "generator_history".to_owned())));
-    assert!(keys.contains(&("critique".to_owned(), "conversation".to_owned())));
+    assert!(keys.contains(&("generate".to_owned(), "conversation".to_owned())));
+    assert!(keys.contains(&("critique".to_owned(), "critic".to_owned())));
     assert!(
         keys.iter().all(
-            |pair| *pair == ("generate".to_owned(), "generator_history".to_owned())
-                || *pair == ("critique".to_owned(), "conversation".to_owned())
+            |pair| *pair == ("generate".to_owned(), "conversation".to_owned())
+                || *pair == ("critique".to_owned(), "critic".to_owned())
         ),
         "{keys:?}"
     );

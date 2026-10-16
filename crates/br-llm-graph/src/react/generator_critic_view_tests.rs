@@ -38,8 +38,14 @@ async fn given_an_empty_answer_then_a_full_one_when_the_critic_judges_then_the_e
         "validated",
     );
     assert_eq!(
-        shape_of(&state, "conversation"),
-        ["user", "writer:", "reviewer:Say something.", "writer:full"]
+        shape(state.transcript()),
+        [
+            "user",
+            "writer:",
+            "reviewer:Say something.",
+            "writer:full",
+            "reviewer:Accepted."
+        ]
     );
     let merged = WireMessage::User {
         content: vec![
@@ -127,12 +133,13 @@ async fn given_an_empty_answer_critique_that_resolves_blank_when_an_empty_answer
             "validated",
         );
         assert_eq!(
-            shape_of(&state, "conversation"),
+            shape(state.transcript()),
             [
                 "user",
                 "writer:",
                 "reviewer:The answer was empty. Write a complete answer.",
-                "writer:full"
+                "writer:full",
+                "reviewer:Accepted."
             ]
         );
     }

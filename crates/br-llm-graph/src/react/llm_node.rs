@@ -8,7 +8,8 @@ use br_llm_messages::{
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture};
 use crate::react::agent_call::{AgentCall, Position};
-use crate::react::given::{AgentFacts, AgentNode, History, Model, Prompt};
+use crate::react::duo::Duo;
+use crate::react::given::{History, LoopNode, Model, Prompt, SeatCount};
 use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, system_text, wire};
 use crate::react::sink::complete_in;
 use crate::react::thread_store::TurnEnd;
@@ -41,7 +42,7 @@ use crate::value::Key;
 ///
 /// At build, the node checks its `enabled` key (`EnabledKeyMismatch`) and the
 /// keys its functions declare (`UnknownKey`, `KindMismatch`).
-pub(crate) struct LlmNode<N: AgentNode> {
+pub(crate) struct LlmNode<N: LoopNode> {
     pub(crate) key: Key,
     pub(crate) author: Author,
     pub(crate) model: Model<N>,
@@ -55,23 +56,26 @@ pub(crate) struct LlmNode<N: AgentNode> {
     pub(crate) enabled: Option<Key>,
     pub(crate) output_mode: OutputMode,
     /// The call of the agent: the turn the reply goes to and, for a durable
-    /// agent, the thread it streams into. `None`: the conversation alone
-    /// says where the reply goes, kept in memory.
+    /// agent, the thread it streams into. `None`: a model-call step outside
+    /// an agent's graph (the tests of the loop's nodes), in memory, where
+    /// the conversation alone says where the reply goes.
     pub(crate) call: Option<AgentCall>,
+    /// For the generator of a generator-critic: where the call stands, for
+    /// the generator's context.
+    pub(crate) seat: Option<Duo>,
 }
 
-impl<N: AgentNode> Node for LlmNode<N> {
+impl<N: LoopNode> Node for LlmNode<N> {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         Box::pin(async move {
             let conversation = state.conversation(&self.key)?;
             let target = self.target(state, ctx, conversation)?;
-            let facts = N::from_agent(AgentFacts {
-                conversation,
-                round: match &target {
-                    Target::Step(turn) => answered_rounds(turn),
-                    Target::Open { .. } => 0,
-                },
-            });
+            let round = match &target {
+                Target::Step(turn) => answered_rounds(turn),
+                Target::Open { .. } => 0,
+            };
+            let count = self.count(state, config, &target)?;
+            let facts = N::loop_facts(conversation, round, count);
             let messages = match &self.history {
                 Some(history) => history.give(state, config, facts)?,
                 None => wire(conversation, &self.author)?,
@@ -83,7 +87,7 @@ impl<N: AgentNode> Node for LlmNode<N> {
                 self.output_mode.clone(),
             )
             .map_err(GraphError::Request)?;
-            let client = self.model.give(state, config, facts)?;
+            let client = self.client(state, config, facts)?;
 
             let turn_id = match &target {
                 Target::Step(turn) => turn.id().clone(),
@@ -116,10 +120,12 @@ impl<N: AgentNode> Node for LlmNode<N> {
                 }],
                 Target::Open { moved, .. } => {
                     let turn = Turn::new(turn_id, Some(self.author.clone()), step);
+                    let added = self.call.as_ref().and_then(|call| call.add_turn(turn.id()));
                     let mut updates = vec![Update::PushTurn {
                         key: self.key.clone(),
                         turn,
                     }];
+                    updates.extend(added);
                     if let (Some(call), Some(position)) = (&self.call, moved) {
                         updates.push(call.move_to(position));
                     }
@@ -157,44 +163,69 @@ fn answered_rounds(turn: &Turn) -> usize {
         .count()
 }
 
-impl<N: AgentNode> LlmNode<N> {
+impl<N: LoopNode> LlmNode<N> {
+    /// The client called for this model call: the one `model` gives for
+    /// the context of this round. The one point where the model is
+    /// resolved, at each round of a turn.
+    fn client<'a>(
+        &'a self,
+        state: &'a State,
+        config: &'a Config,
+        facts: N::Facts<'a>,
+    ) -> Result<Arc<dyn br_llm_clients_core::Client>, crate::graph::NodeError> {
+        self.model.give(state, config, facts)
+    }
+
+    /// Where the call of a generator-critic stands for the generator's
+    /// context: the number of the generation the reply goes to, counted
+    /// among the generator's turns of the call. Nothing for a ReAct agent.
+    fn count(
+        &self,
+        state: &State,
+        config: &Config,
+        target: &Target<'_>,
+    ) -> Result<SeatCount, GraphError> {
+        let Some(duo) = &self.seat else {
+            return Ok(SeatCount::default());
+        };
+        let turns = duo.turns(state)?;
+        let writing = match target {
+            Target::Step(turn) => Some(turn.id()),
+            Target::Open { .. } => None,
+        };
+        duo.count(config, &turns, turns.generations_before(writing) + 1)
+    }
+
     /// Where the reply goes. In memory, the author's last turn while it
     /// awaits a step, whatever turn it is (one the opening ends with
     /// included), as the rule of the ReAct loop says. Durable, only the turn
     /// of the call's rank, while it awaits a step: a turn of the thread that
-    /// is not the call's, a repaired one included, is never continued. Else,
-    /// with the agent's call, a new turn: the turn of the call's rank when it
-    /// is not in the conversation yet, or the turn of the next rank once it
-    /// is finished. Without (the generator-critic until it keeps its call):
-    /// the author's last turn while it awaits a step, else a new turn, ranked
-    /// one past the turns that follow the trigger.
+    /// is not the call's, a repaired one included, is never continued. Else
+    /// a new turn: the turn of the call's rank when it is not in the
+    /// conversation yet, or the turn of the next rank once it is finished.
+    /// Without a call, ranked one past the turns that follow the trigger.
     fn target<'a>(
         &self,
         state: &State,
         ctx: &Context,
         conversation: &'a Conversation,
     ) -> Result<Target<'a>, GraphError> {
-        let Some(call) = &self.call else {
-            return Ok(match last_turn_by_author(conversation, &self.author) {
-                Some(turn) if matches!(turn.state(), TurnState::AwaitingStep) => Target::Step(turn),
-                _ => {
-                    let trigger = trigger(conversation).map(UserInput::id);
-                    let rank = next_rank_in_memory(conversation);
-                    Target::Open {
-                        id: ctx.ids.turn_id(&id_request(ctx, trigger, rank)),
-                        moved: None,
-                    }
-                }
-            });
-        };
         // In memory, the rule of the ReAct loop is literal: the author's last
         // turn goes on while it awaits a step, wherever it comes from.
-        if call.thread.is_none()
+        if self.call.as_ref().is_none_or(|call| call.thread.is_none())
             && let Some(turn) = last_turn_by_author(conversation, &self.author)
             && matches!(turn.state(), TurnState::AwaitingStep)
         {
             return Ok(Target::Step(turn));
         }
+        let Some(call) = &self.call else {
+            let trigger = trigger(conversation).map(UserInput::id);
+            let rank = next_rank_in_memory(conversation);
+            return Ok(Target::Open {
+                id: ctx.ids.turn_id(&id_request(ctx, trigger, rank)),
+                moved: None,
+            });
+        };
         let rank = match call.position(state)? {
             Position::Writing(rank) | Position::Answered(rank) => rank,
         };

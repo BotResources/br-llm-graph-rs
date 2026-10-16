@@ -1,14 +1,16 @@
 //! The bookkeeping nodes of the generator-critic graph: the caller's
-//! `prepare` node, the routing node's copy of the history, the publishing of
-//! an answer and the outputs written on finishing.
+//! `prepare` node, the routing node that starts `conversation`, and the
+//! outputs written on finishing.
 
-use br_llm_messages::{Author, Turn};
+use br_llm_messages::{Conversation, Entry};
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture};
-use crate::react::generator_critic_routing::{authored_by, last_answer, since_last_input};
-use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
-use crate::react::round_limit::closes_on_limit;
+use crate::react::agent_call::Position;
+use crate::react::duo::{Duo, TurnKind};
+use crate::react::helpers::{answer_text, final_step};
+use crate::react::rehydrate::{enter_thread, opening_inputs};
+use crate::react::round_limit::RoundLimit;
 use crate::state::{Config, Schema, State, Value};
 use crate::update::Update;
 use crate::value::Key;
@@ -26,10 +28,19 @@ impl Node for Prepare {
     }
 }
 
-/// Starts `generator_history` from `conversation` when it is empty.
+/// The `route` node: starts `conversation` and the list of the call's turns.
+///
+/// In memory, `conversation` starts as `opening`, and the call's turns are
+/// the turns of the generator and of the critic since the trigger (the last
+/// user input of `opening`; every entry when it has none). Durable, the
+/// generator-critic enters its thread (see `enter_thread`): `conversation`
+/// is the thread as it stands, `thread` the id of the thread, and the call's
+/// turns are those the thread holds under the ids of the call, rank after
+/// rank, a turn found open failed and repaired first; the call goes on in
+/// the turn of the next rank. Where the run goes is the edge's (see
+/// `Router::entry`).
 pub(crate) struct RouteNode {
-    pub(crate) conversation: Key,
-    pub(crate) generator_history: Key,
+    pub(crate) duo: Duo,
 }
 
 impl Node for RouteNode {
@@ -37,93 +48,140 @@ impl Node for RouteNode {
         &'a self,
         state: &'a State,
         _config: &'a Config,
-        _ctx: &'a Context,
+        ctx: &'a Context,
     ) -> NodeFuture<'a> {
         Box::pin(async move {
-            if !state
-                .conversation(&self.generator_history)?
-                .entries()
-                .is_empty()
-            {
-                return Ok(Vec::new());
-            }
-            Ok(vec![Update::Set {
-                key: self.generator_history.clone(),
-                value: state.value(&self.conversation)?.clone(),
-            }])
+            let call = &self.duo.call;
+            let opening = state.conversation(&call.opening)?;
+            let Some(binding) = &call.thread else {
+                let ids = self.since_trigger(opening);
+                return Ok(vec![
+                    self.start(opening.clone()),
+                    self.listed(ids),
+                    call.move_to(Position::Writing(1)),
+                ]);
+            };
+            let inputs = opening_inputs(opening)?;
+            let given = state.str(&binding.key)?;
+            let entered = enter_thread(ctx, binding, given, &inputs).await?;
+            let ids = entered
+                .turns
+                .iter()
+                .filter(|(_, id, _)| entered.conversation.turn(id).is_some())
+                .map(|(_, id, _)| id.as_str().to_owned())
+                .collect();
+            let position = entered.last().map_or(Position::Writing(1), |(rank, _)| {
+                Position::Writing(rank + 1)
+            });
+            Ok(vec![
+                self.start(entered.conversation),
+                self.listed(ids),
+                call.move_to(position),
+                Update::Set {
+                    key: binding.key.clone(),
+                    value: Value::str(entered.thread.as_str()),
+                },
+            ])
         })
     }
 }
 
-/// Appends the final step of the generator's last turn to `conversation`, as
-/// a turn of the generator under the same id.
-pub(crate) struct PublishNode {
-    pub(crate) conversation: Key,
-    pub(crate) generator_history: Key,
-    pub(crate) author: Author,
-}
+impl RouteNode {
+    fn start(&self, conversation: Conversation) -> Update {
+        Update::Set {
+            key: self.duo.conversation.clone(),
+            value: Value::conversation(conversation),
+        }
+    }
 
-impl Node for PublishNode {
-    fn run<'a>(
-        &'a self,
-        state: &'a State,
-        _config: &'a Config,
-        _ctx: &'a Context,
-    ) -> NodeFuture<'a> {
-        Box::pin(async move {
-            let history = state.conversation(&self.generator_history)?;
-            let Some(turn) = last_turn_by_author(history, &self.author) else {
-                return Ok(Vec::new());
-            };
-            let Some(step) = final_step(turn) else {
-                return Ok(Vec::new());
-            };
-            Ok(vec![Update::PushTurn {
-                key: self.conversation.clone(),
-                turn: Turn::new(turn.id().clone(), Some(self.author.clone()), step.clone()),
-            }])
-        })
+    fn listed(&self, ids: Vec<String>) -> Update {
+        Update::Set {
+            key: self.duo.turns.clone(),
+            value: Value::list(ids.into_iter().map(Value::str).collect()),
+        }
+    }
+
+    /// The ids of the turns of the generator and of the critic since the
+    /// last user input of `opening`.
+    fn since_trigger(&self, opening: &Conversation) -> Vec<String> {
+        let entries = opening.entries();
+        let start = entries
+            .iter()
+            .rposition(|entry| matches!(entry, Entry::UserInput(_)))
+            .map_or(0, |index| index + 1);
+        entries
+            .get(start..)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Turn(turn) if self.duo.kind(turn).is_some() => {
+                    Some(turn.id().as_str().to_owned())
+                }
+                Entry::Turn(_) | Entry::UserInput(_) => None,
+            })
+            .collect()
     }
 }
 
-/// Sets `answer` and `nb_generations` from `conversation`.
+/// Sets the outputs from the turns of the call: `answer`, the generator's
+/// last answer as the critic sees it (empty when none, or when the round
+/// limit cut it); `is_validated`, true when the call ends with an
+/// acceptance; `nb_generations`; and the round limit's flag, true when the
+/// limit was reached in at least one generation of the call.
 pub(crate) struct FinishNode {
-    pub(crate) conversation: Key,
+    pub(crate) duo: Duo,
     pub(crate) answer: Key,
+    pub(crate) validated: Key,
     pub(crate) generations: Key,
-    pub(crate) generator: Author,
-    /// Whether the generator's round limit is `OnLimit::End`, the only one
-    /// that cuts a generation.
-    pub(crate) limit_ends: bool,
+    /// The generator's round limit and its flag, when it has one.
+    pub(crate) flag: Option<(Key, RoundLimit)>,
 }
 
 impl Node for FinishNode {
     fn run<'a>(
         &'a self,
         state: &'a State,
-        _config: &'a Config,
+        config: &'a Config,
         _ctx: &'a Context,
     ) -> NodeFuture<'a> {
         Box::pin(async move {
-            let conversation = state.conversation(&self.conversation)?;
-            let generations = since_last_input(conversation)
-                .iter()
-                .filter(|entry| authored_by(entry, &self.generator))
-                .count();
-            let answer = match last_answer(conversation, &self.generator) {
-                Some((_, step)) if !(self.limit_ends && closes_on_limit(step)) => answer_text(step),
+            let duo = &self.duo;
+            let turns = duo.turns(state)?;
+            let answer = match turns.last_generation() {
+                Some(turn) if !duo.cut(turn) => {
+                    final_step(turn).map(answer_text).unwrap_or_default()
+                }
                 Some(_) | None => String::new(),
             };
-            Ok(vec![
+            let validated = matches!(turns.last(), Some((_, TurnKind::Acceptance)));
+            let generations = turns.generations();
+            let mut updates = vec![
                 Update::Set {
                     key: self.answer.clone(),
                     value: Value::str(answer),
                 },
                 Update::Set {
+                    key: self.validated.clone(),
+                    value: Value::bool(validated),
+                },
+                Update::Set {
                     key: self.generations.clone(),
                     value: Value::int(i64::try_from(generations).unwrap_or(i64::MAX)),
                 },
-            ])
+            ];
+            if let Some((flag, limit)) = &self.flag {
+                let mut reached = state.bool(flag)?;
+                for turn in turns.generation_turns() {
+                    reached = reached || limit.reached_in_turn(turn, config)?;
+                }
+                if reached {
+                    updates.push(Update::Set {
+                        key: flag.clone(),
+                        value: Value::bool(true),
+                    });
+                }
+            }
+            Ok(updates)
         })
     }
 }

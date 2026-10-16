@@ -74,6 +74,13 @@ impl<N: Budgeted> Given<N, Arc<dyn Client>> {
     /// but the last calls the node's budget allows, which call the clients of
     /// `tail`, in order, the last of them on the last call allowed. A call
     /// past the budget calls the last client of the tail.
+    ///
+    /// Only the two seats of the generator-critic have a budget
+    /// (`Budgeted`): the generator's calls are its generations, revisions not
+    /// counted (the budget plus one with `final_generation`, else the budget,
+    /// one for a budget of 0); the critic's are the budget, verdict retries
+    /// not counted. An LLM call and a ReAct agent have none, so they have no
+    /// tail.
     pub fn ending_with(primary: Arc<dyn Client>, tail: Vec<Arc<dyn Client>>) -> Self {
         Self::from_fn(Reads::new(), move |ctx| {
             Ok(with_tail(&primary, &tail, ctx.call_index(), ctx.calls_allowed()).clone())

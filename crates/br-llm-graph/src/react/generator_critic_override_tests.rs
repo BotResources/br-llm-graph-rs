@@ -89,12 +89,13 @@ async fn given_an_override_with_a_reader_when_the_critic_rejects_then_its_shape_
     );
     let state = ended(call(&graph, question("explain")).await, "validated");
     assert_eq!(
-        shape_of(&state, "conversation"),
+        shape(state.transcript()),
         [
             "user",
             "writer:draft",
             "reviewer:too short",
-            "writer:better"
+            "writer:better",
+            "reviewer:Accepted."
         ]
     );
     let requests = requests(&critic_client);
@@ -117,12 +118,12 @@ async fn given_a_reader_error_when_the_critic_judges_then_the_run_fails_with_it_
     )
     .graph()
     .unwrap();
-    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
     assert!(
         matches!(error, GraphError::Structured { ref message } if message == "no grade"),
         "{error}"
     );
-    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+    assert_eq!(shape(&conversation), ["user", "writer:draft"]);
 }
 
 #[tokio::test]

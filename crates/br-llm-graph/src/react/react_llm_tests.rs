@@ -43,6 +43,7 @@ pub(crate) fn llm(client: &MockClient, system: Prompt<ReactAgent>) -> LlmNode<Re
         enabled: None,
         output_mode: OutputMode::Plain,
         call: None,
+        seat: None,
     }
 }
 

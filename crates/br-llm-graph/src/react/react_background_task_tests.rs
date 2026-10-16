@@ -94,6 +94,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         enabled: None,
         output_mode: OutputMode::Plain,
         call: None,
+        seat: None,
     };
     let react = ReactLoop {
         llm: nid("llm"),

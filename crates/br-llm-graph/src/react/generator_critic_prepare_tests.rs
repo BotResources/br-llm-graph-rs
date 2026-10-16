@@ -13,7 +13,6 @@ use crate::graph::{
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, NodeId};
@@ -62,7 +61,7 @@ impl Node for OpenDocument {
                 vec![UserBlock::text(Text::new(format!("Summarize: {text}"))?)],
             )?;
             Ok(vec![Update::Input {
-                key: key("conversation"),
+                key: key("opening"),
                 input,
             }])
         })
@@ -94,23 +93,14 @@ fn prepared(
     }
 }
 
-async fn open(graph: &crate::graph::Graph, document_id: &str) -> Result<Outcome, RunFailure> {
-    let state = graph
-        .start_state([
-            (
-                key("conversation"),
-                Value::conversation(Conversation::new()),
-            ),
-            (
-                key("generator_history"),
-                Value::conversation(Conversation::new()),
-            ),
-            (key("document_id"), Value::str(document_id)),
-        ])
-        .unwrap();
-    let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut channel) = control();
-    run(graph, &config, state, None, &ctx(), &mut channel).await
+async fn open(graph: &crate::graph::Graph, document_id: &str) -> Ran {
+    call_with(
+        graph,
+        Conversation::new(),
+        vec![(key("document_id"), Value::str(document_id))],
+        BTreeMap::new(),
+    )
+    .await
 }
 
 #[tokio::test]
@@ -126,8 +116,8 @@ async fn given_a_prepare_node_and_an_empty_conversation_when_run_then_it_opens_t
     let state = ended(open(&graph, "doc-7").await, "validated");
     assert_eq!(state.str(&key("answer")).unwrap(), "The moon pulls.");
     assert_eq!(
-        shape_of(&state, "conversation"),
-        ["user", "writer:The moon pulls."]
+        shape(state.transcript()),
+        ["user", "writer:The moon pulls.", "reviewer:Accepted."]
     );
     let opening =
         user_message("<message role=\"user\">Summarize: Tides follow the moon.</message>");
@@ -147,7 +137,7 @@ async fn given_a_prepare_node_that_fails_when_run_then_the_generator_critic_fail
     let graph = prepared(Documents::new(), &generator_client, &critic_client)
         .graph()
         .unwrap();
-    let failure = open(&graph, "doc-404").await.err().unwrap();
+    let failure = open(&graph, "doc-404").await.result.err().unwrap();
     match failure.error {
         GraphError::NodeFailed {
             node,
@@ -170,11 +160,7 @@ async fn given_a_failing_prepare_called_with_a_capture_when_run_then_the_caller_
         .unwrap();
     let call = SubGraph::call(graph)
         .input(
-            key("conversation"),
-            Input::Const(Value::conversation(Conversation::new())),
-        )
-        .input(
-            key("generator_history"),
+            key("opening"),
             Input::Const(Value::conversation(Conversation::new())),
         )
         .input(key("document_id"), Input::From(key("id")))
@@ -201,14 +187,8 @@ async fn given_a_failing_prepare_called_with_a_capture_when_run_then_the_caller_
     let state = caller
         .start_state([(key("id"), Value::str("doc-404"))])
         .unwrap();
-    let state = ended(
-        {
-            let config = Config::new(caller.schema(), BTreeMap::new()).unwrap();
-            let (_sender, mut channel) = control();
-            run(&caller, &config, state, None, &ctx(), &mut channel).await
-        },
-        "done",
-    );
+    let config = Config::new(caller.schema(), BTreeMap::new()).unwrap();
+    let state = ended(run_in(&caller, state, &config, &ctx()).await, "done");
     assert_eq!(state.str(&key("summary")).unwrap(), "");
     assert!(
         state
@@ -243,7 +223,7 @@ fn given_a_prepare_node_that_refuses_the_schema_when_built_then_invalid_node() {
 fn given_a_tool_node_named_like_a_node_of_the_generator_critic_when_built_then_duplicate_node() {
     let client = || mock(Vec::new());
     for reserved in [
-        "prepare", "route", "generate", "publish", "critique", "finish",
+        "prepare", "route", "generate", "check", "critique", "finish",
     ] {
         let echo: Arc<dyn crate::react::tool::Tool> = Arc::new(EchoTool);
         let built = GeneratorCritic {

@@ -1,395 +1,188 @@
 use std::sync::Arc;
 
-use br_llm_clients_core::ReasoningLevel;
-
-use crate::error::GraphError;
-use crate::graph::{Always, Count, FnEdge, Graph, GraphBuilder, Node, Target};
-use crate::react::agent_build::{declare_count, declare_limit, round_limit_flag, tools_node_clash};
-use crate::react::critique::{CritiqueNode, EMPTY_ANSWER_CRITIQUE, REVIEW_REQUEST};
-use crate::react::declarations::Declarations;
-use crate::react::generator_critic_nodes::{FinishNode, Prepare, PublishNode, RouteNode};
-use crate::react::generator_critic_routing::Router;
-use crate::react::given::{Model, Prompt};
-use crate::react::llm_node::LlmNode;
-use crate::react::react_loop::ReactLoop;
-use crate::react::round_limit::OnLimit;
+use crate::graph::{Count, Node};
+use crate::react::given::Prompt;
+use crate::react::rule_check::RuleCheck;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
-use crate::react::verdict::VerdictForm;
-use crate::state::{Kind, Schema};
-use crate::value::{EndLabel, Key, NodeId};
+use crate::react::thread_store::ThreadStore;
+use crate::state::Kind;
+use crate::value::Key;
 
-/// A generator and a critic writing in one shared history, as a graph.
+/// A generator and a critic writing in one conversation, as a graph, to call
+/// with `SubGraph` or run on its own.
 ///
-/// The generator reads its system text, then `generator_history` from its own
-/// perspective: its turns (tool traffic and thinking included) as assistant
-/// messages, the critiques as framed messages. The critic reads its system
-/// text (always sent: a text that resolves to a blank one fails the node),
-/// then `conversation` before the answer it judges, rendered as the
-/// generator sees it with the generator's thinking removed (an answer left
-/// with nothing is left out), then one user message holding
-/// `<generator_response>\n{answer}\n</generator_response>`, a blank line
-/// and the review request (the request is left out when blank). That message
-/// stays separate from a user message before it.
+/// # Seats and keys
 ///
-/// Every text is a `Prompt`, given like a system (see `Given`): each state
-/// key its function declares is an input of its kind, each configuration key
-/// a configuration key of its kind. A key read by several functions, with
-/// one kind, is declared once.
+/// Each seat's model, system and history are given as values or functions of
+/// its context (see `Given`, `RequestContext`): the generator's adds the
+/// conversation, the round, the generation number and the budget; the
+/// critic's the conversation, the generation number, the budget, the answer
+/// it judges and the attempt number. A change of client never changes a
+/// seat's author; two seats with one author are refused (`SameAuthor`).
 ///
-/// - Inputs: `conversation` (the shared history the critic reads; a new call
-///   holds one user input), `generator_history` (the generator's working
-///   history; when empty at entry it starts as a copy of `conversation`),
-///   the state keys the texts' functions declare, the generator's `enabled`
-///   key when set, and each key of `inputs`, for the generator's tools to
-///   read through the state they receive. A key the functions declare,
-///   `enabled` or an `inputs` key that the graph already has is refused
-///   (`KeyCollision`).
-/// - Outputs: `answer` (string, the generator's last answer since the last
-///   user input: the JSON text of its structured block when it has one,
-///   else its text blocks joined verbatim; empty if none), `is_validated`,
-///   `nb_generations` (the generator answers in `conversation` since its
-///   last user input) and, when the generator's round limit has a flag, that
-///   flag (true when the limit was reached in at least one generation of this
-///   call). The histories are not outputs: a host that resumes a call gives
-///   back the histories it saved from the observer. The run ends with
-///   `validated` or `exhausted`.
-/// - Configuration: the keys the texts' functions declare, the keys the
-///   budget and the limits read.
+/// - Inputs: `opening` (conversation), what the caller adds before the
+///   generator answers, typically one user input; durable, user inputs
+///   ending with the trigger, the user input the call answers
+///   (`OpeningNotInputs` otherwise). Durable, `thread` (string), as for a
+///   `ReactAgent`. Each state key a function declares, of its kind; the
+///   generator's `enabled` key (list of strings) when set; each key of
+///   `inputs`, for the generator's tools and the functions to read.
+/// - Outputs, plain data: `answer` (string, the generator's last answer of
+///   this call as the critic sees it: the JSON text of its structured block
+///   when it has one, else its text blocks joined verbatim; empty when none,
+///   or when the round limit cut that generation), `is_validated` (bool),
+///   `nb_generations` (int, the generator's turns of this call, revisions
+///   included), the generator's round-limit flag when it has one (true when
+///   the limit was reached in at least one generation of this call) and,
+///   durable, `thread` (string). `conversation` is private: neither an input
+///   nor an output, never part of a checkpoint of the graph, so a run of it
+///   resumed from a checkpoint enters again through its entry.
+/// - Configuration: the keys of the budget, the revision limit and the
+///   verdict retries, the generator's tool concurrency and round limit, and
+///   each configuration key a function declares, of its kind.
 ///
-/// `generator_history` holds the generator's whole traffic (tool calls and
-/// results, answers) and the critiques; `conversation` holds the user input,
-/// the answers (final step only) and the critiques. A critique is a turn of
-/// the critic holding one text step, the verdict's `message`, appended to
-/// both; nothing is appended on validation, and nothing of the critic's
-/// reasoning enters a history.
+/// One key given twice with one kind is declared once (a key several
+/// functions read, a key a function reads that is also `enabled`, a key of
+/// `inputs` or the key of a count or a limit). A key given with another kind
+/// than the graph already has is refused (`KeyCollision`), and so is a key
+/// the graph keeps for itself: `opening`, `answer`, `is_validated`,
+/// `nb_generations`, `conversation`, its private keys `turn_rank` and
+/// `call_turns`, `thread` when durable and the round limit's flag. A
+/// generator round-limit flag that names `is_validated`, `opening`, `thread`
+/// or `conversation` is refused (`KeyCollision`) first.
 ///
-/// The critic answers a structured verdict, by default the shape `verdict`:
-/// `thinking` (only when the `ReasoningLevel` of the critic's client is
-/// `Off`), `is_valid` and `message`, in that order, all required (see
-/// `CriticSeat`). A missing structured block, a block that does not read as
-/// the default verdict (without a reader) or a rejection with a blank
-/// `message` (empty or whitespace only) fails the run with `Structured`; an
-/// error of a `VerdictReader` reaches the caller as the reader returned it.
-/// A conforming client refuses a reply without a structured block itself
+/// The graph's own nodes are `route`, `generate`, `check`, `critique`,
+/// `finish`, `prepare` when set and, without a split, `tools`: a tool node
+/// or a round-limit node of the generator of one of these ids collides with
+/// it (`DuplicateNode`). The run ends with `validated` when `is_validated`
+/// is true, else `exhausted`.
+///
+/// # What it records
+///
+/// The generator-critic has one conversation, `conversation`, which is its
+/// thread when durable (see `ThreadStore`): the opening, every generation
+/// with its tool traffic and thinking, and every message of the critic. The
+/// critic works in no thread and keeps no history of its own. A message of
+/// the critic is a new turn of the critic holding one text step, told apart
+/// by its stop reason: a critique (`end_turn`), a rejection by the critic or
+/// of an empty answer; a revision (`other(rule_check)`), asked by the rule
+/// check; an acceptance (`other(accepted)`), holding the verdict's message
+/// or `Accepted.` when it is blank. Nothing of the critic's reasoning, and
+/// nothing of a verdict retry, is recorded.
+///
+/// # Routing
+///
+/// With `prepare`, the graph enters through it, once, then `route`, which
+/// starts `conversation` from `opening` (from the thread when durable) and
+/// routes on the last turn of this call: in memory, the last turn of the
+/// generator or the critic since the trigger; durable, the turns the thread
+/// holds under the ids of this call. A generation goes to the check; a
+/// critique or a revision is routed as after it; an acceptance finishes
+/// `validated` without calling a model; nothing goes to the generator.
+///
+/// A generation is the ReAct loop of the generator on `conversation`; each
+/// opens a new generator turn, so the round limit counts per generation.
+/// The check judges each generation before the critic:
+/// - an empty answer (its final step holds no non-blank text and no
+///   structured block, or a generation the round limit cut with `End`) is
+///   rejected without the critic: where the critic would judge it, a
+///   critique holding `empty_answer_critique` is recorded and the run goes on
+///   as after a rejection; an empty answer that is not judged ends
+///   `exhausted` with nothing recorded;
+/// - otherwise the rule check, when set, passes it, asks for a revision, or
+///   fails the run with its error, as returned. A revision is recorded and
+///   the generator answers again; a generation has at most `revision_limit`
+///   revisions in a row, after which the answer goes on as if it had passed.
+///
+/// After the check, when the critiques have reached the budget the run
+/// finishes without the critic; otherwise the critic judges. A valid verdict
+/// records an acceptance and finishes `validated`. A rejection records a
+/// critique; the generator answers again while the critiques are below the
+/// budget, or once more, unassessed, when `final_generation` and the
+/// critiques equal the budget; otherwise the run finishes `exhausted` on the
+/// rejected answer. The budget counts critiques only, revisions not. The
+/// same rules route a turn found on entry, a revision included (the
+/// generator answers again, whatever the budget). A budget of 0 gives one
+/// generation, with its revisions, and no critic call.
+///
+/// # What each seat reads
+///
+/// The generator: its system text (none when blank), its history, by
+/// default `conversation` rendered for it (the opening, its earlier
+/// generations with their tool traffic and thinking, the critic's messages
+/// as framed user messages), its tools filtered by `enabled`, and its output
+/// mode. Its stream events carry the key `conversation`.
+///
+/// The critic: its system text, always sent (a text that resolves to a blank
+/// one fails the node with `Message`), what it reads (see `CriticHistory`),
+/// no tools, and the structured mode with the verdict shape. Its stream
+/// events carry the key `critic`.
+///
+/// # Verdict
+///
+/// The default shape, `verdict`, has `thinking` (string), `is_valid`
+/// (boolean) and `message` (string), in that order, all required; `thinking`
+/// is present exactly when the `ReasoningLevel` of the client the critic's
+/// model gives for that call is `Off`. Each description is the seat's, given
+/// at each critic call, or its default (see `CriticSeat`). An override sends
+/// the caller's shape (see `VerdictOverride`). A missing structured block, a
+/// block that does not read as the default verdict, or a rejection whose
+/// message is blank is an unreadable verdict: while `verdict_retries` are
+/// left, the critic is asked again, its request followed by a user message
+/// `Your reply could not be read as a verdict: {reason}. Reply again with
+/// the verdict.`, the attempt number of its context one higher; after the
+/// last retry the run fails with `Structured` and no critique is recorded.
+/// Retries are not recorded and do not count against the budget. A
+/// conforming client refuses a reply without a structured block itself
 /// (`MalformedResponse`): the critique then fails with `Model`.
-///
-/// With `prepare`, the graph enters through it, once, then the routing.
-/// The entry is routed on how `conversation` ends: a generator answer goes
-/// to the critic and a critique (a turn of the critic) is routed as a
-/// rejection (both are resumed calls); anything else, another author's turn
-/// or a turn without author included, goes to the generator. After an
-/// answer, more than `max_critiques` answers end `exhausted` without the
-/// critic; otherwise the critic judges it. A valid verdict ends `validated`;
-/// a rejection sends the generator back, until `max_critiques` answers were
-/// rejected: then the generator answers once more, unassessed, when
-/// `final_generation`, else the run ends `exhausted` on the rejected answer.
-/// More answers than that (a resumed call whose budget is now smaller) end
-/// `exhausted` too; the same rule routes a critique found on entry.
-/// A `max_critiques` of 0 gives one generation and no critic call: the run
-/// ends `exhausted`, whatever `final_generation`.
-///
-/// An empty answer (its final step holds no non-blank text and no structured
-/// block) is rejected without calling the critic: where the critic would
-/// judge it, a critique of the critic holding `empty_answer_critique` is
-/// appended to both histories, and the run goes on as after a rejection. The
-/// empty answer counts as a generation. A conforming client refuses a reply
-/// that holds nothing but thinking (`ReplyUnusable`): the generation then
-/// fails with `Model`.
-///
-/// With tools, the generation is the ReAct loop of `ReactAgent` inline in
-/// this graph; each generation opens a new generator turn, so the round limit
-/// counts per generation. A generation cut by `OnLimit::End` (its final step
-/// is the closing step the limit node writes: the stop reason
-/// `other(tool_round_limit)`, no model, no usage; a provider's reply keeping
-/// that stop reason carries a model and is an answer) is an empty answer: rejected without the
-/// critic where the critic would judge it, left out of what the critic reads
-/// in later rounds (the user messages around it merged), and, as the last
-/// generation, an empty `answer`. The limit's flag output is true when the
-/// round limit was reached in at least one generation of this call.
 pub struct GeneratorCritic {
     pub generator: GeneratorSeat,
     pub critic: CriticSeat,
+    /// The critique budget.
     pub max_critiques: Count,
+    /// Whether the generator answers once more, unassessed, after the last
+    /// critique the budget allows. Default: true.
     pub final_generation: bool,
+    /// The revisions in a row a generation may have. Default: 2.
+    pub revision_limit: Count,
+    /// The times an unreadable verdict is asked again. Default: 0.
+    pub verdict_retries: Count,
     /// Extra state keys the caller maps per run, read by the generator's
-    /// tools.
+    /// tools and the functions.
     pub inputs: Vec<(Key, Kind)>,
+    /// A judgment of each generation made by code, before the critic.
+    pub rule_check: Option<RuleCheck>,
     /// The critique that rejects an empty answer, written without calling
-    /// the critic. `None`, or a text that resolves blank: `The
-    /// answer was empty. Write a complete answer.`
-    pub empty_answer_critique: Option<Prompt<CriticSeat>>,
+    /// the critic. `None`, or a text that resolves blank: `The answer was
+    /// empty. Write a complete answer.`
+    pub empty_answer_critique: Option<Prompt<GeneratorCritic>>,
     /// A node run once, as the graph's entry, before the routing: it may do
     /// I/O (it holds its capabilities as fields) and writes through ordinary
-    /// updates, typically the opening message into `conversation`. It is
-    /// checked through `Node::check` like any node; its failure fails the
-    /// graph. A resumed caller restarts the whole call, `prepare` included.
+    /// updates, typically into `opening`. It is checked through
+    /// `Node::check` like any node; its failure fails the graph. A run
+    /// resumed from a checkpoint enters through it again.
     pub prepare: Option<Box<dyn Node>>,
-}
-
-/// The names of the graph's keys and nodes.
-struct Names {
-    conversation: Key,
-    generator_history: Key,
-    answer: Key,
-    validated: Key,
-    generations: Key,
-    prepare: NodeId,
-    route: NodeId,
-    generate: NodeId,
-    publish: NodeId,
-    critique: NodeId,
-    finish: NodeId,
-}
-
-impl Names {
-    fn new() -> Result<Self, GraphError> {
-        Ok(Self {
-            conversation: Key::new("conversation")?,
-            generator_history: Key::new("generator_history")?,
-            answer: Key::new("answer")?,
-            validated: Key::new("is_validated")?,
-            generations: Key::new("nb_generations")?,
-            prepare: NodeId::new("prepare")?,
-            route: NodeId::new("route")?,
-            generate: NodeId::new("generate")?,
-            publish: NodeId::new("publish")?,
-            critique: NodeId::new("critique")?,
-            finish: NodeId::new("finish")?,
-        })
-    }
+    /// The store of the generator-critic's threads. `None`: it works in
+    /// memory.
+    pub thread_store: Option<Arc<dyn ThreadStore>>,
 }
 
 impl GeneratorCritic {
+    /// A generator-critic of `generator` and `critic` with the critique
+    /// budget `max_critiques`, in memory, with the defaults.
     pub fn new(generator: GeneratorSeat, critic: CriticSeat, max_critiques: Count) -> Self {
         Self {
             generator,
             critic,
             max_critiques,
             final_generation: true,
+            revision_limit: Count::Fixed(2),
+            verdict_retries: Count::Fixed(0),
             inputs: Vec::new(),
+            rule_check: None,
             empty_answer_critique: None,
             prepare: None,
+            thread_store: None,
         }
-    }
-
-    pub fn graph(self) -> Result<Arc<Graph>, GraphError> {
-        if self.generator.author == self.critic.author {
-            return Err(GraphError::SameAuthor {
-                author: self.generator.author,
-            });
-        }
-        let names = Names::new()?;
-        let generator = self.generator;
-        let critic = self.critic;
-
-        let mut schema = Schema::builder()
-            .state_by_name(names.conversation.clone(), Kind::Conversation)
-            .state_by_name(names.generator_history.clone(), Kind::Conversation)
-            .state_by_name(names.answer.clone(), Kind::Str)
-            .state_by_name(names.validated.clone(), Kind::Bool)
-            .state_by_name(names.generations.clone(), Kind::Int);
-        schema = declare_count(schema, &self.max_critiques);
-        schema = declare_limit(schema, generator.tool_concurrency.as_ref());
-        if let Some(round_limit) = &generator.round_limit {
-            schema = declare_limit(schema, Some(&round_limit.max_rounds));
-        }
-        let mut schema = schema.build();
-        let flag = generator.round_limit.as_ref().and_then(round_limit_flag);
-        let limit_ends = matches!(
-            generator.round_limit.as_ref().map(|limit| &limit.on_limit),
-            Some(OnLimit::End { .. })
-        );
-        if let Some(flag) = &flag {
-            if schema.state.get(flag) == Some(&Kind::Bool) {
-                return Err(GraphError::KeyCollision { key: flag.clone() });
-            }
-            schema.state.entry(flag.clone()).or_insert(Kind::Bool);
-        }
-        let review_request = critic
-            .review_request
-            .unwrap_or_else(|| Prompt::text(REVIEW_REQUEST));
-        let empty_answer_critique = self
-            .empty_answer_critique
-            .unwrap_or_else(|| Prompt::text(EMPTY_ANSWER_CRITIQUE));
-        let verdict = match critic.verdict {
-            Some(custom) => VerdictForm::Override(custom),
-            None => VerdictForm::default_form(
-                critic.client.settings().reasoning() == ReasoningLevel::Off,
-                critic.thinking_description,
-                critic.is_valid_description,
-                critic.message_description,
-            ),
-        };
-        verdict.check()?;
-        let mut reads = vec![
-            generator.system.reads(),
-            critic.system.reads(),
-            review_request.reads(),
-            empty_answer_critique.reads(),
-        ];
-        reads.extend(verdict.reads());
-        let reserved = [
-            &names.conversation,
-            &names.generator_history,
-            &names.answer,
-            &names.validated,
-            &names.generations,
-        ]
-        .into_iter()
-        .chain(flag.as_ref())
-        .cloned()
-        .collect();
-        let mut declarations = Declarations::new(schema, reserved);
-        for reads in reads {
-            declarations.reads(reads)?;
-        }
-        if let Some(key) = &generator.enabled {
-            declarations.input(key, Kind::list(Kind::Str))?;
-        }
-        for (key, kind) in &self.inputs {
-            declarations.input(key, kind.clone())?;
-        }
-        let (schema, inputs) = declarations.finish();
-        self.max_critiques.check(&schema)?;
-
-        let router = Router {
-            conversation: names.conversation.clone(),
-            validated: names.validated.clone(),
-            generator: generator.author.clone(),
-            critic: critic.author.clone(),
-            max_critiques: self.max_critiques,
-            final_generation: self.final_generation,
-            generate: names.generate.clone(),
-            critique: names.critique.clone(),
-            finish: names.finish.clone(),
-        };
-
-        let mut builder = GraphBuilder::new(schema)
-            .entry(match &self.prepare {
-                Some(_) => names.prepare.clone(),
-                None => names.route.clone(),
-            })
-            .input(names.conversation.clone())
-            .input(names.generator_history.clone())
-            .output(names.answer.clone())
-            .output(names.validated.clone())
-            .output(names.generations.clone());
-        if let Some(flag) = flag {
-            builder = builder.output(flag);
-        }
-        for key in inputs {
-            builder = builder.input(key);
-        }
-
-        let tools_node = NodeId::new("tools")?;
-        let clash = tools_node_clash(
-            &generator.tool_nodes,
-            generator.round_limit.as_ref(),
-            &tools_node,
-        );
-        let tool_nodes = if generator.tool_nodes.is_empty() && !generator.tools.is_empty() {
-            vec![(tools_node, generator.tools.clone())]
-        } else {
-            generator.tool_nodes
-        };
-        let react = ReactLoop {
-            llm: names.generate.clone(),
-            tool_nodes,
-            after: Target::Node(names.publish.clone()),
-            tool_concurrency: generator.tool_concurrency,
-            round_limit: generator.round_limit,
-            thread: None,
-        };
-        let llm = LlmNode {
-            key: names.generator_history.clone(),
-            author: generator.author.clone(),
-            model: Model::client(generator.client),
-            system: generator.system,
-            history: None,
-            tools: generator.tools,
-            enabled: generator.enabled,
-            output_mode: generator.output_mode,
-            call: None,
-        };
-        let mut builder = react.add(builder, llm)?;
-        if let Some(clash) = clash {
-            return Err(clash);
-        }
-
-        if let Some(prepare) = self.prepare {
-            builder = builder.node(names.prepare.clone(), Prepare(prepare)).edge(
-                names.prepare.clone(),
-                Always(Target::Node(names.route.clone())),
-            );
-        }
-        let (entry, published, judged) = (router.clone(), router.clone(), router);
-        let validated = names.validated.clone();
-        let graph = builder
-            .node(
-                names.route.clone(),
-                RouteNode {
-                    conversation: names.conversation.clone(),
-                    generator_history: names.generator_history.clone(),
-                },
-            )
-            .edge(
-                names.route.clone(),
-                FnEdge::new(move |state, config| entry.entry(state, config)),
-            )
-            .node(
-                names.publish.clone(),
-                PublishNode {
-                    conversation: names.conversation.clone(),
-                    generator_history: names.generator_history.clone(),
-                    author: generator.author.clone(),
-                },
-            )
-            .edge(
-                names.publish.clone(),
-                FnEdge::new(move |state, config| published.after_answer(state, config)),
-            )
-            .node(
-                names.critique.clone(),
-                CritiqueNode {
-                    conversation: names.conversation.clone(),
-                    generator: generator.author.clone(),
-                    generator_history: names.generator_history.clone(),
-                    validated: names.validated.clone(),
-                    author: critic.author.clone(),
-                    client: critic.client,
-                    system: critic.system,
-                    review_request,
-                    empty_answer_critique,
-                    verdict,
-                    limit_ends,
-                },
-            )
-            .edge(
-                names.critique.clone(),
-                FnEdge::new(move |state, config| judged.after_critique(state, config)),
-            )
-            .node(
-                names.finish.clone(),
-                FinishNode {
-                    conversation: names.conversation,
-                    answer: names.answer,
-                    generations: names.generations,
-                    generator: generator.author,
-                    limit_ends,
-                },
-            )
-            .edge(
-                names.finish,
-                FnEdge::new(move |state, _config| {
-                    let label = if state.bool(&validated)? {
-                        "validated"
-                    } else {
-                        "exhausted"
-                    };
-                    Ok(vec![Target::End(EndLabel::new(label)?)])
-                }),
-            )
-            .build()?;
-        Ok(Arc::new(graph))
     }
 }

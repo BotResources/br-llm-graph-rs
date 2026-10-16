@@ -1,5 +1,5 @@
 //! What the generator-critic tests share: the two seats on mock clients, the
-//! calls, and a compact view of the histories.
+//! calls, and a compact view of the conversation.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -17,13 +17,13 @@ use crate::error::{GraphError, NodeFault};
 use crate::graph::{Context, Count, Graph, Limit};
 use crate::observe::NoopObserver;
 use crate::react::generator_critic::GeneratorCritic;
-use crate::react::given::Prompt;
+use crate::react::given::{Model, Prompt};
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, State, Value};
-use crate::testkit::SeqIds;
+use crate::testkit::{SeqIds, Transcript};
 use crate::value::{Key, NodeId};
 
 pub(crate) fn nid(name: &str) -> NodeId {
@@ -66,8 +66,9 @@ pub(crate) fn verdict(is_valid: bool, message: &str) -> Step {
 pub(crate) fn generator(client: &MockClient) -> GeneratorSeat {
     GeneratorSeat {
         author: writer(),
-        client: Arc::new(client.clone()),
+        model: Model::client(Arc::new(client.clone())),
         system: Prompt::text("Answer the question."),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: Vec::new(),
         tool_nodes: Vec::new(),
@@ -81,7 +82,7 @@ pub(crate) fn generator(client: &MockClient) -> GeneratorSeat {
 pub(crate) fn critic(client: &MockClient) -> CriticSeat {
     CriticSeat::new(
         reviewer(),
-        Arc::new(client.clone()),
+        Model::client(Arc::new(client.clone())),
         Prompt::text("Judge the answer."),
     )
 }
@@ -124,80 +125,108 @@ pub(crate) fn ctx() -> Context {
     Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
+/// What a call of the generator-critic gave: its result, and its private
+/// conversation as the observer saw it built.
+pub(crate) struct Ran {
+    pub(crate) result: Result<Outcome, RunFailure>,
+    transcript: Arc<Transcript>,
+}
+
+impl Ran {
+    /// The conversation as the run left it (empty when it built none).
+    pub(crate) fn transcript(&self) -> Conversation {
+        self.transcript.conversation().unwrap_or_default()
+    }
+}
+
+/// A finished call: its final state and its conversation.
+pub(crate) struct Done {
+    pub(crate) state: State,
+    conversation: Conversation,
+}
+
+impl Done {
+    /// The generator-critic's conversation as the run left it.
+    pub(crate) fn transcript(&self) -> &Conversation {
+        &self.conversation
+    }
+}
+
+impl std::ops::Deref for Done {
+    type Target = State;
+
+    fn deref(&self) -> &State {
+        &self.state
+    }
+}
+
+/// Runs `graph` on `state` with `config` in `ctx`, keeping its conversation.
+pub(crate) async fn run_in(graph: &Graph, state: State, config: &Config, ctx: &Context) -> Ran {
+    let transcript = Arc::new(Transcript::new(ctx.observer.clone()));
+    let mut ctx = ctx.clone();
+    ctx.observer = transcript.clone();
+    let (_sender, mut channel) = control();
+    let result = run(graph, config, state, None, &ctx, &mut channel).await;
+    Ran { result, transcript }
+}
+
+/// A call on `opening` with the extra inputs `extra` and the configuration
+/// `config`.
 pub(crate) async fn call_with(
     graph: &Graph,
-    conversation: Conversation,
-    generator_history: Conversation,
+    opening: Conversation,
+    extra: Vec<(Key, Value)>,
     config: BTreeMap<Key, Value>,
-) -> Result<Outcome, RunFailure> {
-    let state = graph
-        .start_state([
-            (key("conversation"), Value::conversation(conversation)),
-            (
-                key("generator_history"),
-                Value::conversation(generator_history),
-            ),
-        ])
-        .unwrap();
+) -> Ran {
+    let mut inputs = vec![(key("opening"), Value::conversation(opening))];
+    inputs.extend(extra);
+    let state = graph.start_state(inputs).unwrap();
     let config = Config::new(graph.schema(), config).unwrap();
-    let (_sender, mut channel) = control();
-    run(graph, &config, state, None, &ctx(), &mut channel).await
+    run_in(graph, state, &config, &ctx()).await
 }
 
 /// A new call on `question("explain")` with the given extra inputs.
-pub(crate) async fn start(graph: &Graph, extra: Vec<(Key, Value)>) -> Result<Outcome, RunFailure> {
-    let mut inputs = vec![
-        (
-            key("conversation"),
-            Value::conversation(question("explain")),
-        ),
-        (
-            key("generator_history"),
-            Value::conversation(Conversation::new()),
-        ),
-    ];
-    inputs.extend(extra);
-    let state = graph.start_state(inputs).unwrap();
-    let config = Config::new(graph.schema(), BTreeMap::new()).unwrap();
-    let (_sender, mut channel) = control();
-    run(graph, &config, state, None, &ctx(), &mut channel).await
+pub(crate) async fn start(graph: &Graph, extra: Vec<(Key, Value)>) -> Ran {
+    call_with(graph, question("explain"), extra, BTreeMap::new()).await
 }
 
-pub(crate) async fn call(graph: &Graph, conversation: Conversation) -> Result<Outcome, RunFailure> {
-    call_with(graph, conversation, Conversation::new(), BTreeMap::new()).await
+pub(crate) async fn call(graph: &Graph, opening: Conversation) -> Ran {
+    call_with(graph, opening, Vec::new(), BTreeMap::new()).await
 }
 
-pub(crate) fn ended(result: Result<Outcome, RunFailure>, label: &str) -> State {
-    match result.map_err(|f| f.error).unwrap() {
+pub(crate) fn ended(ran: Ran, label: &str) -> Done {
+    let conversation = ran.transcript();
+    match ran.result.map_err(|f| f.error).unwrap() {
         Outcome::Finished { state, end } => {
             assert_eq!(end.as_str(), label);
-            state
+            Done {
+                state,
+                conversation,
+            }
         }
         Outcome::Paused { .. } | Outcome::Cancelled { .. } => panic!("expected finished"),
     }
 }
 
-/// The checkpoint state of a run that failed in `node` with an error that
-/// node returned, and that error.
-pub(crate) fn failed_in(result: Result<Outcome, RunFailure>, node: &str) -> (State, GraphError) {
-    let failure = result.err().unwrap();
+/// The conversation of a run that failed in `node` with an error that node
+/// returned, and that error.
+pub(crate) fn failed_in(ran: Ran, node: &str) -> (Conversation, GraphError) {
+    let conversation = ran.transcript();
+    let failure = ran.result.err().unwrap();
     match failure.error {
         GraphError::NodeFailed {
             node: failed,
             source: NodeFault::Returned(error),
         } => {
             assert_eq!(failed, nid(node));
-            (
-                failure.checkpoint.state,
-                *error.downcast::<GraphError>().unwrap(),
-            )
+            (conversation, *error.downcast::<GraphError>().unwrap())
         }
         other => panic!("expected node {node} to fail, got: {other}"),
     }
 }
 
 /// Each entry as `user`, or `author:text` with the text of the turn's final
-/// step, or `author:[n items]` for a turn of several items.
+/// step, or `author:[n items] text` for a turn of several items.
 pub(crate) fn shape(conversation: &Conversation) -> Vec<String> {
     conversation
         .entries()
@@ -205,7 +234,12 @@ pub(crate) fn shape(conversation: &Conversation) -> Vec<String> {
         .map(|entry| match entry {
             Entry::UserInput(_) => "user".to_owned(),
             Entry::Turn(turn) if turn.items().len() > 1 => {
-                format!("{}:[{} items]", turn.author().unwrap(), turn.items().len())
+                format!(
+                    "{}:[{} items] {}",
+                    turn.author().unwrap(),
+                    turn.items().len(),
+                    turn_text(turn)
+                )
             }
             Entry::Turn(turn) => format!("{}:{}", turn.author().unwrap(), turn_text(turn)),
         })
@@ -217,10 +251,6 @@ fn turn_text(turn: &Turn) -> String {
         Some(TurnItem::Step(step)) => step.text().map(Text::as_str).collect::<Vec<_>>().join(" "),
         Some(TurnItem::ToolResults(_)) | None => String::new(),
     }
-}
-
-pub(crate) fn shape_of(state: &State, name: &str) -> Vec<String> {
-    shape(state.conversation(&key(name)).unwrap())
 }
 
 pub(crate) fn user_message(text: &str) -> WireMessage {

@@ -192,6 +192,7 @@ impl ReactAgent {
                 }),
                 _ => None,
             },
+            turns: None,
         };
         let tools_node = NodeId::new("tools")?;
         let clash = tools_node_clash(&self.tool_nodes, self.round_limit.as_ref(), &tools_node);
@@ -218,6 +219,7 @@ impl ReactAgent {
             enabled: self.enabled,
             output_mode: self.output_mode,
             call: Some(call.clone()),
+            seat: None,
         };
 
         let mut builder = keys

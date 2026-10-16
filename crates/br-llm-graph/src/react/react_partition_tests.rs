@@ -38,6 +38,7 @@ fn llm_node(
         enabled: None,
         output_mode: OutputMode::Plain,
         call: None,
+        seat: None,
     }
 }
 

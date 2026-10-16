@@ -4,8 +4,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use br_llm_messages::Conversation;
-
 use crate::graph::{
     Always, Graph, GraphBuilder, Input, ItemFailure, Map, Output, SubGraph, Target,
 };
@@ -29,12 +27,7 @@ fn caller_schema() -> Schema {
 }
 
 fn duo_call(graph: Arc<Graph>, conversation: &str) -> SubGraph {
-    SubGraph::call(graph)
-        .input(key("conversation"), Input::From(key(conversation)))
-        .input(
-            key("generator_history"),
-            Input::Const(Value::conversation(Conversation::new())),
-        )
+    SubGraph::call(graph).input(key("opening"), Input::From(key(conversation)))
 }
 
 async fn run_caller(graph: &Graph, state: State) -> State {

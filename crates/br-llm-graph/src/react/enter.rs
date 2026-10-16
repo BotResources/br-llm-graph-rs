@@ -46,7 +46,7 @@ impl Node for EnterNode {
             let inputs = opening_inputs(opening)?;
             let given = state.str(&binding.key)?;
             let entered = enter_thread(ctx, binding, given, &inputs).await?;
-            let position = match entered.last {
+            let position = match entered.last() {
                 None => Position::Writing(1),
                 Some((rank, MessageStatus::Completed)) => Position::Answered(rank),
                 Some((rank, _)) => Position::Writing(rank + 1),

@@ -1,12 +1,12 @@
-//! A generator and a critic writing in one shared history, built as a graph
-//! and called with `SubGraph`. The caller passes an empty conversation and a
+//! A generator and a critic writing in one conversation, built as a graph
+//! and called with `SubGraph`. The caller passes an empty opening and a
 //! question id; the `prepare` node reads the question from a question bank
-//! and opens the conversation. The critic rejects the first answer, the
+//! and writes it into the opening. The critic rejects the first answer, the
 //! generator revises it, the critic validates the revision. The generator's
 //! system text is computed from the state, the critic's review request is
 //! read from the configuration. The critic's client does not reason natively
 //! (`ReasoningLevel::Off`), so its verdict carries its reasoning in
-//! `thinking`, which never enters a history. The caller reads plain data: the
+//! `thinking`, which is never recorded. The caller reads plain data: the
 //! answer's text, whether it was validated and how many answers were written.
 
 #[allow(dead_code)]
@@ -18,8 +18,8 @@ use std::sync::Arc;
 use br_llm_clients_core::{OutputMode, ReasoningLevel};
 use br_llm_graph::{
     Always, Config, Context, Count, CriticSeat, EndLabel, GeneratorCritic, GeneratorSeat,
-    GraphBuilder, Input, Kind, Node, NodeFuture, NodeId, Outcome, Output, Prompt, Reads, Schema,
-    State, StateKey, SubGraph, Target, Update, Value, control, run,
+    GraphBuilder, Input, Kind, Model, Node, NodeFuture, NodeId, Outcome, Output, Prompt, Reads,
+    Schema, State, StateKey, SubGraph, Target, Update, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation};
 use serde_json::json;
@@ -31,7 +31,7 @@ use common::{
 /// A question bank standing for a service the `prepare` node calls.
 struct QuestionBank(BTreeMap<&'static str, &'static str>);
 
-/// Opens the conversation with the question `question_id` names.
+/// Writes the question `question_id` names into the opening.
 struct OpenQuestion {
     bank: Arc<QuestionBank>,
 }
@@ -51,7 +51,7 @@ impl Node for OpenQuestion {
                 .get(id)
                 .ok_or_else(|| format!("no question {id}"))?;
             Ok(vec![Update::Input {
-                key: key("conversation"),
+                key: key("opening"),
                 input: user(question),
             }])
         })
@@ -72,12 +72,13 @@ async fn main() {
                 ctx.get(&question_id)?
             ))
         }),
-        client: scripted(vec![
+        model: Model::client(scripted(vec![
             text_step("Supersteps run nodes in rounds."),
             text_step(
                 "Supersteps run the active nodes in parallel rounds, then apply every update at once.",
             ),
-        ]),
+        ])),
+        history: None,
         output_mode: OutputMode::Plain,
         tools: Vec::new(),
         tool_nodes: Vec::new(),
@@ -89,7 +90,7 @@ async fn main() {
         review_request: Some(config_text("review_request")),
         ..CriticSeat::new(
             Author::new("reviewer", "reviewer").expect("author"),
-            Arc::new(scripted_at(
+            Model::client(Arc::new(scripted_at(
                 ReasoningLevel::Off,
                 vec![
                     structured_step(json!({
@@ -103,7 +104,7 @@ async fn main() {
                         "message": ""
                     })),
                 ],
-            )),
+            ))),
             Prompt::text("Reject an answer that leaves out a key fact."),
         )
     };
@@ -131,11 +132,7 @@ async fn main() {
         .build();
     let call = SubGraph::call(duo)
         .input(
-            key("conversation"),
-            Input::Const(Value::conversation(Conversation::new())),
-        )
-        .input(
-            key("generator_history"),
+            key("opening"),
             Input::Const(Value::conversation(Conversation::new())),
         )
         .input(key("question_id"), Input::From(key("question")))

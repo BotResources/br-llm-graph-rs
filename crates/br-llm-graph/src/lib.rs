@@ -46,12 +46,12 @@ pub use graph::{
 pub use observe::{NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
-    AgentNode, Budgeted, CriticSeat, GeneratorCritic, GeneratorSeat, Given, History, Hook,
-    HookError, HookFuture, Judgment, LlmCall, LlmOutput, LlmRequest, MessageStatus, Model,
-    ModelNode, OnLimit, Prompt, ReactAgent, Reads, RequestContext, RoundLimit, Scheduled,
-    ThreadError, ThreadFuture, ThreadMessage, ThreadStore, ThreadView, Tool, ToolError, ToolFuture,
-    ToolOutput, TurnEnd, Verdict, VerdictOverride, VerdictReader, complete, pending_calls,
-    structured, wire,
+    AgentNode, Budgeted, CriticHistory, CriticSeat, GeneratorCritic, GeneratorCriticNode,
+    GeneratorSeat, Given, History, Hook, HookError, HookFuture, Judgment, LlmCall, LlmOutput,
+    LlmRequest, LoopNode, MessageStatus, Model, ModelNode, OnLimit, Prompt, ReactAgent, Reads,
+    RequestContext, RoundLimit, RuleCheck, Ruling, Scheduled, ThreadError, ThreadFuture,
+    ThreadMessage, ThreadStore, ThreadView, Tool, ToolError, ToolFuture, ToolOutput, TurnEnd,
+    Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
 };
 pub use run::{
     Checkpoint, Control, ControlSender, Cursor, Outcome, PendingEntry, PendingWrites, RunFailure,

@@ -4,17 +4,16 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use br_llm_messages::{Conversation, MessageError, Step, WireMessage};
+use br_llm_messages::{MessageError, Step, WireMessage};
 
 use crate::error::GraphError;
 use crate::graph::{Count, Graph};
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
-use crate::react::given::{Prompt, Reads};
+use crate::react::given::{Model, Prompt, Reads};
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 use crate::react::test_support::*;
-use crate::run::{Outcome, RunFailure, control, run};
-use crate::state::{Config, ConfigKey, Kind, StateKey, Value};
+use crate::state::{ConfigKey, Kind, StateKey, Value};
 use crate::value::Key;
 
 /// A new call on `question("explain")` with the given extra inputs and
@@ -23,22 +22,8 @@ pub(crate) async fn run_with(
     graph: &Graph,
     extra: Vec<(Key, Value)>,
     config: BTreeMap<Key, Value>,
-) -> Result<Outcome, RunFailure> {
-    let mut inputs = vec![
-        (
-            key("conversation"),
-            Value::conversation(question("explain")),
-        ),
-        (
-            key("generator_history"),
-            Value::conversation(Conversation::new()),
-        ),
-    ];
-    inputs.extend(extra);
-    let state = graph.start_state(inputs).unwrap();
-    let config = Config::new(graph.schema(), config).unwrap();
-    let (_sender, mut channel) = control();
-    run(graph, &config, state, None, &ctx(), &mut channel).await
+) -> Ran {
+    call_with(graph, question("explain"), extra, config).await
 }
 
 pub(crate) fn wrapped(answer: &str, request: &str) -> WireMessage {
@@ -58,7 +43,7 @@ pub(crate) fn opening() -> WireMessage {
 /// thinking, which a conforming client refuses, reaches the graph.
 pub(crate) fn lax_generator(steps: Vec<Step>) -> GeneratorSeat {
     GeneratorSeat {
-        client: Arc::new(LaxClient::new(steps)),
+        model: Model::client(Arc::new(LaxClient::new(steps))),
         ..generator(&mock(Vec::new()))
     }
 }
@@ -114,7 +99,7 @@ async fn given_texts_of_every_kind_when_run_then_each_is_given_at_the_call() {
                 review_request: Some(Prompt::from_state(&skey("ask"))),
                 ..CriticSeat::new(
                     reviewer(),
-                    Arc::new(critic_client.clone()),
+                    Model::client(Arc::new(critic_client.clone())),
                     Prompt::from_config(&ckey("tone")),
                 )
             },
@@ -162,7 +147,7 @@ fn given_one_state_key_read_by_both_seats_when_built_then_one_string_input() {
         },
         CriticSeat::new(
             reviewer(),
-            Arc::new(mock(Vec::new())),
+            Model::client(Arc::new(mock(Vec::new()))),
             Prompt::from_state(&skey("brief")),
         ),
         Count::Fixed(1),
@@ -181,7 +166,7 @@ fn given_a_text_key_that_is_already_a_key_of_the_graph_when_built_then_key_colli
         generator(&mock(Vec::new())),
         CriticSeat::new(
             reviewer(),
-            Arc::new(mock(Vec::new())),
+            Model::client(Arc::new(mock(Vec::new()))),
             Prompt::from_state(&skey("conversation")),
         ),
         Count::Fixed(1),
@@ -196,7 +181,7 @@ fn given_a_text_key_that_is_already_a_key_of_the_graph_when_built_then_key_colli
         generator(&mock(Vec::new())),
         CriticSeat::new(
             reviewer(),
-            Arc::new(mock(Vec::new())),
+            Model::client(Arc::new(mock(Vec::new()))),
             Prompt::from_config(&ckey("rounds")),
         ),
         Count::Config(key("rounds")),
@@ -217,7 +202,7 @@ async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_t
             generator(&mock(vec![text_step("draft")])),
             CriticSeat::new(
                 reviewer(),
-                Arc::new(critic_client.clone()),
+                Model::client(Arc::new(critic_client.clone())),
                 Prompt::text(system),
             ),
             Count::Fixed(1),
@@ -225,7 +210,7 @@ async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_t
         .graph()
         .unwrap();
 
-        let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+        let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
 
         assert!(
             matches!(
@@ -239,7 +224,7 @@ async fn given_a_critic_system_text_that_resolves_blank_when_the_critic_judges_t
             0,
             "{system:?}: the critic is not called"
         );
-        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+        assert_eq!(shape(&conversation), ["user", "writer:draft"]);
     }
 }
 
@@ -255,7 +240,7 @@ async fn given_one_configuration_key_for_both_seats_when_run_then_it_is_declared
             },
             CriticSeat::new(
                 reviewer(),
-                Arc::new(critic_client.clone()),
+                Model::client(Arc::new(critic_client.clone())),
                 Prompt::from_config(&ckey("brief")),
             ),
             Count::Fixed(1),

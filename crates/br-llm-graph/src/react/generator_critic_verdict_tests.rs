@@ -9,17 +9,17 @@ use br_llm_clients_core::{
     ClientError, ClientRequest, OutputMode, ParameterKind, ReasoningLevel, StructuredShape,
 };
 use br_llm_clients_mock::MockClient;
-use br_llm_messages::{Conversation, Step};
+use br_llm_messages::Step;
 use serde_json::json;
 
 use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
-use crate::react::given::Prompt;
+use crate::react::given::{Model, Prompt};
 use crate::react::seats::CriticSeat;
 use crate::react::test_support::*;
-use crate::state::{Config, Kind, State, Value};
+use crate::state::{Kind, Value};
 use crate::value::Key;
 
 /// A critic client at `reasoning` whose script is `replies`.
@@ -39,7 +39,7 @@ pub(crate) async fn judged_with(
     critic_client: &MockClient,
     extra: Vec<(Key, Value)>,
     config: BTreeMap<Key, Value>,
-) -> (ClientRequest, State) {
+) -> (ClientRequest, Done) {
     let graph = GeneratorCritic::new(
         generator(&mock(vec![text_step("draft")])),
         critic,
@@ -47,22 +47,8 @@ pub(crate) async fn judged_with(
     )
     .graph()
     .unwrap();
-    let mut inputs = vec![
-        (
-            key("conversation"),
-            Value::conversation(question("explain")),
-        ),
-        (
-            key("generator_history"),
-            Value::conversation(Conversation::new()),
-        ),
-    ];
-    inputs.extend(extra);
-    let state = graph.start_state(inputs).unwrap();
-    let config = Config::new(graph.schema(), config).unwrap();
-    let (_sender, mut channel) = crate::run::control();
     let state = ended(
-        crate::run::run(&graph, &config, state, None, &ctx(), &mut channel).await,
+        call_with(&graph, question("explain"), extra, config).await,
         "validated",
     );
     (requests(critic_client).remove(0), state)
@@ -143,8 +129,11 @@ async fn given_a_critic_that_reasons_natively_when_it_judges_then_the_verdict_sh
 }
 
 #[test]
-fn given_a_thinking_description_on_a_state_key_when_built_then_it_is_an_input_only_for_a_critic_that_does_not_reason()
+fn given_a_thinking_description_on_a_state_key_when_built_then_it_is_an_input_whatever_the_critic_reasons()
  {
+    // Whether a call asks for `thinking` is known only at the call, from the
+    // client the critic's model gives then: the description's key is an
+    // input in any case.
     let built = |level: ReasoningLevel| {
         GeneratorCritic::new(
             generator(&mock(Vec::new())),
@@ -157,21 +146,13 @@ fn given_a_thinking_description_on_a_state_key_when_built_then_it_is_an_input_on
         .graph()
         .unwrap()
     };
-    assert_eq!(
-        built(ReasoningLevel::Off)
-            .signature()
-            .inputs
-            .get(&key("reasoning_rule")),
-        Some(&Kind::Str)
-    );
-    assert_eq!(
-        built(ReasoningLevel::High)
-            .signature()
-            .inputs
-            .get(&key("reasoning_rule")),
-        None,
-        "a description not in use is not declared"
-    );
+    for level in [ReasoningLevel::Off, ReasoningLevel::High] {
+        assert_eq!(
+            built(level).signature().inputs.get(&key("reasoning_rule")),
+            Some(&Kind::Str),
+            "{level:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -217,13 +198,9 @@ async fn given_a_block_that_does_not_read_as_the_default_verdict_when_the_critic
         let generator_client = mock(vec![text_step("draft")]);
         let critic_client = mock(vec![malformed]);
         let graph = duo(&generator_client, &critic_client).graph().unwrap();
-        let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+        let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
         assert!(matches!(error, GraphError::Structured { .. }), "{error}");
-        assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
-        assert_eq!(
-            shape_of(&state, "generator_history"),
-            ["user", "writer:draft"]
-        );
+        assert_eq!(shape(&conversation), ["user", "writer:draft"]);
     }
 }
 
@@ -236,20 +213,20 @@ async fn given_a_critic_step_without_a_structured_block_when_the_critic_judges_t
     let graph = GeneratorCritic::new(
         generator(&mock(vec![text_step("draft")])),
         CriticSeat {
-            client: critic_client.clone(),
+            model: Model::client(critic_client.clone()),
             ..critic(&mock(Vec::new()))
         },
         Count::Fixed(3),
     )
     .graph()
     .unwrap();
-    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
     assert!(
         matches!(error, GraphError::Structured { ref message } if message == "the step carries no structured block"),
         "{error}"
     );
     assert_eq!(critic_client.requests().len(), 1);
-    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+    assert_eq!(shape(&conversation), ["user", "writer:draft"]);
 }
 
 #[tokio::test]
@@ -259,7 +236,7 @@ async fn given_a_text_reply_to_the_verdict_request_from_a_conforming_client_then
     let graph = duo(&mock(vec![text_step("draft")]), &critic_client)
         .graph()
         .unwrap();
-    let (state, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
     assert!(
         matches!(
             error,
@@ -267,5 +244,5 @@ async fn given_a_text_reply_to_the_verdict_request_from_a_conforming_client_then
         ),
         "{error}"
     );
-    assert_eq!(shape_of(&state, "conversation"), ["user", "writer:draft"]);
+    assert_eq!(shape(&conversation), ["user", "writer:draft"]);
 }

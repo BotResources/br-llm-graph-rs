@@ -3,20 +3,23 @@
 
 use std::sync::Arc;
 
-use br_llm_messages::Entry;
 use serde_json::json;
 
 use crate::error::GraphError;
 use crate::graph::Count;
 use crate::react::generator_critic::GeneratorCritic;
 use crate::react::generator_critic_support::*;
+use crate::react::helpers::last_turn_by_author as last_turn_of;
+
+use crate::react::generator_critic_support::writer as generator_author;
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::seats::GeneratorSeat;
 use crate::react::test_support::*;
 use crate::state::{Kind, Value};
 
 #[tokio::test]
-async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_own_history() {
+async fn given_a_generator_with_a_tool_when_run_then_its_tool_traffic_is_recorded_in_the_conversation()
+ {
     let generator_client = mock(vec![
         tool_call_step("c1", "echo", json!({})),
         text_step("answer one"),
@@ -40,21 +43,13 @@ async fn given_a_generator_with_a_tool_when_run_then_tool_traffic_stays_in_its_o
     .unwrap();
     let state = ended(call(&graph, question("explain")).await, "validated");
     assert_eq!(
-        shape_of(&state, "generator_history"),
+        shape(state.transcript()),
         [
             "user",
-            "writer:[3 items]",
+            "writer:[3 items] answer one",
             "reviewer:go further",
-            "writer:[3 items]"
-        ]
-    );
-    assert_eq!(
-        shape_of(&state, "conversation"),
-        [
-            "user",
-            "writer:answer one",
-            "reviewer:go further",
-            "writer:answer two"
+            "writer:[3 items] answer two",
+            "reviewer:Accepted.",
         ]
     );
     assert_eq!(state.str(&key("answer")).unwrap(), "answer two");
@@ -116,8 +111,7 @@ async fn given_a_generator_with_an_enabled_subset_when_run_then_only_it_is_offer
         .await,
         "validated",
     );
-    let history = state.conversation(&key("generator_history")).unwrap();
-    let Some(Entry::Turn(turn)) = history.entries().last() else {
+    let Some(turn) = last_turn_of(state.transcript(), &generator_author()) else {
         panic!("expected the generator's turn");
     };
     assert_eq!(
@@ -179,8 +173,7 @@ async fn given_a_pass_through_input_when_the_generator_calls_a_tool_then_the_too
         start(&graph, vec![(key("scope"), Value::str("notes/2026"))]).await,
         "validated",
     );
-    let history = state.conversation(&key("generator_history")).unwrap();
-    let Some(Entry::Turn(turn)) = history.entries().last() else {
+    let Some(turn) = last_turn_of(state.transcript(), &generator_author()) else {
         panic!("expected the generator's turn");
     };
     assert_eq!(
@@ -192,8 +185,10 @@ async fn given_a_pass_through_input_when_the_generator_calls_a_tool_then_the_too
 #[test]
 fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_collision() {
     for name in [
+        "opening",
         "conversation",
-        "generator_history",
+        "turn_rank",
+        "call_turns",
         "answer",
         "is_validated",
         "nb_generations",
