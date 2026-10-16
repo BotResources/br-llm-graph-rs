@@ -6,8 +6,9 @@ use br_llm_messages::Author;
 use crate::error::GraphError;
 use crate::graph::{Always, Graph, GraphBuilder, Limit, Target};
 use crate::react::agent_answer::AnswerNode;
-use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag, tools_node_clash};
-use crate::react::agent_call::{AgentCall, ThreadBinding};
+use crate::react::agent_build::{
+    AgentKeys, declare_limit, round_limit_flag, split_tools, tools_node_clash,
+};
 use crate::react::bounds::Bounds;
 use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
@@ -187,30 +188,12 @@ impl ReactAgent {
         }
         let (mut schema, declared) = declarations.finish();
         keys.release(&mut schema);
-        let mut inputs = vec![keys.opening.clone()];
-        inputs.extend(keys.thread.clone());
-        inputs.extend(declared);
 
-        let call = AgentCall {
-            opening: keys.opening.clone(),
-            position: keys.position.clone(),
-            thread: match (&keys.thread, self.thread_store) {
-                (Some(key), Some(store)) => Some(ThreadBinding {
-                    store,
-                    key: key.clone(),
-                }),
-                _ => None,
-            },
-            turns: None,
-        };
+        let call = keys.call(self.thread_store);
         let clients = Arc::new(TurnClients::default());
         let tools_node = NodeId::new("tools")?;
         let clash = tools_node_clash(&self.tool_nodes, self.round_limit.as_ref(), &tools_node);
-        let tool_nodes = if self.tool_nodes.is_empty() && !self.tools.is_empty() {
-            vec![(tools_node, self.tools.clone())]
-        } else {
-            self.tool_nodes
-        };
+        let tool_nodes = split_tools(self.tool_nodes, &self.tools, &tools_node);
         let bounds = Bounds::new(
             [],
             [
@@ -242,7 +225,7 @@ impl ReactAgent {
             clients: clients.clone(),
         };
 
-        let mut builder = keys
+        let builder = keys
             .declare_private(GraphBuilder::new(schema))
             .entry(enter.clone())
             .node(
@@ -257,16 +240,7 @@ impl ReactAgent {
                 enter,
                 enter_edge(call, bounds, llm.clone(), answer_node.clone()),
             );
-        for key in inputs {
-            builder = builder.input(key);
-        }
-        builder = builder.output(keys.answer.clone());
-        if let Some(flag) = flag {
-            builder = builder.output(flag);
-        }
-        if let Some(thread) = &keys.thread {
-            builder = builder.output(thread.clone());
-        }
+        let builder = keys.signature(builder, declared, &[], flag.as_ref());
         let builder = react.add(builder, llm_node)?;
         if let Some(clash) = clash {
             return Err(clash);

@@ -6,7 +6,9 @@ use std::sync::Arc;
 use crate::error::GraphError;
 use crate::graph::GraphBuilder;
 use crate::graph::{Count, Limit};
+use crate::react::agent_call::{AgentCall, ThreadBinding};
 use crate::react::round_limit::{OnLimit, RoundLimit};
+use crate::react::thread_store::ThreadStore;
 use crate::react::tool::Tool;
 use crate::state::{Kind, Schema, SchemaBuilder};
 use crate::value::{Key, NodeId};
@@ -102,6 +104,50 @@ impl AgentKeys {
             })
     }
 
+    /// The call of the agent's graph: its `opening`, where it stands, its
+    /// thread when it is durable, and, for the generator-critic, the list of
+    /// its turns.
+    pub(crate) fn call(&self, store: Option<Arc<dyn ThreadStore>>) -> AgentCall {
+        AgentCall {
+            opening: self.opening.clone(),
+            position: self.position.clone(),
+            thread: match (&self.thread, store) {
+                (Some(key), Some(store)) => Some(ThreadBinding {
+                    store,
+                    key: key.clone(),
+                }),
+                _ => None,
+            },
+            turns: self.keeps_turns.then(|| self.turns.clone()),
+        }
+    }
+
+    /// Declares the signature of the agent's graph: its inputs `opening`,
+    /// `thread` when durable, then `declared`; its outputs `answer`, then
+    /// `outputs`, the round limit's `flag` and `thread` when durable.
+    pub(crate) fn signature(
+        &self,
+        mut builder: GraphBuilder,
+        declared: Vec<Key>,
+        outputs: &[&Key],
+        flag: Option<&Key>,
+    ) -> GraphBuilder {
+        let inputs = std::iter::once(&self.opening)
+            .chain(&self.thread)
+            .chain(&declared);
+        for key in inputs {
+            builder = builder.input(key.clone());
+        }
+        let outputs = std::iter::once(&self.answer)
+            .chain(outputs.iter().copied())
+            .chain(flag)
+            .chain(&self.thread);
+        for key in outputs {
+            builder = builder.output(key.clone());
+        }
+        builder
+    }
+
     /// Whether a round limit's flag names a key no flag may name: `answer`,
     /// `opening`, `thread` or `conversation`.
     pub(crate) fn names_flag(&self, flag: &Key) -> bool {
@@ -150,6 +196,20 @@ pub(crate) fn tools_node_clash(
             Some(GraphError::DuplicateNode { id: node.clone() })
         }
         Some(_) | None => None,
+    }
+}
+
+/// The split of `tools` between tool nodes: `tool_nodes`, or without a
+/// split one node, `tools`, that runs them all (none without a tool).
+pub(crate) fn split_tools(
+    tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
+    tools: &[Arc<dyn Tool>],
+    id: &NodeId,
+) -> Vec<(NodeId, Vec<Arc<dyn Tool>>)> {
+    if tool_nodes.is_empty() && !tools.is_empty() {
+        vec![(id.clone(), tools.to_vec())]
+    } else {
+        tool_nodes
     }
 }
 

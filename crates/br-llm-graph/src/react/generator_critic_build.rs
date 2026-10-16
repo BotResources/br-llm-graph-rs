@@ -6,9 +6,8 @@ use std::sync::Arc;
 use crate::error::GraphError;
 use crate::graph::{Always, FnEdge, Graph, GraphBuilder, Target};
 use crate::react::agent_build::{
-    AgentKeys, declare_count, declare_limit, round_limit_flag, tools_node_clash,
+    AgentKeys, declare_count, declare_limit, round_limit_flag, split_tools, tools_node_clash,
 };
-use crate::react::agent_call::{AgentCall, ThreadBinding};
 use crate::react::bounds::Bounds;
 use crate::react::check::{CheckNode, EMPTY_ANSWER_CRITIQUE};
 use crate::react::critic_view::CriticView;
@@ -133,18 +132,7 @@ impl GeneratorCritic {
             count.check(&schema)?;
         }
 
-        let call = AgentCall {
-            opening: keys.opening.clone(),
-            position: keys.position.clone(),
-            thread: match (&keys.thread, self.thread_store) {
-                (Some(key), Some(store)) => Some(ThreadBinding {
-                    store,
-                    key: key.clone(),
-                }),
-                _ => None,
-            },
-            turns: Some(keys.turns.clone()),
-        };
+        let call = keys.call(self.thread_store);
         let limit_ends = matches!(
             generator.round_limit.as_ref().map(|limit| &limit.on_limit),
             Some(OnLimit::End { .. })
@@ -179,40 +167,25 @@ impl GeneratorCritic {
             finish: names.finish.clone(),
         };
 
-        let mut builder = keys
+        let builder = keys
             .declare_private(GraphBuilder::new(schema))
             .entry(match &self.prepare {
                 Some(_) => names.prepare.clone(),
                 None => names.route.clone(),
-            })
-            .input(keys.opening.clone());
-        if let Some(thread) = &keys.thread {
-            builder = builder.input(thread.clone());
-        }
-        for key in declared {
-            builder = builder.input(key);
-        }
-        builder = builder
-            .output(keys.answer.clone())
-            .output(names.validated.clone())
-            .output(names.generations.clone());
-        if let Some(flag) = &flag {
-            builder = builder.output(flag.clone());
-        }
-        if let Some(thread) = &keys.thread {
-            builder = builder.output(thread.clone());
-        }
+            });
+        let builder = keys.signature(
+            builder,
+            declared,
+            &[&names.validated, &names.generations],
+            flag.as_ref(),
+        );
 
         let clash = tools_node_clash(
             &generator.tool_nodes,
             generator.round_limit.as_ref(),
             &names.tools,
         );
-        let tool_nodes = if generator.tool_nodes.is_empty() && !generator.tools.is_empty() {
-            vec![(names.tools.clone(), generator.tools.clone())]
-        } else {
-            generator.tool_nodes
-        };
+        let tool_nodes = split_tools(generator.tool_nodes, &generator.tools, &names.tools);
         let flag_limit = flag.zip(generator.round_limit.clone());
         let clients = Arc::new(TurnClients::default());
         let react = ReactLoop {
