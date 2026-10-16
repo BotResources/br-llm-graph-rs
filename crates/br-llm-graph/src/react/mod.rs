@@ -82,6 +82,8 @@ mod generator_critic_keys_tests;
 #[cfg(test)]
 mod generator_critic_override_tests;
 #[cfg(test)]
+mod generator_critic_prepare_resume_tests;
+#[cfg(test)]
 mod generator_critic_prepare_tests;
 #[cfg(test)]
 mod generator_critic_repaired_tests;
@@ -134,6 +136,10 @@ mod react_agent_given_tests;
 #[cfg(test)]
 mod react_agent_keys_tests;
 #[cfg(test)]
+mod react_agent_map_tests;
+#[cfg(test)]
+mod react_agent_session_tests;
+#[cfg(test)]
 mod react_agent_support;
 #[cfg(test)]
 mod react_agent_tests;
@@ -157,6 +163,8 @@ mod react_helper_tests;
 mod react_hook_failure_tests;
 #[cfg(test)]
 mod react_hook_node_support;
+#[cfg(test)]
+mod react_hook_resume_tests;
 #[cfg(test)]
 mod react_hook_slot_tests;
 #[cfg(test)]
