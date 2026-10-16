@@ -51,6 +51,8 @@ mod generator_critic_empty_tests;
 #[cfg(test)]
 mod generator_critic_entry_tests;
 #[cfg(test)]
+mod generator_critic_given_tests;
+#[cfg(test)]
 mod generator_critic_override_tests;
 #[cfg(test)]
 mod generator_critic_prepare_tests;
