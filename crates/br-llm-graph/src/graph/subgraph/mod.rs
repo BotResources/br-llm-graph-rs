@@ -37,6 +37,7 @@ pub enum Output {
 }
 
 impl Output {
+    /// The key written.
     pub fn key(&self) -> &Key {
         match self {
             Output::Set(key) | Output::Append(key) => key,
@@ -82,6 +83,7 @@ pub enum CaptureUpdate {
 }
 
 impl CaptureUpdate {
+    /// Where the capture writes.
     pub fn target(&self) -> Output {
         match self {
             CaptureUpdate::Set(key, _) => Output::Set(key.clone()),
@@ -89,6 +91,7 @@ impl CaptureUpdate {
         }
     }
 
+    /// What it writes.
     pub fn source(&self) -> &CaptureSource {
         match self {
             CaptureUpdate::Set(_, source) | CaptureUpdate::Append(_, source) => source,
@@ -153,6 +156,7 @@ pub struct SubGraph {
 }
 
 impl SubGraph {
+    /// A call of `graph`, nothing mapped yet, `OnFailure::Propagate`.
     pub fn call(graph: Arc<Graph>) -> Self {
         Self {
             graph,
@@ -188,11 +192,13 @@ impl SubGraph {
         self
     }
 
+    /// What the call does when the child fails.
     pub fn on_failure(mut self, on_failure: OnFailure) -> Self {
         self.on_failure = on_failure;
         self
     }
 
+    /// The called graph.
     pub fn graph(&self) -> &Arc<Graph> {
         &self.graph
     }

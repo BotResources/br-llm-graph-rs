@@ -1,3 +1,22 @@
+//! The parts of an agent built on br-llm-messages and br-llm-clients-core:
+//! `LlmCall`, a node that makes one model call and gives back its answer as
+//! data, and two agents, `ReactAgent` and `GeneratorCritic`, each a graph to
+//! call with `SubGraph` or run on its own.
+//!
+//! A model-calling node is built from what the runner gives it (`Given`): its
+//! model (`Model`, a `Client` of br-llm-clients-core), its system (`Prompt`)
+//! and its history (`History`), each a value or a function of the node's
+//! context (`RequestContext`) declaring the keys it reads (`Reads`). The tools
+//! (`Tool`, judged by an optional `Hook`) and the thread store (`ThreadStore`)
+//! are ports the host implements. An agent built with a thread store is
+//! durable: it works in a thread and resumes from it; without one it works in
+//! memory, for the current call only.
+//!
+//! Helpers for a node the host writes: `wire` renders a conversation for an
+//! author, `complete` calls a client with the observer as sink, `structured`
+//! reads the first structured block of a step into a type, `pending_calls`
+//! gives the pending calls of an author's last turn.
+
 mod agent_answer;
 mod agent_build;
 mod agent_call;

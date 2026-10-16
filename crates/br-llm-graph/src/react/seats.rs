@@ -21,6 +21,7 @@ use crate::value::{Key, NodeId};
 /// conversation, the round, the generation number and the budget. A change of
 /// client never changes the seat's author.
 pub struct GeneratorSeat {
+    /// Who writes the answers.
     pub author: Author,
     /// The client of each generation, asked at its first round and kept for
     /// its other rounds. A schedule counts the generations, revisions not
@@ -34,7 +35,9 @@ pub struct GeneratorSeat {
     /// which extends its previous request, so a provider can reuse its
     /// cache; a function gives that up.
     pub history: Option<History<GeneratorSeat>>,
+    /// The output mode sent on every generator call.
     pub output_mode: OutputMode,
+    /// The generator's tools, fixed when the graph is built.
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
     /// runs them all; that id is the graph's own even with no tool, so a
@@ -43,6 +46,7 @@ pub struct GeneratorSeat {
     /// At most that many tool calls run at once, across all the tool nodes
     /// together. `None`: every call at once.
     pub tool_concurrency: Option<Limit>,
+    /// The bound on the tool rounds of one generation. `None`: no bound.
     pub round_limit: Option<RoundLimit>,
     /// A state key holding the names of the tools offered on this run: an
     /// input of the graph, a list of strings. A call naming another tool is
@@ -92,6 +96,7 @@ pub enum CriticHistory {
 /// shape asks for `thinking` exactly when that level is `Off`, so a critic
 /// that does not reason natively has room to reason before judging.
 pub struct CriticSeat {
+    /// Who judges the answers.
     pub author: Author,
     /// The client called for each critic call. A schedule counts the
     /// critiques, verdict retries not counted (`Scheduled`), and a tail

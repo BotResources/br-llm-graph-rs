@@ -3,6 +3,8 @@ use br_llm_messages::Conversation;
 use crate::error::GraphError;
 use crate::state::kind::Kind;
 
+/// A finite float: NaN and the infinities are refused when it is built
+/// (`FloatNotFinite`), and JSON cannot carry them.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(into = "f64")]
 pub struct Finite(f64);
@@ -10,6 +12,7 @@ pub struct Finite(f64);
 impl Finite {
     pub(crate) const ZERO: Finite = Finite(0.0);
 
+    /// `value`, refused when it is not finite (`FloatNotFinite`).
     pub fn new(value: f64) -> Result<Self, GraphError> {
         if value.is_finite() {
             Ok(Self(value))
@@ -18,6 +21,7 @@ impl Finite {
         }
     }
 
+    /// The float.
     pub fn get(self) -> f64 {
         self.0
     }
@@ -39,14 +43,23 @@ impl<'de> serde::Deserialize<'de> for Finite {
     }
 }
 
+/// A value of the state or the configuration. Its JSON is `{"type", "value"}`
+/// with the type `int`, `float`, `str`, `bool`, `list` or `conversation`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum Value {
+    /// A 64-bit signed integer.
     Int(i64),
+    /// A finite float.
     Float(Finite),
+    /// A string.
     Str(String),
+    /// A boolean.
     Bool(bool),
+    /// A list of values; it has a list kind when every element has the element
+    /// kind, and an empty list has every list kind.
     List(Vec<Value>),
+    /// A br-llm-messages conversation.
     Conversation(Conversation),
 }
 
@@ -84,30 +97,38 @@ impl<'de> serde::Deserialize<'de> for Value {
 }
 
 impl Value {
+    /// An int.
     pub fn int(value: i64) -> Self {
         Value::Int(value)
     }
 
+    /// A float, refused when it is not finite (`FloatNotFinite`).
     pub fn float(value: f64) -> Result<Self, GraphError> {
         Ok(Value::Float(Finite::new(value)?))
     }
 
+    /// A string.
     pub fn str(value: impl Into<String>) -> Self {
         Value::Str(value.into())
     }
 
+    /// A boolean.
     pub fn bool(value: bool) -> Self {
         Value::Bool(value)
     }
 
+    /// A list of `values`.
     pub fn list(values: Vec<Value>) -> Self {
         Value::List(values)
     }
 
+    /// A conversation.
     pub fn conversation(conversation: Conversation) -> Self {
         Value::Conversation(conversation)
     }
 
+    /// The name of the value's type: `int`, `float`, `str`, `bool`, `list` or
+    /// `conversation`, as `KindMismatch` reports it.
     pub fn tag(&self) -> &'static str {
         match self {
             Value::Int(_) => "int",
@@ -119,6 +140,8 @@ impl Value {
         }
     }
 
+    /// Whether the value has the kind `kind`: a list when every element has
+    /// the element kind, an empty list for every list kind.
     pub fn matches(&self, kind: &Kind) -> bool {
         match (self, kind) {
             (Value::Int(_), Kind::Int) => true,

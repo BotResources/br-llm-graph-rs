@@ -25,8 +25,11 @@ use crate::value::ThreadId;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct IdRequest {
+    /// The run id and the occurrence of the asking agent.
     pub origin: Origin,
+    /// The id of the user input the agent's call answers.
     pub trigger: Option<InputId>,
+    /// 0 for the thread, then the rank of the turn within the call.
     pub rank: usize,
 }
 

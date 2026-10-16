@@ -1,3 +1,6 @@
+//! The session: a graph, a configuration, a state and a control channel, which
+//! runs, relaunches after an end and obeys the host's commands.
+
 use std::sync::Arc;
 
 use br_llm_messages::UserInput;
@@ -12,22 +15,40 @@ use crate::run::{
 use crate::state::{Config, State};
 use crate::value::Key;
 
+/// How serving starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Start {
+    /// With a run.
     Now,
+    /// Waiting for a message: an input starts the first run.
     OnInput,
 }
 
+/// How serving ended.
 pub enum Ended {
+    /// A cancel ended it, between runs or during one.
     Cancelled {
+        /// The session's checkpoint.
         checkpoint: Checkpoint,
     },
+    /// A run failed, or an input received between runs was refused.
     Failed {
+        /// The session's checkpoint: the failure's, or the session's when an
+        /// input was refused.
         checkpoint: Checkpoint,
+        /// The error.
         error: GraphError,
     },
 }
 
+/// A graph, a configuration, a state and a control channel, which runs,
+/// relaunches after an end and obeys commands.
+///
+/// Running once runs from the session's cursor, or from the entry when there
+/// is none; after `Finished` the cursor is cleared, so the next run starts
+/// from the entry on the final state (a relaunch). Serving runs until a cancel
+/// or a failure (see `serve`). The session keeps a sender of its own, so its
+/// control channel never closes and serving can wait for a message forever.
 pub struct Session {
     graph: Arc<Graph>,
     config: Config,
@@ -106,10 +127,13 @@ impl Session {
         self.sender.clone()
     }
 
+    /// The session's state: the last outcome's.
     pub fn state(&self) -> &State {
         &self.state
     }
 
+    /// The session's checkpoint: its state, its cursor (empty when none) and
+    /// its pending writes.
     pub fn checkpoint(&self) -> Checkpoint {
         Checkpoint::new(self.state.clone(), self.cursor.clone().unwrap_or_default())
             .with_pending(self.pending.clone())
@@ -178,6 +202,13 @@ impl Session {
     }
 
     /// Serves the session until a cancel or a failure (see `Ended`).
+    ///
+    /// It starts with a run (`Start::Now`) or waits for a message
+    /// (`Start::OnInput`). Between runs, an input is applied to the state and
+    /// starts a run, unless the session is paused; pause marks it paused, and
+    /// inputs are then applied without running; resume of a paused session
+    /// runs from its cursor, and is ignored otherwise; cancel ends serving
+    /// with the session's checkpoint.
     ///
     /// The session keeps a sender of its own, so its control channel never
     /// closes: between runs, serving waits for a message for as long as none

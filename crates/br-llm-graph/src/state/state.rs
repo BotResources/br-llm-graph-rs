@@ -10,8 +10,13 @@ use crate::state::value::Value;
 use crate::state::value_type::{ValueType, read_as};
 use crate::value::Key;
 
+/// The schema version of a state and a configuration in JSON; another version
+/// is refused on reload (`SchemaMismatch`).
 pub const SCHEMA_VERSION: &str = "br-llm-graph/1";
 
+/// The typed key/value map of one run: a value for every state key of its
+/// schema, and no other key. Nodes never change it: the run alone applies
+/// updates. Its JSON is `{"schema_version", "schema", "values"}`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct State {
     schema_version: &'static str,
@@ -50,6 +55,9 @@ impl<'de> serde::Deserialize<'de> for State {
 }
 
 impl State {
+    /// The state of `values` over `schema`: a missing key is refused
+    /// (`MissingKey`), an undeclared one (`UnknownKey`), a value of another
+    /// kind (`KindMismatch`).
     pub fn new(schema: Schema, values: BTreeMap<Key, Value>) -> Result<Self, GraphError> {
         for (key, value) in &values {
             match schema.state.get(key) {
@@ -86,6 +94,7 @@ impl State {
         }
     }
 
+    /// The schema it was made from.
     pub fn schema(&self) -> &Schema {
         &self.schema
     }
@@ -201,6 +210,8 @@ impl State {
         }
     }
 
+    /// This state with `key` set to `value` and nothing else changed
+    /// (`UnknownKey`, `KindMismatch`).
     pub fn derive(&self, key: &Key, value: Value) -> Result<State, GraphError> {
         let mut derived = self.clone();
         let kind = derived

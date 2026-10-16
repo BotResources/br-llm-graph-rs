@@ -139,7 +139,9 @@ use crate::value::Key;
 /// conforming client refuses a reply without a structured block itself
 /// (`MalformedResponse`): the critique then fails with `Model`.
 pub struct GeneratorCritic {
+    /// Who writes the answers.
     pub generator: GeneratorSeat,
+    /// Who judges them.
     pub critic: CriticSeat,
     /// The critique budget.
     pub max_critiques: Count,

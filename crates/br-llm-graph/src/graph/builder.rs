@@ -1,3 +1,5 @@
+//! The builder of a graph.
+
 use std::collections::BTreeMap;
 
 use crate::error::GraphError;
@@ -10,6 +12,9 @@ use crate::graph::subgraph::SubGraph;
 use crate::state::{Kind, Schema};
 use crate::value::{Key, NodeId};
 
+/// Builds a graph from a schema, an entry node, nodes (plain, join, map,
+/// call), one edge per node, and input and output declarations. `build` checks
+/// them in a fixed order (see `build`).
 pub struct GraphBuilder {
     schema: Schema,
     private: BTreeMap<Key, Kind>,
@@ -21,6 +26,7 @@ pub struct GraphBuilder {
 }
 
 impl GraphBuilder {
+    /// A builder over `schema`, with no node.
     pub fn new(schema: Schema) -> Self {
         Self {
             schema,
@@ -48,11 +54,14 @@ impl GraphBuilder {
         self
     }
 
+    /// Sets the entry node, where a run without a cursor starts.
     pub fn entry(mut self, id: NodeId) -> Self {
         self.entry = Some(id);
         self
     }
 
+    /// Registers a plain node: targeted by a superstep, it runs in the next
+    /// one.
     pub fn node(mut self, id: NodeId, node: impl Node + 'static) -> Self {
         self.nodes.push((
             id,
@@ -64,6 +73,9 @@ impl GraphBuilder {
         self
     }
 
+    /// Registers a join node: targeted, it is deferred while any plain node is
+    /// left to run; when only join nodes are left, they all run in the next
+    /// superstep.
     pub fn join(mut self, id: NodeId, node: impl Node + 'static) -> Self {
         self.nodes.push((
             id,
@@ -98,11 +110,22 @@ impl GraphBuilder {
         self
     }
 
+    /// Sets the edge of the node `from`. Every node has exactly one.
     pub fn edge(mut self, from: NodeId, edge: impl Edge + 'static) -> Self {
         self.edges.push((from, Box::new(edge)));
         self
     }
 
+    /// The graph, or the first refusal, in this order: a default on an
+    /// undeclared key (`UnknownKey`) or of the wrong kind (`KindMismatch`); an
+    /// input or output that is not a state key (`UnknownKey`), a key declared
+    /// twice as an input (`DuplicateInput`) or as an output
+    /// (`DuplicateOutput`); two nodes with one id (`DuplicateNode`); no entry
+    /// (`MissingEntry`), an entry that is not a node (`UnknownEntry`); an edge
+    /// from an unknown node (`EdgeFromUnknownNode`), two edges from one node
+    /// (`DuplicateEdge`); a node without an edge (`NodeWithoutEdge`); a node
+    /// whose check fails, nodes taken in registration order (`InvalidNode`,
+    /// the reason as its source). Edge targets are not checked.
     pub fn build(self) -> Result<Graph, GraphError> {
         let GraphBuilder {
             schema,

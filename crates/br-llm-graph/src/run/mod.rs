@@ -1,3 +1,13 @@
+//! The run: a graph advanced superstep by superstep from its entry or a cursor
+//! until it ends, pauses, is cancelled or fails, and the control channel
+//! through which the host sends it inputs, pause, resume and cancel.
+//!
+//! A run returns an `Outcome`, or a `RunFailure` with its checkpoint. Each node
+//! of a superstep that finishes records its updates as a pending entry under
+//! its occurrence, so a run resumed with a checkpoint's state, cursor and
+//! pending entries applies the interrupted superstep once, running only the
+//! nodes and map items that did not finish.
+
 mod checkpoint;
 mod control;
 mod cursor;

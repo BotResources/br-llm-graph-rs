@@ -117,6 +117,7 @@ use crate::value::{EndLabel, Key, NodeId};
 ///
 /// The round limit counts the rounds of the agent's turn (see `RoundLimit`).
 pub struct ReactAgent {
+    /// Who answers: the author of the agent's turns.
     pub author: Author,
     /// The client of each turn, asked at its first round.
     pub model: Model<ReactAgent>,
@@ -125,7 +126,9 @@ pub struct ReactAgent {
     /// The messages sent. `None`: the agent's conversation rendered for
     /// `author`.
     pub history: Option<History<ReactAgent>>,
+    /// The output mode sent on every model call.
     pub output_mode: OutputMode,
+    /// The agent's tools, fixed when the graph is built.
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
     /// runs them all; that id is the graph's own even with no tool, so a
@@ -134,6 +137,7 @@ pub struct ReactAgent {
     /// At most that many tool calls run at once, across all the tool nodes
     /// together. `None`: every call at once.
     pub tool_concurrency: Option<Limit>,
+    /// The bound on the tool rounds of one turn. `None`: no bound.
     pub round_limit: Option<RoundLimit>,
     /// A state key holding the names of the tools offered on this run.
     pub enabled: Option<Key>,
@@ -144,6 +148,8 @@ pub struct ReactAgent {
 }
 
 impl ReactAgent {
+    /// The graph of this agent, or the first refusal of its build (see the
+    /// type's documentation).
     pub fn graph(self) -> Result<Arc<Graph>, GraphError> {
         let keys = AgentKeys::new(self.thread_store.is_some())?;
         let llm = NodeId::new("llm")?;

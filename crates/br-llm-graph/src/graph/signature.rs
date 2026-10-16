@@ -8,7 +8,9 @@ use crate::value::Key;
 /// their kinds. A key may be both.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Signature {
+    /// The inputs, with their kinds.
     pub inputs: BTreeMap<Key, Kind>,
+    /// The outputs, with their kinds.
     pub outputs: BTreeMap<Key, Kind>,
 }
 

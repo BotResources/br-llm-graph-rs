@@ -8,6 +8,9 @@ use crate::update::Update;
 use crate::value::Key;
 
 impl State {
+    /// Applies `updates` in the order given, all or nothing: on any refusal
+    /// the state is unchanged. Two `Set` of one key are refused before
+    /// anything is applied (`SetConflict`).
     pub fn apply_batch(&mut self, updates: &[Update]) -> Result<(), GraphError> {
         let mut seen_set: Vec<&Key> = Vec::new();
         for update in updates {

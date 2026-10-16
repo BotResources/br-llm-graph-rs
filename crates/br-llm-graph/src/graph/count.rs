@@ -7,7 +7,9 @@ use crate::value::Key;
 /// positive counterpart.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Count {
+    /// A number fixed when the graph is built.
     Fixed(usize),
+    /// The value of an int configuration key, read at run time.
     Config(Key),
 }
 

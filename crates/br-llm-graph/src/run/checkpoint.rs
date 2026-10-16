@@ -11,7 +11,10 @@ use crate::state::State;
 /// from it enters again through the agent's entry.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Checkpoint {
+    /// The state.
     pub state: State,
+    /// The cursor: where the resumed run starts (empty once the run has
+    /// ended).
     pub cursor: Cursor,
     /// Updates of occurrences that finished while their superstep was still
     /// open. Absent from checkpoints written before it existed.
@@ -20,6 +23,7 @@ pub struct Checkpoint {
 }
 
 impl Checkpoint {
+    /// A checkpoint of `state` at `cursor`, without pending entries.
     pub fn new(state: State, cursor: Cursor) -> Self {
         Self {
             state,
@@ -28,6 +32,7 @@ impl Checkpoint {
         }
     }
 
+    /// This checkpoint with the pending entries `pending`.
     pub fn with_pending(mut self, pending: PendingWrites) -> Self {
         self.pending = pending;
         self

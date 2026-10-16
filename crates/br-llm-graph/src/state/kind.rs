@@ -2,18 +2,31 @@ use br_llm_messages::Conversation;
 
 use crate::state::value::{Finite, Value};
 
+/// The kind of a key: what values it holds. Its JSON is `{"type"}`, with
+/// `element` for a list.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Kind {
+    /// 64-bit signed integers; neutral value 0.
     Int,
+    /// Finite floats; neutral value 0.0.
     Float,
+    /// Strings; neutral value the empty string.
     Str,
+    /// Booleans; neutral value false.
     Bool,
-    List { element: Box<Kind> },
+    /// Lists whose every element has the element kind; neutral value the empty
+    /// list.
+    List {
+        /// The kind of the elements.
+        element: Box<Kind>,
+    },
+    /// br-llm-messages conversations; neutral value the empty conversation.
     Conversation,
 }
 
 impl Kind {
+    /// The kind of lists of `element`.
     pub fn list(element: Kind) -> Self {
         Kind::List {
             element: Box::new(element),

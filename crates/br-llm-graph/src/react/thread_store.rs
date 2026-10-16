@@ -21,17 +21,24 @@ pub type ThreadFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ThreadError
 /// it is completed, failed or cancelled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageStatus {
+    /// The turn is open: its steps are streaming.
     Streaming,
+    /// Stored, for a user input; completed, for a turn.
     Completed,
+    /// The turn failed, and was repaired.
     Failed,
+    /// The turn was cancelled, and was repaired.
     Cancelled,
 }
 
 /// How an open turn ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnEnd {
+    /// The turn ended as it should.
     Completed,
+    /// The turn failed.
     Failed,
+    /// The turn was cancelled.
     Cancelled,
 }
 
@@ -52,7 +59,9 @@ impl TurnEnd {
 pub struct ThreadMessage {
     /// The id of the input or of the turn.
     pub id: String,
+    /// Its author: the input's, when it has one, or the agent's.
     pub author: Option<Author>,
+    /// Where it stands.
     pub status: MessageStatus,
 }
 
@@ -78,7 +87,9 @@ impl ThreadMessage {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ThreadView {
+    /// The active branch, not lightened.
     pub conversation: Conversation,
+    /// Its messages, in the order of the thread.
     pub messages: Vec<ThreadMessage>,
 }
 

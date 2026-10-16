@@ -9,7 +9,9 @@ use crate::value::Key;
 /// counterpart that may be zero.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Limit {
+    /// A number fixed when the graph is built.
     Fixed(NonZeroUsize),
+    /// The value of an int configuration key, read at run time.
     Config(Key),
 }
 

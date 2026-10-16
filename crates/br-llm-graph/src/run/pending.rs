@@ -9,7 +9,9 @@ use crate::value::NodeId;
 /// it ran on (its witness): the entry stands for that item only.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PendingEntry {
+    /// The updates the occurrence returned.
     pub updates: Vec<Update>,
+    /// For a map item, the item it ran on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub witness: Option<Value>,
 }
@@ -41,6 +43,7 @@ impl PendingEntry {
 pub struct PendingWrites(BTreeMap<OccurrenceKey, PendingEntry>);
 
 impl PendingWrites {
+    /// No entry.
     pub fn new() -> Self {
         Self::default()
     }
@@ -50,6 +53,7 @@ impl PendingWrites {
         self.0.insert(occurrence, entry);
     }
 
+    /// The entry of `occurrence`, if any.
     pub fn get(&self, occurrence: &OccurrenceKey) -> Option<&PendingEntry> {
         self.0.get(occurrence)
     }
@@ -60,14 +64,17 @@ impl PendingWrites {
         self.0.extend(other.0);
     }
 
+    /// Whether it holds no entry.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// The number of entries.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// The entries, in occurrence order.
     pub fn iter(&self) -> impl Iterator<Item = (&OccurrenceKey, &PendingEntry)> {
         self.0.iter()
     }

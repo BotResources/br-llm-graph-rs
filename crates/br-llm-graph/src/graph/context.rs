@@ -25,7 +25,9 @@ use crate::value::NodeId;
 /// find nothing.
 #[derive(Clone)]
 pub struct Context {
+    /// The observer every event of the run reaches.
     pub observer: Arc<dyn Observer>,
+    /// The host's id source: every new thread id and turn id.
     pub ids: Arc<dyn IdSource>,
     origin: Origin,
     pending: Arc<Mutex<PendingWrites>>,
@@ -45,6 +47,7 @@ impl Context {
         }
     }
 
+    /// This context with the run id `run`, which nested runs share.
     pub fn with_run_id(mut self, run: RunId) -> Self {
         self.origin.run = run;
         self
@@ -57,14 +60,17 @@ impl Context {
         self
     }
 
+    /// Its run id and occurrence.
     pub fn origin(&self) -> &Origin {
         &self.origin
     }
 
+    /// Its run id.
     pub fn run_id(&self) -> &RunId {
         &self.origin.run
     }
 
+    /// Its occurrence: the node's, in a node's context.
     pub fn occurrence(&self) -> &OccurrenceKey {
         &self.origin.occurrence
     }

@@ -1,3 +1,8 @@
+//! Graphs: nodes, edges and the builder that checks them; the nodes the library
+//! gives (a call of another graph, a map over a list); the bounds read at run
+//! time (`Limit`, `Count`); the context a node runs in and the host's id
+//! source.
+
 mod builder;
 mod context;
 mod count;

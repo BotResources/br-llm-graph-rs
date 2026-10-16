@@ -20,7 +20,9 @@ use crate::value::{Key, NodeId};
 /// for tools after the last allowed round.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoundLimit {
+    /// The rounds an agent turn may answer.
     pub max_rounds: Limit,
+    /// What a reply asking for tools after the last allowed round does.
     pub on_limit: OnLimit,
 }
 
@@ -47,11 +49,21 @@ pub enum OnLimit {
     /// answered under the higher limit sits past the new one, and a tool
     /// whose every result there was exactly the refusal would read as the
     /// node's answer.
-    Continue { node: NodeId, flag: Key },
+    Continue {
+        /// The id of the node added to answer the calls.
+        node: NodeId,
+        /// The bool state key set to true.
+        flag: Key,
+    },
     /// Each call is answered the same way and the turn is closed with a step
     /// whose stop reason is `other(tool_round_limit)`, without calling the
     /// model.
-    End { node: NodeId, flag: Key },
+    End {
+        /// The id of the node added to answer the calls and close the turn.
+        node: NodeId,
+        /// The bool state key set to true.
+        flag: Key,
+    },
 }
 
 impl RoundLimit {

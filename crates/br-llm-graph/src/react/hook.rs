@@ -24,7 +24,10 @@ pub enum Judgment {
     /// The call is not executed: it is answered with an error result holding
     /// `reason` (`tool call refused` when the reason is blank), and the turn
     /// goes on.
-    Refuse { reason: String },
+    Refuse {
+        /// Why the call is refused.
+        reason: String,
+    },
 }
 
 /// The judgment of one tool call, made before its tool runs. A hook is the
@@ -58,6 +61,9 @@ pub enum Judgment {
 /// - A hook that panics fails the node as a panic (`NodeFault::Panic`); the
 ///   other calls of the node are dropped at once.
 pub trait Hook: Send + Sync {
+    /// Judges the call `id` with its JSON `arguments`, the state and the
+    /// configuration: it accepts or refuses it, and returns no update. Its
+    /// error fails the node.
     fn judge<'a>(
         &'a self,
         id: &'a ToolCallId,

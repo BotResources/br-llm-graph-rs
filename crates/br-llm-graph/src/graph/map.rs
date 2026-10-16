@@ -40,10 +40,16 @@ use crate::value::Key;
 /// wrong kind does not compile. A map described as data is written with its
 /// fields, keys by name.
 pub struct Map {
+    /// The list key: one body run per item.
     pub list: Key,
+    /// The item key, set to the item in the state each body runs on.
     pub item: Key,
+    /// The body, run once per item; it may only return appends to lists of the
+    /// graph.
     pub body: Box<dyn Node>,
+    /// At most that many bodies at once. `None`: every item at once.
     pub max_concurrency: Option<Limit>,
+    /// What the map does when a body returns an error.
     pub on_item_failure: ItemFailure,
 }
 

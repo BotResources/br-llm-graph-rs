@@ -27,7 +27,9 @@ pub enum LlmRequest {
     /// the provider's table, so keep tool traffic out of an `LlmCall`'s
     /// conversation.
     Conversation {
+        /// The conversation key.
         key: StateKey<Conversation>,
+        /// The author it is rendered for.
         author: Author,
     },
     /// The conversation to send, as wire messages, usually given by a
@@ -102,7 +104,10 @@ pub struct LlmCall {
     pub model: Model<LlmCall>,
     /// The system text; one that resolves blank gives none.
     pub system: Prompt<LlmCall>,
+    /// What the call sends as its messages.
     pub request: LlmRequest,
+    /// The output mode sent; with a structured mode, the answer is the JSON
+    /// text of the reply's structured block.
     pub output_mode: OutputMode,
     /// Where the answer goes.
     pub output: LlmOutput,

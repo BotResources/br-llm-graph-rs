@@ -13,6 +13,8 @@ pub(crate) struct NodeEntry {
     pub is_join: bool,
 }
 
+/// A built graph: a schema, an entry, nodes and one edge per node, and a
+/// signature. It does not change and serves any number of runs.
 pub struct Graph {
     schema: Schema,
     /// The private keys of the graph, beside `schema`: see `private.rs`.
@@ -70,10 +72,12 @@ impl Graph {
         &self.private
     }
 
+    /// The keys it takes as inputs and gives back as outputs.
     pub fn signature(&self) -> &Signature {
         &self.signature
     }
 
+    /// Its entry node.
     pub fn entry(&self) -> &NodeId {
         &self.entry
     }
@@ -142,6 +146,7 @@ impl Graph {
         self.edges.get(id).map(|edge| edge.as_ref())
     }
 
+    /// Whether it holds the node `id`.
     pub fn contains(&self, id: &NodeId) -> bool {
         self.nodes.contains_key(id)
     }
@@ -159,6 +164,7 @@ impl Graph {
         Ok(())
     }
 
+    /// Refuses a cursor naming a node the graph does not hold (`UnknownNode`).
     pub fn validate_cursor(&self, cursor: &Cursor) -> Result<(), GraphError> {
         for id in cursor.active.iter().chain(cursor.deferred.iter()) {
             if !self.contains(id) {

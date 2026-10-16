@@ -7,9 +7,15 @@ use crate::state::value::Value;
 use crate::state::value_type::ValueType;
 use crate::value::Key;
 
+/// The keys of a graph: its state keys with their kinds, its configuration
+/// keys with their kinds, and optional start values of state keys. A state key
+/// and a configuration key may share a name. Its JSON is `{"state", "config",
+/// "defaults"?}`.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Schema {
+    /// The state keys.
     pub state: BTreeMap<Key, Kind>,
+    /// The configuration keys.
     pub config: BTreeMap<Key, Kind>,
     /// Explicit start values of state keys; a state key without one starts
     /// with the neutral value of its kind.
@@ -18,6 +24,7 @@ pub struct Schema {
 }
 
 impl Schema {
+    /// A schema of `state` and `config` keys, without defaults.
     pub fn new(state: BTreeMap<Key, Kind>, config: BTreeMap<Key, Kind>) -> Self {
         Self {
             state,
@@ -26,6 +33,8 @@ impl Schema {
         }
     }
 
+    /// A builder of a schema, which gives a typed key for each key it
+    /// declares.
     pub fn builder() -> SchemaBuilder {
         SchemaBuilder::default()
     }
@@ -58,6 +67,9 @@ impl Schema {
     }
 }
 
+/// Declares the keys of a schema: typed (`state`, `config`), which gives the
+/// typed key of each, or by name (`state_by_name`, `config_by_name`) for a
+/// graph described as data.
 #[derive(Default)]
 pub struct SchemaBuilder {
     state: BTreeMap<Key, Kind>,

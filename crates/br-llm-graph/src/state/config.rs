@@ -11,6 +11,10 @@ use crate::state::value::Value;
 use crate::state::value_type::{ValueType, read_as};
 use crate::value::Key;
 
+/// The read-only typed configuration of a run: a value for every configuration
+/// key of its schema, and no other key. It has no defaults. Its JSON is
+/// `{"schema_version", "schema", "values"}`, the schema mapping the
+/// configuration keys to their kinds.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Config {
     schema_version: &'static str,
@@ -49,6 +53,9 @@ impl<'de> serde::Deserialize<'de> for Config {
 }
 
 impl Config {
+    /// The configuration of `values` over the configuration keys of `schema`:
+    /// a missing key is refused (`MissingKey`), an undeclared one
+    /// (`UnknownKey`), a value of another kind (`KindMismatch`).
     pub fn new(schema: &Schema, values: BTreeMap<Key, Value>) -> Result<Self, GraphError> {
         Config::assemble(schema.config.clone(), values)
     }

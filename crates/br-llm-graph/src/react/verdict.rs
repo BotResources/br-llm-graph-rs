@@ -12,9 +12,13 @@ use crate::state::{Config, State};
 
 /// The critic's judgement of one answer. `message` may be blank (empty or
 /// whitespace only) only when `is_valid` is true.
+/// The critic's judgment of an answer.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Verdict {
+    /// Whether the answer is valid.
     pub is_valid: bool,
+    /// The feedback: what the generator reads in a critique, what an
+    /// acceptance holds.
     pub message: String,
 }
 
@@ -34,7 +38,10 @@ pub type VerdictReader = Arc<dyn Fn(&Json) -> Result<Verdict, GraphError> + Send
 /// `reader`, the shape is the caller's concern and the reader gives the
 /// verdict.
 pub struct VerdictOverride {
+    /// The shape sent instead of the default one.
     pub shape: StructuredShape,
+    /// The reader of the structured block. `None`: the block is read as the
+    /// default verdict.
     pub reader: Option<VerdictReader>,
 }
 
