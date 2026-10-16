@@ -14,7 +14,7 @@ use crate::react::react_agent::ReactAgent;
 use crate::react::react_agent_support::*;
 use crate::react::round_limit::OnLimit;
 use crate::react::test_support::*;
-use crate::state::Kind;
+use crate::state::{ConfigKey, Kind};
 
 #[test]
 fn given_an_agent_when_built_then_its_signature_names_opening_answer_and_the_limit_flag() {
@@ -197,6 +197,31 @@ fn given_a_pass_through_input_that_names_a_key_of_the_graph_when_built_then_key_
 }
 
 #[test]
+fn given_an_extra_input_that_names_a_key_a_function_reads_or_the_enabled_key_with_its_kind_when_built_then_one_input()
+ {
+    let graph = ReactAgent {
+        system: Prompt::from_state(&skey("persona")),
+        enabled: Some(key("offered")),
+        inputs: vec![
+            (key("persona"), Kind::Str),
+            (key("offered"), Kind::list(Kind::Str)),
+            (key("persona"), Kind::Str),
+        ],
+        ..agent(&mock(Vec::new()))
+    }
+    .graph()
+    .unwrap();
+    assert_eq!(
+        graph.signature().inputs,
+        BTreeMap::from([
+            (key("opening"), Kind::Conversation),
+            (key("persona"), Kind::Str),
+            (key("offered"), Kind::list(Kind::Str)),
+        ])
+    );
+}
+
+#[test]
 fn given_a_key_read_by_several_functions_when_built_then_it_is_declared_once() {
     let client = mock(Vec::new());
     let both = || {
@@ -263,5 +288,25 @@ fn given_a_function_that_reads_a_key_of_the_graph_when_built_then_key_collision(
     let built = flagged(Prompt::from_config(&ckey("width")));
     assert!(
         matches!(built, Err(GraphError::KeyCollision { key: ref found }) if *found == key("width"))
+    );
+}
+
+#[test]
+fn given_a_function_that_reads_the_key_of_a_limit_with_its_kind_when_built_then_one_configuration_key()
+ {
+    let mut reads = Reads::new();
+    let width: ConfigKey<i64> = reads.config("width").unwrap();
+    let graph = ReactAgent {
+        system: Prompt::from_fn(reads, move |ctx| {
+            Ok(format!("At most {} calls at once.", ctx.config(&width)?))
+        }),
+        tool_concurrency: Some(Limit::Config(key("width"))),
+        ..agent(&mock(Vec::new()))
+    }
+    .graph()
+    .unwrap();
+    assert_eq!(
+        graph.schema().config,
+        BTreeMap::from([(key("width"), Kind::Int)])
     );
 }
