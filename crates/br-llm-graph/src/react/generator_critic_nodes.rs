@@ -188,13 +188,16 @@ impl Node for FinishNode {
 
 /// The edge of `finish`: the run ends with `validated` when `is_validated`
 /// (the key `validated`) is true, else `exhausted`.
-pub(crate) fn finish_edge(validated: Key) -> impl Edge + 'static {
-    FnEdge::new(move |state, _config| {
+pub(crate) fn finish_edge(validated: Key) -> Result<impl Edge + 'static, GraphError> {
+    let (accepted, refused) = (EndLabel::new("validated")?, EndLabel::new("exhausted")?);
+    let declared = [Target::End(accepted.clone()), Target::End(refused.clone())];
+    Ok(FnEdge::new(move |state, _config| {
         let label = if state.bool(&validated)? {
-            "validated"
+            accepted.clone()
         } else {
-            "exhausted"
+            refused.clone()
         };
-        Ok(vec![Target::End(EndLabel::new(label)?)])
+        Ok(vec![Target::End(label)])
     })
+    .targets(declared))
 }

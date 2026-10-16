@@ -216,12 +216,22 @@ impl GeneratorCritic {
             );
         }
 
+        let node = |id: &crate::value::NodeId| Target::Node(id.clone());
+        let (generate, check, critique, finish) = (
+            node(&names.generate),
+            node(&names.check),
+            node(&names.critique),
+            node(&names.finish),
+        );
+        let route_targets = [generate.clone(), check, critique.clone(), finish.clone()];
+        let check_targets = [generate.clone(), critique, finish.clone()];
+        let critique_targets = [generate, finish];
         let (entry, checked, judged) = (router.clone(), router.clone(), router);
         let graph = builder
             .node(names.route.clone(), RouteNode { duo: duo.clone() })
             .edge(
                 names.route,
-                FnEdge::new(move |state, config| entry.entry(state, config)),
+                FnEdge::new(move |state, config| entry.entry(state, config)).targets(route_targets),
             )
             .node(
                 names.check.clone(),
@@ -233,7 +243,8 @@ impl GeneratorCritic {
             )
             .edge(
                 names.check,
-                FnEdge::new(move |state, config| checked.after_check(state, config)),
+                FnEdge::new(move |state, config| checked.after_check(state, config))
+                    .targets(check_targets),
             )
             .node(
                 names.critique.clone(),
@@ -252,7 +263,8 @@ impl GeneratorCritic {
             )
             .edge(
                 names.critique,
-                FnEdge::new(move |state, config| judged.after_critique(state, config)),
+                FnEdge::new(move |state, config| judged.after_critique(state, config))
+                    .targets(critique_targets),
             )
             .node(
                 names.finish.clone(),
@@ -264,7 +276,7 @@ impl GeneratorCritic {
                     flag: flag_limit,
                 },
             )
-            .edge(names.finish, finish_edge(names.validated))
+            .edge(names.finish, finish_edge(names.validated)?)
             .build()?;
         Ok(Arc::new(graph))
     }

@@ -143,6 +143,9 @@ impl ReactLoop {
         Ok(())
     }
 
+    /// The edge after the model call: to the tool nodes while the reply
+    /// calls tools, to the round-limit node past the last allowed round,
+    /// else where the loop ends (`after`). It declares all of them.
     fn llm_edge(&self, key: Key, author: Author) -> impl Edge + 'static {
         let tool_targets: Vec<Target> = self
             .tool_nodes
@@ -157,6 +160,18 @@ impl ReactLoop {
         let after = self.after.clone();
         let llm = self.llm.clone();
         let round_limit = self.round_limit.clone();
+        // The tool nodes, the round-limit node when it has one, then where
+        // the loop ends.
+        let limit_node = round_limit
+            .as_ref()
+            .and_then(RoundLimit::node)
+            .map(|node| Target::Node(node.clone()));
+        let declared: Vec<Target> = tool_targets
+            .iter()
+            .cloned()
+            .chain(limit_node)
+            .chain(std::iter::once(after.clone()))
+            .collect();
         FnEdge::new(move |state, config| {
             let conversation = state.conversation(&key)?;
             match last_turn_state(conversation, &author) {
@@ -179,5 +194,6 @@ impl ReactLoop {
                 _ => Ok(vec![after.clone()]),
             }
         })
+        .targets(declared)
     }
 }

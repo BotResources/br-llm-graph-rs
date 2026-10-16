@@ -75,13 +75,14 @@ impl EnterNode {
 
 /// The edge of `enter`: first the check of the agent's `bounds`, whose
 /// refusal is the run's error; then to the answer when the call was
-/// answered on entry, else to the model call.
+/// answered on entry, else to the model call. It declares both.
 pub(crate) fn enter_edge(
     call: AgentCall,
     bounds: Bounds,
     llm: NodeId,
     answer: NodeId,
 ) -> impl Edge + 'static {
+    let declared = [Target::Node(llm.clone()), Target::Node(answer.clone())];
     FnEdge::new(move |state, config| {
         bounds.check(config)?;
         match call.position(state)? {
@@ -89,4 +90,5 @@ pub(crate) fn enter_edge(
             Position::Writing(_) => Ok(vec![Target::Node(llm.clone())]),
         }
     })
+    .targets(declared)
 }
