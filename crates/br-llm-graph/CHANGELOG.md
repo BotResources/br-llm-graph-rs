@@ -34,13 +34,15 @@ br-llm-clients-core 0.4.
   (`CaptureUpdate::set_value`, `set_from`, `set_reason`, `append_value`,
   `append_from`, `append_reason`) and a map (`Map::new(list, item, body)`,
   `max_concurrency`, `on_item_failure`); `Limit::config` and `Count::config`
-  take an int configuration key; `GraphBuilder::input` and `output` take a
-  typed key or a key by name. A wrong kind does not compile (pinned by
-  `compile_fail` doctests); a float is still checked when built
+  take an int configuration key. A wrong kind does not compile (pinned by
+  `compile_fail` doctests, which CI runs with `cargo test --doc`); a float is still checked when built
   (`FloatNotFinite`). Reading and updating by name stay for states,
   configurations and checkpoints reloaded from JSON and for graphs described
   as data, with their refusals.
-- What a runner gives a model-calling node: `Given<N, T>`, a value
+- What a runner gives a model-calling node: `ModelNode`, the sealed trait of
+  the nodes that call a model (`LlmCall`, `ReactAgent`, `GeneratorSeat`,
+  `CriticSeat`, and `GeneratorCritic` for its rule check and empty-answer
+  critique), and `Given<N, T>`, a value
   (`Given::value`) or a synchronous function of the node's context
   (`Given::from_fn`) declaring the keys it reads (`Reads`); `Model<N>` gives
   a client, `Prompt<N>` a text, `History<N>` the wire messages. The context,
@@ -53,7 +55,9 @@ br-llm-clients-core 0.4.
   `from_config`, `from_config_list` (a list of strings joined by a blank
   line), `Model::client`, `Model::schedule` (from the start, the last
   repeating; `Scheduled`) and `Model::ending_with` (a tail for the last calls
-  the budget allows; `Budgeted`, the generator-critic's seats only). A
+  the budget allows; `Budgeted`, the generator-critic's seats only; the
+  generator's calls allowed, the budget plus one with `final_generation`,
+  saturate at `usize::MAX`). A
   function's error fails its node as returned. The keys a function of an
   agent declares are inputs and configuration keys of the agent's graph; a
   key given twice with one kind is declared once.
@@ -62,10 +66,17 @@ br-llm-clients-core 0.4.
   `push_event`, `push_results`, `end_turn`), with `ThreadView`,
   `ThreadMessage`, `MessageStatus`, `TurnEnd`, `ThreadError` and
   `ThreadFuture`; its documentation states how each write is repeated
-  safely and how a failed or cancelled turn is repaired.
+  safely and how a failed or cancelled turn is repaired, and which ends the
+  library sends: `Completed`, and `Failed` only for a turn found open on
+  entry (a turn left by a model error, a store error or a cancel stays open
+  until then). `ThreadView` and `ThreadMessage` are `#[non_exhaustive]`
+  structs a store builds with `new`; `MessageStatus` and `TurnEnd` are
+  exhaustive on purpose, so a store matching them must handle a status or
+  an end added later.
 - `ThreadId`, a UUIDv7 written as its text, and `IdRequest`, what an id is
   asked for: the origin of the agent, its trigger (the id of the user input
-  its call answers) and the rank of the id within the call.
+  its call answers) and the rank of the id within the call, a
+  `#[non_exhaustive]` struct built with `IdRequest::new`.
 - Durable agents: `ReactAgent::thread_store` and
   `GeneratorCritic::thread_store`. A durable agent takes the input `thread`
   (an id the store holds, or the empty string to have the store create one
@@ -89,7 +100,12 @@ br-llm-clients-core 0.4.
 - `LlmRequest::History`, the conversation to send as wire messages, and
   `LlmOutput` (`Set` a string key, `Append` to a list of strings).
 - `GraphError::Thread` (the store's error, its source), `ThreadNotFound`,
-  `ThreadId` and `OpeningNotInputs`.
+  `ThreadId` and `OpeningNotInputs`. There is no `From<ThreadError>`:
+  `ThreadError` is any boxed error, so the conversion would have turned the
+  boxed error of a node, a tool or a hook into `Thread`.
+- `LlmOutput`, `Ruling` and `CriticHistory` are `#[non_exhaustive]`, as
+  `Judgment` and `LlmRequest`: a `match` on them outside the crate needs a
+  wildcard arm.
 - `#![warn(missing_docs)]`: every public item is documented, `GraphError`
   and `NodeFault` variants and fields included; crate docs with a runnable
   example over typed keys.
@@ -132,12 +148,19 @@ br-llm-clients-core 0.4.
   `history` gives way to the input `opening`, durable the input and output
   `thread`, and the private key `conversation`, neither input nor output;
   the graph enters through the new node `enter`. `enter`, `opening`,
-  `conversation`, `turn_rank` and, durable, `thread` are the graph's own
-  (`DuplicateNode`, `KeyCollision`); a round-limit flag naming `answer`,
+  `conversation`, its private key `turn_rank` and, durable, `thread` are
+  the graph's own (`DuplicateNode`, `KeyCollision`: a function, an enabled
+  key or an extra input naming `turn_rank` is refused too); a round-limit
+  flag naming `answer`,
   `opening`, `thread` or `conversation` is refused (`FlagKeyMismatch`).
 - **Breaking:** an agent's model gives the client of a turn, asked at the
   turn's first round and kept for its other rounds, so a turn is run by one
-  client; a schedule advances per turn.
+  client; a schedule advances per turn. The client is kept in the run of
+  the agent's call, for its turn: two runs of one built graph, whatever
+  their run ids, and the items of a map each keep their own, and nothing is
+  kept once a run ends, however it ends (finished, failed, cancelled, or
+  paused and never resumed). A call run again asks its model again at its
+  first round.
 - **Breaking:** `GeneratorCritic`: the inputs `conversation` and
   `generator_history` give way to `opening`, durable `thread` (also an
   output), and the private key `conversation`, which holds the opening,
@@ -159,14 +182,25 @@ br-llm-clients-core 0.4.
   model, system, history, review_request, thinking_description,
   is_valid_description, message_description, verdict }`, the texts
   `Prompt`s of their seat, `empty_answer_critique` a
-  `Prompt<GeneratorCritic>`; `CriticSeat::new(author, model, system)`. The
+  `Prompt<GeneratorCritic>`; `CriticSeat::new(author, model, system)`.
+  `route`, `generate`, `check`, `critique`, `finish`, `prepare`, `opening`,
+  `answer`, `is_validated`, `nb_generations`, `conversation`, the private
+  keys `turn_rank` and `call_turns` and, durable, `thread` are the graph's
+  own (`DuplicateNode`, `KeyCollision`). The
   critic's stream events carry the key `critic`. Each seat's schedule counts
   critiques (revisions and verdict retries not counted).
 - **Breaking:** a `Count` or a `Limit` an agent reads from its configuration
   is resolved by the edge of its entry node before any node reads it: a
   refused one (`CountNegative`, `LimitNotPositive`, or its key's
   `UnknownKey` or `KindMismatch`) is the run's error itself, before any
-  model is called.
+  model is called. The entry node runs first: a durable agent has already
+  created its thread (when given the empty `thread`) and stored the inputs
+  of its `opening`, and a generator-critic's `prepare` has run, when the
+  edge refuses.
+- **Breaking:** `GraphBuilder::input` and `output` take `impl Into<Key>`, a
+  typed key (`&StateKey<T>`) or a key by name, formerly a `Key`: a call
+  passing `x.into()` no longer infers the type to convert into; pass the
+  key itself.
 - **Breaking:** `Graph::schema` does not declare an agent's private keys;
   a checkpoint of an agent's graph, its pending entries and the observer's
   `checkpoint` events omit `conversation`: the checkpoint's cursor names the
