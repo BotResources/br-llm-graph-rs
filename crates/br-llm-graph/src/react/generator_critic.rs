@@ -55,10 +55,12 @@ use crate::value::Key;
 /// or `conversation` is refused (`KeyCollision`) first.
 ///
 /// The graph's own nodes are `route`, `generate`, `check`, `critique`,
-/// `finish`, `prepare` when set and, without a split, `tools`: a tool node
-/// or a round-limit node of the generator of one of these ids collides with
-/// it (`DuplicateNode`). The run ends with `validated` when `is_validated`
-/// is true, else `exhausted`.
+/// `finish`, `prepare` when set and, without a split, `tools`, even when the
+/// generator has no tool: a tool node or a round-limit node of the generator
+/// of one of these ids collides with it (`DuplicateNode`). A call of the
+/// generator that names a tool no tool node runs is answered with an error
+/// result, never executed, as in a ReAct agent (see `ReactAgent`). The run
+/// ends with `validated` when `is_validated` is true, else `exhausted`.
 ///
 /// # What it records
 ///

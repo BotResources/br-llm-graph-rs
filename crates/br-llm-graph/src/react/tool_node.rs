@@ -7,11 +7,14 @@ use futures_util::future::join_all;
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Limit, Node, NodeError, NodeFuture};
+use crate::origin::Origin;
 use crate::react::agent_call::ThreadBinding;
 use crate::react::helpers::{check_enabled, enabled_names, last_turn_by_author, pending_calls};
 use crate::react::round_writer::RoundWriters;
 use crate::react::tool::Tool;
-use crate::react::tool_answer::{Answer, error_result, judge_and_run, text_block, text_or};
+use crate::react::tool_answer::{
+    Answer, error_result, judge_and_run, not_enabled, text_block, text_or, unavailable,
+};
 use crate::react::tool_gate::SharedGates;
 use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Schema, State};
@@ -29,6 +32,15 @@ use crate::value::Key;
 /// With `enabled` (the `enabled` key of the model-call step), a call naming a
 /// tool the key does not hold is not executed: it is answered with an error
 /// result saying so, and the turn goes on.
+///
+/// The first tool node of the loop also answers the calls that name a tool
+/// no tool node runs (`declared`, the tools the agent declares): each is not
+/// executed, it is answered with an error result naming the tools offered to
+/// the call (the declared tools the `enabled` key holds, when set, in the
+/// order declared) or saying that none is, in call order among the node's
+/// own, and the turn goes on.
+/// Without a tool, a ReAct agent or a generator seat still has its node
+/// `tools`, which answers them.
 ///
 /// A call is judged by its tool's hook, when there is one, after the
 /// `enabled` check, inside its concurrency slot, before its tool runs. A
@@ -61,8 +73,21 @@ pub(crate) struct ToolNode {
     pub(crate) max_concurrency: Option<Limit>,
     pub(crate) enabled: Option<Key>,
     pub(crate) gates: Arc<SharedGates>,
+    /// For the first tool node of the loop only: the tools the agent
+    /// declares, in order. The calls naming none of them are its to answer.
+    pub(crate) declared: Option<Vec<ToolName>>,
     /// For a durable agent: where the round's results are written.
     pub(crate) durable: Option<DurableTools>,
+}
+
+/// What a tool node does with one pending call of the turn.
+enum Pick<'a> {
+    /// Runs its tool.
+    Run(&'a Arc<dyn Tool>),
+    /// Answers it as a tool the `enabled` key does not hold.
+    NotEnabled,
+    /// Answers it as a tool no tool node runs.
+    Unavailable,
 }
 
 /// How the tool nodes of a durable agent write a round: every tool node of
@@ -80,13 +105,8 @@ pub(crate) struct DurableTools {
 }
 
 impl Node for ToolNode {
-    fn run<'a>(
-        &'a self,
-        state: &'a State,
-        config: &'a Config,
-        _ctx: &'a Context,
-    ) -> NodeFuture<'a> {
-        Box::pin(self.run_calls(state, config))
+    fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
+        Box::pin(self.run_calls(state, config, ctx.origin()))
     }
 
     fn check(&self, schema: &Schema, _site: CheckSite) -> Result<(), GraphError> {
@@ -104,7 +124,12 @@ impl Node for ToolNode {
 }
 
 impl ToolNode {
-    async fn run_calls(&self, state: &State, config: &Config) -> Result<Vec<Update>, NodeError> {
+    async fn run_calls(
+        &self,
+        state: &State,
+        config: &Config,
+        origin: &Origin,
+    ) -> Result<Vec<Update>, NodeError> {
         // Taken first: dropped on any error below, it tells the other tool
         // nodes of the round that it will not be written.
         let seat = self
@@ -134,16 +159,22 @@ impl ToolNode {
                 .as_ref()
                 .is_none_or(|names| names.contains(&name.as_str()))
         };
-        // Each owned call, with its tool when it is enabled, `None` when not.
-        let selected: Vec<(&ToolCall, Option<&Arc<dyn Tool>>)> =
-            pending_calls(state, &self.key, &self.author)?
-                .into_iter()
-                .filter_map(|call| {
-                    owned
-                        .get(&call.name)
-                        .map(|tool| (call, is_enabled(&call.name).then_some(*tool)))
-                })
-                .collect();
+        let runs_nowhere = |name: &ToolName| {
+            self.declared
+                .as_ref()
+                .is_some_and(|declared| !declared.contains(name))
+        };
+        // Each call this node answers, in call order: its own, and the calls
+        // no tool node runs when it is the first.
+        let selected: Vec<(&ToolCall, Pick<'_>)> = pending_calls(state, &self.key, &self.author)?
+            .into_iter()
+            .filter_map(|call| match owned.get(&call.name) {
+                Some(tool) if is_enabled(&call.name) => Some((call, Pick::Run(tool))),
+                Some(_) => Some((call, Pick::NotEnabled)),
+                None if runs_nowhere(&call.name) => Some((call, Pick::Unavailable)),
+                None => None,
+            })
+            .collect();
 
         let lease = match &self.max_concurrency {
             Some(limit) => Some(self.gates.lease(state, limit.resolve(config)?.get())),
@@ -153,9 +184,11 @@ impl ToolNode {
         // Set by the first hook that fails: no call starts after it.
         let failed = AtomicBool::new(false);
         let failed = &failed;
-        let answers = join_all(selected.iter().map(|(call, tool)| async move {
-            let Some(tool) = tool else {
-                return Answer::NotEnabled;
+        let answers = join_all(selected.iter().map(|(call, pick)| async move {
+            let tool = match pick {
+                Pick::Run(tool) => tool,
+                Pick::NotEnabled => return Answer::NotEnabled,
+                Pick::Unavailable => return Answer::Unavailable,
             };
             // Checked before the slot too, not to wait for a slot only to
             // give it back.
@@ -169,7 +202,7 @@ impl ToolNode {
             if failed.load(Ordering::SeqCst) {
                 return Answer::NotStarted;
             }
-            let answer = judge_and_run(tool.as_ref(), call, state, config).await;
+            let answer = judge_and_run(tool.as_ref(), call, origin, state, config).await;
             if matches!(answer, Answer::HookFailed(_)) {
                 failed.store(true, Ordering::SeqCst);
             }
@@ -182,11 +215,18 @@ impl ToolNode {
         let mut answered: Vec<(ToolResult, Vec<Update>)> = Vec::new();
         for ((call, _), answer) in selected.iter().zip(answers) {
             match answer {
-                Answer::NotEnabled => {
-                    let text = format!(
-                        "Tool {} is not enabled for this run: this call was not executed.",
-                        call.name
-                    );
+                Answer::NotEnabled => answered.push((
+                    error_result(call, text_block(&not_enabled(&call.name))),
+                    Vec::new(),
+                )),
+                Answer::Unavailable => {
+                    let offered: Vec<&ToolName> = self
+                        .declared
+                        .iter()
+                        .flatten()
+                        .filter(|name| is_enabled(name))
+                        .collect();
+                    let text = unavailable(&call.name, &offered);
                     answered.push((error_result(call, text_block(&text)), Vec::new()));
                 }
                 // Only after a hook failed, whose error this loop returns.

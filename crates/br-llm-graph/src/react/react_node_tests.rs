@@ -122,7 +122,7 @@ async fn given_llm_invoked_with_awaiting_results_turn_when_run_then_fails_closed
 
 #[tokio::test]
 async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchanged() {
-    use crate::react::tool::{ToolFuture, ToolOutput};
+    use crate::react::tool::{ToolContext, ToolFuture, ToolOutput};
     use crate::state::Config;
     use crate::update::Update;
 
@@ -135,6 +135,7 @@ async fn given_two_tools_set_same_key_when_run_then_node_fails_and_state_unchang
         }
         fn call<'a>(
             &'a self,
+            _call: &'a ToolContext,
             _arguments: serde_json::Value,
             _state: &'a State,
             _config: &'a Config,

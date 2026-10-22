@@ -8,7 +8,7 @@ use serde_json::{Value as Json, json};
 
 use crate::react::react_hook_support::{answered, call, pending, run_tools, tool_graph};
 use crate::react::test_support::spec;
-use crate::react::tool::{Tool, ToolFuture};
+use crate::react::tool::{Tool, ToolContext, ToolFuture};
 use crate::state::{Config, State};
 
 /// An error whose message is the text it holds, blank or not.
@@ -36,6 +36,7 @@ impl Tool for FailingTool {
 
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,

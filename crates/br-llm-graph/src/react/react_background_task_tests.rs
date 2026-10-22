@@ -31,7 +31,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     use serde_json::Value as Json;
 
     use crate::graph::{FnEdge, FnNode, NodeFuture};
-    use crate::react::tool::{ToolFuture, ToolOutput};
+    use crate::react::tool::{ToolContext, ToolFuture, ToolOutput};
     use crate::session::Session;
     use crate::state::{Config, Kind, Schema, State, Value};
     use crate::update::Update;
@@ -53,6 +53,7 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
         }
         fn call<'a>(
             &'a self,
+            _call: &'a ToolContext,
             _arguments: Json,
             _state: &'a State,
             _config: &'a Config,
@@ -101,7 +102,8 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     };
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![start_task])],
+        tools_node: nid("tools"),
+        split: vec![(nid("tools"), vec![start_task])],
         after: Target::Node(nid("gate")),
         thread: None,
     };

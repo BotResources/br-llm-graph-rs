@@ -1,9 +1,9 @@
 //! The build checks of an `LlmCall` on the keys it names itself: its
 //! conversation key and its output key, each refused with the error its use
-//! would give.
+//! would give. A `RunnerCall` checks its outputs the same way.
 
 use crate::error::GraphError;
-use crate::graph::CheckSite;
+use crate::graph::{CheckSite, Output};
 use crate::react::llm_call::LlmOutput;
 use crate::state::{Kind, Schema};
 use crate::value::Key;
@@ -29,34 +29,31 @@ pub(crate) fn check_output(
     output: &LlmOutput,
     site: CheckSite,
 ) -> Result<(), GraphError> {
+    check_text_output(schema, &output.written(), site)
+}
+
+/// A string written through `output` (the answer of an `LlmCall`, the answer
+/// or the thread of a `RunnerCall`) must fit: the error applying it would
+/// give otherwise. In a map body, a `Set` is refused (`MapBodySet`).
+pub(crate) fn check_text_output(
+    schema: &Schema,
+    output: &Output,
+    site: CheckSite,
+) -> Result<(), GraphError> {
     let (key, expected) = match output {
-        LlmOutput::Set(key) if site == CheckSite::MapBody => {
-            return Err(GraphError::MapBodySet {
-                key: key.key().clone(),
-            });
+        Output::Set(key) if site == CheckSite::MapBody => {
+            return Err(GraphError::MapBodySet { key: key.clone() });
         }
-        LlmOutput::Set(key) => match schema.state.get(key.key()) {
+        Output::Set(key) => match schema.state.get(key) {
             Some(Kind::Str) => return Ok(()),
-            Some(kind) => (key.key(), kind),
-            None => {
-                return Err(GraphError::UnknownKey {
-                    key: key.key().clone(),
-                });
-            }
+            Some(kind) => (key, kind),
+            None => return Err(GraphError::UnknownKey { key: key.clone() }),
         },
-        LlmOutput::Append(key) => match schema.state.get(key.key()) {
+        Output::Append(key) => match schema.state.get(key) {
             Some(Kind::List { element }) if **element == Kind::Str => return Ok(()),
-            Some(Kind::List { element }) => (key.key(), element.as_ref()),
-            Some(_) => {
-                return Err(GraphError::AppendNotList {
-                    key: key.key().clone(),
-                });
-            }
-            None => {
-                return Err(GraphError::UnknownKey {
-                    key: key.key().clone(),
-                });
-            }
+            Some(Kind::List { element }) => (key, element.as_ref()),
+            Some(_) => return Err(GraphError::AppendNotList { key: key.clone() }),
+            None => return Err(GraphError::UnknownKey { key: key.clone() }),
         },
     };
     Err(GraphError::KindMismatch {

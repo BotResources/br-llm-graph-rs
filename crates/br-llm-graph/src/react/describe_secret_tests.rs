@@ -15,7 +15,7 @@ use crate::react::given::{Model, Prompt, Reads};
 use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
 use crate::react::react_agent_support::{agent, question};
 use crate::react::test_support::{key, mock, skey};
-use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+use crate::react::tool::{Tool, ToolContext, ToolFuture, ToolOutput};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::value::EndLabel;
 
@@ -47,6 +47,7 @@ impl Tool for Vault {
 
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,

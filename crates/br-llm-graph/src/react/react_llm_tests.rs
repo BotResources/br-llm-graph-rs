@@ -222,7 +222,8 @@ async fn given_failing_model_in_react_loop_when_run_then_node_failed_not_looping
     node.tools = vec![Arc::new(EchoTool)];
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
+        tools_node: nid("tools"),
+        split: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
         thread: None,
     };

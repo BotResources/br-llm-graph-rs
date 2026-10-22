@@ -13,6 +13,7 @@ use br_llm_messages::MessageError;
 use br_llm_messages::{Author, ToolName};
 
 use crate::graph::Target;
+use crate::runner::{RunnerError, RunnerTarget};
 use crate::state::Kind;
 use crate::value::{EndLabel, Key, NodeId, ThreadId};
 
@@ -24,13 +25,14 @@ pub use fault::NodeFault;
 /// A build refusal of a node reaches the caller inside `InvalidNode`; a node
 /// failure inside `NodeFailed`; a failure of a called graph inside
 /// `SubGraphFailed`, inside the `NodeFailed` of the calling node. An edge
-/// refusal (`UndeclaredTarget`, `PendingToolUnsatisfiable`, `ToolLimitReached`,
-/// a refused `Count`) is the run's error itself, and so is a refusal before the first
-/// superstep (`StateSchemaMismatch`, `ConfigSchemaMismatch`, `UnknownNode`,
+/// refusal (`UndeclaredTarget`, `ToolLimitReached`, a refused `Count`) is the
+/// run's error itself, and so is a refusal before the first superstep
+/// (`StateSchemaMismatch`, `ConfigSchemaMismatch`, `UnknownNode`,
 /// `EmptyCursor`). The source (`std::error::Error::source`) of `NodeFailed`
 /// is its fault, of `Message` the br-llm-messages error, of `Model` the
 /// `ClientError`, of `Request` the `BuildError`, of `SubGraphFailed` the
-/// child's error, of `InvalidNode` the reason, of `Thread` the store's error.
+/// child's error, of `InvalidNode` the reason, of `Thread` the store's error,
+/// of `Runner` the runner port's error.
 #[derive(Debug)]
 pub enum GraphError {
     /// A key, a node id or an end label that does not match
@@ -186,11 +188,6 @@ pub enum GraphError {
         /// The tool.
         name: ToolName,
     },
-    /// A pending call naming a tool no tool node runs.
-    PendingToolUnsatisfiable {
-        /// The tool the call names.
-        name: ToolName,
-    },
     /// An enabled key that is not a list-of-strings state key.
     EnabledKeyMismatch {
         /// The key.
@@ -268,6 +265,24 @@ pub enum GraphError {
     /// The `opening` of a durable agent holds no user input, or something
     /// other than user inputs.
     OpeningNotInputs,
+    /// The child of a runner call failed as expected: it refused, failed,
+    /// was cancelled by someone else, or did not answer in time. Its message
+    /// is the reason, as the child gave it (`runner call failed` when it is
+    /// blank), so a `Capture` from the reason records it so.
+    RunnerFailed {
+        /// The runner type the call targets.
+        target: RunnerTarget,
+        /// Why the child gave no answer, as the runner port says.
+        reason: String,
+    },
+    /// The runner port failed: its error, which the host can downcast to its
+    /// own type.
+    Runner {
+        /// The port's error.
+        source: RunnerError,
+    },
+    /// A blank text given as the target of a runner call.
+    RunnerTargetBlank,
     /// A reply that asks for tools after the last round the round limit
     /// allows.
     ToolLimitReached {

@@ -7,9 +7,7 @@ use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::{Always, Graph, GraphBuilder, Limit, Target};
 use crate::react::agent_answer::AnswerNode;
-use crate::react::agent_build::{
-    AgentKeys, declare_limit, round_limit_flag, split_tools, tools_node_clash,
-};
+use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag};
 use crate::react::bounds::Bounds;
 use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
@@ -110,10 +108,16 @@ use crate::value::{EndLabel, Key, NodeId};
 /// `DuplicateToolName`), the same for a generator seat (naming `generate`).
 /// Then each tool of `tool_nodes` must be one of `tools` (`ToolNotDeclared`),
 /// and each of `tools` run by exactly one tool node (`ToolNotCovered`,
-/// `ToolCoveredTwice`). A pending call no tool node runs fails the run
-/// (`PendingToolUnsatisfiable`). The graph's own nodes are `enter`, `llm`,
-/// `answer` and, without a split, `tools`: a tool node or a round-limit node
-/// of one of these ids collides with it (`DuplicateNode`).
+/// `ToolCoveredTwice`). A pending call that names a tool no tool node runs
+/// is not executed: the first tool node answers it with the error result
+/// `Tool {name} is not available: this call was not executed. The tools
+/// available are: {names}.`, `names` the tools offered to the call (those of
+/// `enabled`, when set) in the order of `tools`, or `Tool {name} is not
+/// available: this call was not executed. No tool is available.` when none
+/// is offered, and the turn goes on. The
+/// graph's own nodes are `enter`, `llm`, `answer` and, without a split,
+/// `tools`, even without a tool: a tool node or a round-limit node of one of
+/// these ids collides with it (`DuplicateNode`).
 ///
 /// The round limit counts the rounds of the agent's turn (see `RoundLimit`).
 pub struct ReactAgent {
@@ -131,8 +135,9 @@ pub struct ReactAgent {
     /// The agent's tools, fixed when the graph is built.
     pub tools: Vec<Arc<dyn Tool>>,
     /// How the tools are split between tool nodes. Empty: one node, `tools`,
-    /// runs them all; that id is the graph's own even with no tool, so a
-    /// round-limit node named `tools` collides with it (`DuplicateNode`).
+    /// runs them all; the graph has it even with no tool, to answer a call of
+    /// a tool the agent does not have, so a round-limit node named `tools`
+    /// collides with it (`DuplicateNode`).
     pub tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
     /// At most that many tool calls run at once, across all the tool nodes
     /// together. `None`: every call at once.
@@ -196,9 +201,6 @@ impl ReactAgent {
         keys.release(&mut schema);
 
         let call = keys.call(self.thread_store);
-        let tools_node = NodeId::new("tools")?;
-        let clash = tools_node_clash(&self.tool_nodes, self.round_limit.as_ref(), &tools_node);
-        let tool_nodes = split_tools(self.tool_nodes, &self.tools, &tools_node);
         let bounds = Bounds::new(
             [],
             [
@@ -210,7 +212,8 @@ impl ReactAgent {
         let answer_flag = flag.clone().zip(self.round_limit.clone());
         let react = ReactLoop {
             llm: llm.clone(),
-            tool_nodes,
+            split: self.tool_nodes,
+            tools_node: NodeId::new("tools")?,
             after: Target::Node(answer_node.clone()),
             thread: call.thread.clone(),
         };
@@ -246,9 +249,6 @@ impl ReactAgent {
             );
         let builder = keys.signature(builder, declared, &[], flag.as_ref());
         let builder = react.add(builder, llm_node)?;
-        if let Some(clash) = clash {
-            return Err(clash);
-        }
         let graph = builder
             .node(
                 answer_node.clone(),

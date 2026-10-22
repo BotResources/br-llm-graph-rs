@@ -54,7 +54,8 @@ async fn given_a_full_react_loop_when_run_then_finishes_with_turn_of_three_items
     let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
+        tools_node: nid("tools"),
+        split: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
         thread: None,
     };
@@ -98,7 +99,8 @@ async fn given_two_tool_nodes_with_parallel_calls_when_run_then_both_run() {
     let llm = llm_node(client, vec![Arc::new(EchoTool), Arc::new(TallyTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![
+        tools_node: nid("tools"),
+        split: vec![
             (nid("echo_node"), vec![Arc::new(EchoTool)]),
             (nid("tally_node"), vec![Arc::new(TallyTool)]),
         ],

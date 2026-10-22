@@ -73,6 +73,7 @@ pub const DESCRIPTION_VERSION: &str = "br-llm-graph-description/1";
 /// | `llm_call` | `"model"`, `"system"`; `"request"`: `{"text": subject}`, `{"conversation": key, "author": {"id"}}` or `{"history": subject}`; `"output"`: a target |
 /// | `model_call` | `"author"`: `{"id"}`, the author's id, never its name; `"model"`, `"system"`, `"history"`; `"tools"?`: tool names; `"enabled"?`; `"tool_concurrency"?`; `"round_limit"?`: `{"max_rounds", "on_limit"}`, `on_limit` `"error"`, `{"continue": {"node", "flag"}}` or `{"end": {"node", "flag"}}`. The critic's adds `"max_critiques"`, `"final_generation"`, `"verdict_retries"`, `"review_request"`, `"verdict"` (`"default"` or `"override"`) |
 /// | `tools` | `"tools"`: the names of the tools it runs |
+/// | `runner_call` | `"target"`: the runner type it calls; `"arguments"`: `"fixed"` or `"function"`, never their value; `"output"`: a target; `"thread"?`: a target |
 ///
 /// A subject (`model`, `system`, `history`, a request's text...) is written
 /// `"fixed"`, `"ready_made"` or `"function"`, never its value; a `Limit` or
@@ -106,8 +107,8 @@ pub(crate) struct DescribedNode {
 /// it is written `node`, or `join` when registered as one, with nothing
 /// nested and no label. The library's own nodes give their kinds (`call`,
 /// `react_agent`, `generator_critic`, `map`, `llm_call`, `model_call`,
-/// `tools`); a host's node may give its own kind label and its own nested
-/// description.
+/// `tools`, `runner_call`); a host's node may give its own kind label and its
+/// own nested description.
 ///
 /// ```
 /// use br_llm_graph::{GraphError, NodeDescription};
@@ -129,8 +130,8 @@ impl NodeDescription {
     /// A host's node of its own kind, `label`, written as its kind. A label
     /// that does not match `[a-z][a-z0-9_]*`, or that names one of the kinds
     /// the library writes (`node`, `join`, `call`, `map`, `llm_call`,
-    /// `react_agent`, `generator_critic`, `tools`, `model_call`), is refused
-    /// (`Identifier`, the field `kind_label`).
+    /// `react_agent`, `generator_critic`, `tools`, `model_call`,
+    /// `runner_call`), is refused (`Identifier`, the field `kind_label`).
     pub fn labelled(label: impl Into<String>) -> Result<Self, GraphError> {
         let label = label.into();
         if !is_identifier(&label) || LIBRARY_KINDS.contains(&label.as_str()) {

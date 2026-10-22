@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
 use crate::describe::json_fields::{
-    call_fields, check_fields, llm_call_fields, map_fields, model_call_fields,
+    call_fields, check_fields, llm_call_fields, map_fields, model_call_fields, runner_call_fields,
 };
 use crate::describe::shape::Shape;
 use crate::describe::{DESCRIPTION_VERSION, DescribedNode, GraphDescription, NodeDescription};
@@ -142,5 +142,6 @@ fn shape_fields<M: SerializeMap>(shape: &Shape, map: &mut M) -> Result<(), M::Er
         Shape::ModelCall(call) => model_call_fields(call, map),
         Shape::Tools(tools) => map.serialize_entry("tools", &tools.tools),
         Shape::Check(check) => check_fields(check, map),
+        Shape::RunnerCall(call) => runner_call_fields(call, map),
     }
 }

@@ -9,7 +9,7 @@ use crate::describe::json_values::{
 };
 use crate::describe::shape::{
     CallShape, CheckShape, CriticShape, ItemPolicy, LlmCallShape, MapShape, ModelCallShape,
-    RequestShape, Source,
+    RequestShape, RunnerCallShape, Source,
 };
 use crate::value::Key;
 
@@ -143,4 +143,17 @@ pub(crate) fn check_fields<M: SerializeMap>(
         "empty_answer_critique",
         check.empty_answer_critique.as_str(),
     )
+}
+
+pub(crate) fn runner_call_fields<M: SerializeMap>(
+    call: &RunnerCallShape,
+    map: &mut M,
+) -> Result<(), M::Error> {
+    map.serialize_entry("target", &call.target)?;
+    map.serialize_entry("arguments", call.arguments.as_str())?;
+    map.serialize_entry("output", &written(&call.output))?;
+    if let Some(thread) = &call.thread {
+        map.serialize_entry("thread", &written(thread))?;
+    }
+    Ok(())
 }

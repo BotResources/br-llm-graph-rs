@@ -1,8 +1,10 @@
 //! Doctests only (`cfg(doctest)`): the enums a runner builds to configure a
-//! node, `Judgment`, `LlmRequest`, `LlmOutput`, `Ruling` and
-//! `CriticHistory`, may gain variants in a later version. A host builds their variants as before, and
-//! a `match` outside the crate needs a wildcard arm: one without it does not
-//! compile (E0004; rustdoc checks the code itself only on nightly).
+//! node, `Judgment`, `LlmRequest`, `LlmOutput`, `Ruling`, `CriticHistory`
+//! and `RunnerOutput`, and those a runner port builds, `RunnerReply` and
+//! `AnswerBlock`, may gain variants in a later version. A host builds their
+//! variants as before, and a `match` outside the crate needs a wildcard arm:
+//! one without it does not compile (E0004; rustdoc checks the code itself
+//! only on nightly).
 //!
 //! ```
 //! use br_llm_graph::{History, Judgment, LlmRequest, Prompt, Schema};
@@ -126,6 +128,81 @@
 //!     match history {
 //!         CriticHistory::Brief(_) => true,
 //!         CriticHistory::History | CriticHistory::Latest | CriticHistory::Given(_) => false,
+//!     }
+//! }
+//! ```
+//!
+//! The enums of 0.7 a runner or its runner port builds, matched with a
+//! wildcard arm.
+//!
+//! ```
+//! use br_llm_graph::{AnswerBlock, RunnerAnswer, RunnerOutput, RunnerReply, Schema, ThreadId};
+//! use br_llm_messages::Text;
+//!
+//! let mut schema = Schema::builder();
+//! let outputs = [
+//!     RunnerOutput::Set(schema.state("answer").unwrap()),
+//!     RunnerOutput::Append(schema.state("answers").unwrap()),
+//! ];
+//! let blocks = vec![
+//!     AnswerBlock::Text(Text::new("Two documents answer.").unwrap()),
+//!     AnswerBlock::Structured(serde_json::json!({"document_ids": ["d1", "d2"]})),
+//! ];
+//! let thread = ThreadId::new("01900000-0000-7000-8000-000000000001").unwrap();
+//! let replies = [
+//!     RunnerReply::Answered(RunnerAnswer::new(blocks.clone(), thread)),
+//!     RunnerReply::Failed { reason: "the child job failed".to_owned() },
+//! ];
+//! let appends = outputs
+//!     .iter()
+//!     .filter(|output| match output {
+//!         RunnerOutput::Append(_) => true,
+//!         RunnerOutput::Set(_) => false,
+//!         _ => false,
+//!     })
+//!     .count();
+//! let answered = replies
+//!     .iter()
+//!     .filter(|reply| match reply {
+//!         RunnerReply::Answered(_) => true,
+//!         RunnerReply::Failed { .. } => false,
+//!         _ => false,
+//!     })
+//!     .count();
+//! let structured = blocks
+//!     .iter()
+//!     .filter(|block| match block {
+//!         AnswerBlock::Structured(_) => true,
+//!         AnswerBlock::Text(_) => false,
+//!         _ => false,
+//!     })
+//!     .count();
+//! assert_eq!((appends, answered, structured), (1, 1, 1));
+//! ```
+//!
+//! ```compile_fail,E0004
+//! fn answered(reply: &br_llm_graph::RunnerReply) -> bool {
+//!     match reply {
+//!         br_llm_graph::RunnerReply::Answered(_) => true,
+//!         br_llm_graph::RunnerReply::Failed { .. } => false,
+//!     }
+//! }
+//! ```
+//!
+//! ```compile_fail,E0004
+//! fn structured(block: &br_llm_graph::AnswerBlock) -> bool {
+//!     match block {
+//!         br_llm_graph::AnswerBlock::Structured(_) => true,
+//!         br_llm_graph::AnswerBlock::Text(_) => false,
+//!     }
+//! }
+//! ```
+//!
+//! ```compile_fail,E0004
+//! fn appends(output: &br_llm_graph::RunnerOutput) -> bool {
+//!     match output {
+//!         br_llm_graph::RunnerOutput::Append(_) => true,
+//!         br_llm_graph::RunnerOutput::Set(_) => false,
 //!     }
 //! }
 //! ```

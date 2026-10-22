@@ -12,7 +12,7 @@ use std::sync::Arc;
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
     Config, ConfigKey, GraphError, Model, Outcome, Prompt, ReactAgent, Reads, State, StateKey,
-    Tool, ToolFuture, ToolOutput, Value, control, run,
+    Tool, ToolContext, ToolFuture, ToolOutput, Value, control, run,
 };
 use br_llm_messages::{Author, Conversation, Text, ToolResultBlock};
 use serde_json::{Value as Json, json};
@@ -41,7 +41,13 @@ impl Tool for LoadSkill {
     fn spec(&self) -> &ToolSpec {
         &self.spec
     }
-    fn call<'a>(&'a self, _a: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
+    fn call<'a>(
+        &'a self,
+        _call: &'a ToolContext,
+        _a: Json,
+        _s: &'a State,
+        _c: &'a Config,
+    ) -> ToolFuture<'a> {
         let updates = (|| {
             Ok::<_, GraphError>(vec![
                 self.keys
@@ -62,7 +68,13 @@ impl Tool for UnloadSkill {
     fn spec(&self) -> &ToolSpec {
         &self.spec
     }
-    fn call<'a>(&'a self, _a: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
+    fn call<'a>(
+        &'a self,
+        _call: &'a ToolContext,
+        _a: Json,
+        _s: &'a State,
+        _c: &'a Config,
+    ) -> ToolFuture<'a> {
         let updates = (|| {
             Ok::<_, GraphError>(vec![
                 self.keys.prompt.set("")?,
@@ -80,7 +92,13 @@ impl Tool for SpecialTool {
     fn spec(&self) -> &ToolSpec {
         &self.spec
     }
-    fn call<'a>(&'a self, _a: Json, _s: &'a State, _c: &'a Config) -> ToolFuture<'a> {
+    fn call<'a>(
+        &'a self,
+        _call: &'a ToolContext,
+        _a: Json,
+        _s: &'a State,
+        _c: &'a Config,
+    ) -> ToolFuture<'a> {
         Box::pin(async { Ok(result("special capability used")) })
     }
 }
