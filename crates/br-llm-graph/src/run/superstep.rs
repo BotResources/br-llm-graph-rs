@@ -35,8 +35,8 @@ struct StepNode<'a> {
 
 /// Runs the nodes of `active` together. The observer hears each node start
 /// before any runs and, once they have all finished, each node finish with
-/// how it ended; a cancel drops them unfinished, without a finish. Both
-/// events and the results come from one list: the nodes of `active` the
+/// how it ended; a cancel that drops them while they run sends no finish.
+/// Both events and the results come from one list: the nodes of `active` the
 /// graph holds, all of them, since the cursor is checked and an edge to an
 /// unknown node is refused.
 pub(crate) async fn drive_superstep(
