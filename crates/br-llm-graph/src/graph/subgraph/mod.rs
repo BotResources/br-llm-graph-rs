@@ -29,7 +29,8 @@ pub enum Input {
 }
 
 /// Where a value a node gives goes in the state of the graph it runs in: an
-/// output of a called graph (`SubGraph`), or the answer of an `LlmCall`.
+/// output of a called graph (`SubGraph`), the answer of an `LlmCall`, or the
+/// answer or the thread of a `RunnerCall`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Output {
     /// Sets a key of the value's kind.

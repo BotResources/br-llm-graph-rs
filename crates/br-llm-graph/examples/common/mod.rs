@@ -1,6 +1,8 @@
 //! What the examples share: an observer that prints, an id source, a thread
-//! store kept in memory, scripted clients and the messages they answer.
+//! store and a runner port kept in memory, scripted clients and the messages
+//! they answer.
 
+pub mod runners;
 pub mod store;
 pub mod tools;
 pub mod turn;
@@ -64,25 +66,30 @@ fn request_text(request: &IdRequest) -> String {
     )
 }
 
+/// A thread id made from a hash of `text`: the same text always gives the
+/// same UUIDv7.
+pub fn thread_id_of(text: &str) -> ThreadId {
+    use std::hash::{Hash, Hasher};
+    let mut high = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut high);
+    let mut low = std::collections::hash_map::DefaultHasher::new();
+    (text, 1u8).hash(&mut low);
+    let (high, low) = (high.finish(), low.finish());
+    ThreadId::new(format!(
+        "{:08x}-{:04x}-7{:03x}-{:x}{:03x}-{:012x}",
+        high >> 32,
+        (high >> 16) & 0xffff,
+        high & 0xfff,
+        8 + ((low >> 62) & 0x3),
+        (low >> 48) & 0xfff,
+        low & 0xffff_ffff_ffff
+    ))
+    .expect("a UUIDv7 text")
+}
+
 impl IdSource for SeqIds {
     fn thread_id(&self, request: &IdRequest) -> ThreadId {
-        use std::hash::{Hash, Hasher};
-        let text = request_text(request);
-        let mut high = std::collections::hash_map::DefaultHasher::new();
-        text.hash(&mut high);
-        let mut low = std::collections::hash_map::DefaultHasher::new();
-        (&text, 1u8).hash(&mut low);
-        let (high, low) = (high.finish(), low.finish());
-        ThreadId::new(format!(
-            "{:08x}-{:04x}-7{:03x}-{:x}{:03x}-{:012x}",
-            high >> 32,
-            (high >> 16) & 0xffff,
-            high & 0xfff,
-            8 + ((low >> 62) & 0x3),
-            (low >> 48) & 0xfff,
-            low & 0xffff_ffff_ffff
-        ))
-        .expect("a UUIDv7 text")
+        thread_id_of(&request_text(request))
     }
 
     fn turn_id(&self, request: &IdRequest) -> TurnId {

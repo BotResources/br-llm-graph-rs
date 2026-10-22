@@ -35,6 +35,8 @@ pub(crate) enum Shape {
     /// The check of a generator-critic: a plain node (`node`) holding what
     /// it reads.
     Check(CheckShape),
+    /// A `RunnerCall` (`runner_call`).
+    RunnerCall(RunnerCallShape),
 }
 
 impl Default for Shape {
@@ -169,6 +171,16 @@ pub(crate) struct ToolsShape {
     pub(crate) tools: Vec<String>,
 }
 
+/// A `RunnerCall`: its target, how its arguments are given, never their
+/// value, and its outputs.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RunnerCallShape {
+    pub(crate) target: String,
+    pub(crate) arguments: Origin,
+    pub(crate) output: Output,
+    pub(crate) thread: Option<Output>,
+}
+
 /// The check of a generator-critic: what it reads.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CheckShape {
@@ -196,6 +208,7 @@ impl Shape {
             Shape::LlmCall(_) => "llm_call",
             Shape::ModelCall(_) => "model_call",
             Shape::Tools(_) => "tools",
+            Shape::RunnerCall(_) => "runner_call",
         }
     }
 
@@ -207,7 +220,7 @@ impl Shape {
 }
 
 /// The kinds the library writes, which no host label may take.
-pub(crate) const LIBRARY_KINDS: [&str; 9] = [
+pub(crate) const LIBRARY_KINDS: [&str; 10] = [
     "node",
     "join",
     "call",
@@ -217,4 +230,5 @@ pub(crate) const LIBRARY_KINDS: [&str; 9] = [
     "generator_critic",
     "tools",
     "model_call",
+    "runner_call",
 ];

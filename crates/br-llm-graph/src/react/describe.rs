@@ -6,11 +6,10 @@ use crate::describe::shape::{
     AuthorShape, CheckShape, CriticShape, LlmCallShape, ModelCallShape, RequestShape, Shape,
     ToolsShape,
 };
-use crate::graph::Output;
 use crate::react::check::CheckNode;
 use crate::react::critique::CritiqueNode;
 use crate::react::given::{History, LoopNode, Origin};
-use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
+use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::llm_node::LlmNode;
 use crate::react::seats::CriticHistory;
 use crate::react::tool::Tool;
@@ -42,15 +41,11 @@ impl LlmCall {
             },
             LlmRequest::History(history) => RequestShape::History(history.origin()),
         };
-        let output = match &self.output {
-            LlmOutput::Set(key) => Output::Set(key.key().clone()),
-            LlmOutput::Append(key) => Output::Append(key.key().clone()),
-        };
         NodeDescription::of(Shape::LlmCall(LlmCallShape {
             model: self.model.origin(),
             system: self.system.origin(),
             request,
-            output,
+            output: self.output.written(),
         }))
     }
 }

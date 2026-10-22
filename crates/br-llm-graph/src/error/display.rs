@@ -146,6 +146,13 @@ impl std::fmt::Display for GraphError {
             GraphError::OpeningNotInputs => f.write_str(
                 "the opening of a durable agent must hold user inputs, and only user inputs",
             ),
+            GraphError::RunnerFailed { target, reason } => {
+                write!(f, "runner {target} failed: {reason}")
+            }
+            GraphError::Runner { source } => write!(f, "runner port error: {source}"),
+            GraphError::RunnerTargetBlank => {
+                f.write_str("the target of a runner call must not be blank")
+            }
             GraphError::ToolLimitReached { node, max_rounds } => {
                 write!(
                     f,

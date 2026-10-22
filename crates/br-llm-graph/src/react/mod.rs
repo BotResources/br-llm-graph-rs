@@ -7,10 +7,12 @@
 //! model (`Model`, a `Client` of br-llm-clients-core), its system (`Prompt`)
 //! and its history (`History`), each a value or a function of the node's
 //! context (`RequestContext`) declaring the keys it reads (`Reads`). The tools
-//! (`Tool`, judged by an optional `Hook`) and the thread store (`ThreadStore`)
-//! are ports the host implements. An agent built with a thread store is
-//! durable: it works in a thread and resumes from it; without one it works in
-//! memory, for the current call only.
+//! (`Tool`, judged by an optional `Hook`, each call run with its id, its name
+//! and the origin of its tool node, `ToolContext`) and the thread store
+//! (`ThreadStore`) are ports the host implements; another runner can be a
+//! tool too (`RunnerTool`, in the `runner` module). An agent built with a
+//! thread store is durable: it works in a thread and resumes from it; without
+//! one it works in memory, for the current call only.
 //!
 //! Helpers for a node the host writes: `wire` renders a conversation for an
 //! author, `complete` calls a client with the observer as sink, `structured`
@@ -155,7 +157,7 @@ mod react_agent_map_tests;
 #[cfg(test)]
 mod react_agent_session_tests;
 #[cfg(test)]
-mod react_agent_support;
+pub(crate) mod react_agent_support;
 #[cfg(test)]
 mod react_agent_tests;
 #[cfg(test)]
@@ -231,9 +233,9 @@ mod test_clients;
 #[cfg(test)]
 mod test_clients_tests;
 #[cfg(test)]
-mod test_gate;
+pub(crate) mod test_gate;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 #[cfg(test)]
 mod test_tools;
 #[cfg(test)]
@@ -252,6 +254,7 @@ pub use given::{
 pub use helpers::{pending_calls, structured, wire};
 pub use hook::{Hook, HookError, HookFuture, Judgment};
 pub use llm_call::{LlmCall, LlmOutput, LlmRequest};
+pub(crate) use llm_call_check::check_text_output;
 pub use react_agent::ReactAgent;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use rule_check::{RuleCheck, Ruling};
@@ -261,4 +264,5 @@ pub use thread_store::{
     MessageStatus, ThreadError, ThreadFuture, ThreadMessage, ThreadStore, ThreadView, TurnEnd,
 };
 pub use tool::{Tool, ToolContext, ToolError, ToolFuture, ToolOutput};
+pub(crate) use tool_answer::text_or;
 pub use verdict::{Verdict, VerdictOverride, VerdictReader};

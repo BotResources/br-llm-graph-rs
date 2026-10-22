@@ -1,6 +1,6 @@
 # br-llm-graph
 
-LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: a typed key/value state read and written through typed keys, async nodes, sync edges that may declare their targets, supersteps with fan-out and join, calls of graphs and maps over lists, resumption from checkpoints, a node that makes one model call, a ReAct agent and a generator-critic, and a description of every built graph as data. The model is a `Client` of br-llm-clients-core the host gives; the tools, the hooks that judge their calls and the thread store an agent works in are the host's. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it. The graph's API is made of br-llm-messages and br-llm-clients-core types (authors, conversations, `Client`, `ToolSpec`, `OutputMode`), so a dependent pins them on the tags the graph builds on, beside it:
+LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: a typed key/value state read and written through typed keys, async nodes, sync edges that may declare their targets, supersteps with fan-out and join, calls of graphs and maps over lists, resumption from checkpoints, a node that makes one model call, a ReAct agent and a generator-critic, a node and a tool that call another runner, and a description of every built graph as data. The model is a `Client` of br-llm-clients-core the host gives; the tools, the hooks that judge their calls, the thread store an agent works in and the runner port through which a runner call reaches another runner are the host's. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it. The graph's API is made of br-llm-messages and br-llm-clients-core types (authors, conversations, `Client`, `ToolSpec`, `OutputMode`), so a dependent pins them on the tags the graph builds on, beside it:
 
 ```toml
 [dependencies]
@@ -52,7 +52,26 @@ let agent = ReactAgent {
 // `thread`; outputs `answer` and `thread`; called with `SubGraph` or run.
 ```
 
-A built graph describes itself as data, without running anything: its entry, its signature, its schema and its nodes in registration order, each with its kind, its realizes labels, the targets its edge declares and the fields of its kind, nested graphs included (the child of a call, the body of a map, an agent's own graph). A host or a CI job compares it with the graph it meant to build, such as a Runner's intent graph; the library compares and draws nothing. An edge built from a function declares its targets with `FnEdge::targets` (an `Always` declares its own): the build refuses a declared node the graph does not hold (`EdgeToUnknownNode`) and the run refuses a target the edge did not declare (`UndeclaredTarget`), so the description cannot be false. A description writes no state value, default, prompt, client, author name or secret: a subject a runner gives is written as how it is given (`fixed`, `ready_made`, `function`), a fixed value mapped into a call and a state key's default as their kinds, an author by its id and never its name, and no tool argument is written. It does write the graph's fixed bounds: fixed limits and counts, and the generator-critic's `final_generation`.
+A tool is called with what names its call (`ToolContext`: the id and the name of the tool call, and the origin of the tool node that runs it), its JSON arguments, the state and the configuration. A call that names a tool no tool node runs is not executed and fails nothing: it is answered with an error result naming the tools offered to the call, and the turn goes on.
+
+A runner call asks another runner for an answer and waits for it, as a node (`RunnerCall`) or as a tool of an agent (`RunnerTool`), through the host's `RunnerPort`. The library owns the node, the tool and the call key (`CallKey`: the origin of the node that makes the call and, for a tool, the id of the tool call), so a resumed run, which keeps its run id, gives the keys it gave before and the port finds the calls it had started; the child's thread and job, the wait and its deadline, the read-back and the end of the child's job are the port's. An expected failure of the child fails the node with `RunnerFailed`, which the `Capture` of a call or of a map turns into data, and is an error result for a tool; a cancel drops the call under way, whose child the port cancels.
+
+```rust
+let ask = RunnerCall {
+    target: RunnerTarget::new("ask_a_document")?,     // the runner type it calls
+    arguments: RunnerArguments::from_fn(move |state, _config| {
+        Ok(Map::from_iter([("document".to_owned(), Json::from(state.get(&document)?))]))
+    }),
+    port: port.clone(),                               // the host's Arc<dyn RunnerPort>
+    output: RunnerOutput::Append(answers.clone()),    // the answer's text, in item order
+    thread: Some(RunnerOutput::Append(threads.clone())), // the child's thread
+};
+let each = Map::new(&documents, &document, ask).max_concurrency(two); // one call per document
+
+let select = RunnerTool { spec, target: RunnerTarget::new("documentalist")?, port }; // a tool of an agent
+```
+
+A built graph describes itself as data, without running anything: its entry, its signature, its schema and its nodes in registration order, each with its kind, its realizes labels, the targets its edge declares and the fields of its kind, nested graphs included (the child of a call, the body of a map, an agent's own graph). A host or a CI job compares it with the graph it meant to build, such as a Runner's intent graph; the library compares and draws nothing. An edge built from a function declares its targets with `FnEdge::targets` (an `Always` declares its own): the build refuses a declared node the graph does not hold (`EdgeToUnknownNode`) and the run refuses a target the edge did not declare (`UndeclaredTarget`), so the description cannot be false. A description writes no state value, default, prompt, client, author name or secret: a subject a runner gives, and the arguments of a runner call, are written as how they are given (`fixed`, `ready_made`, `function`), a fixed value mapped into a call and a state key's default as their kinds, an author by its id and never its name, and no tool argument is written. It does write the graph's fixed bounds: fixed limits and counts, and the generator-critic's `final_generation`.
 
 ```rust
 let route = FnEdge::new(move |state: &State, _: &Config| {
@@ -72,7 +91,7 @@ let graph = GraphBuilder::new(schema)
 let json = serde_json::to_string_pretty(&graph.describe())?;  // br-llm-graph-description/1
 ```
 
-The runnable examples are in `crates/br-llm-graph/examples` (`cargo run -p br-llm-graph --example react_agent`): durable agents over a thread store kept in memory, a generator-critic with a rule check, an `LlmCall` as the body of a map, a hook guarding a tool, a served session, resumption from checkpoints, the description of a graph (`--example describe`).
+The runnable examples are in `crates/br-llm-graph/examples` (`cargo run -p br-llm-graph --example react_agent`): durable agents over a thread store kept in memory, a generator-critic with a rule check, an `LlmCall` as the body of a map, a hook guarding a tool, a served session, resumption from checkpoints, the description of a graph (`--example describe`), other runners called as nodes and as a tool over a runner port kept in memory (`--example runner_call`).
 
 ## Releases
 

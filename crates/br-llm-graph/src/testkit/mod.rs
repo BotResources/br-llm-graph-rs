@@ -1,5 +1,7 @@
 mod faults;
 mod repair;
+mod runners;
+mod runners_port;
 mod store;
 mod store_port;
 mod store_repair_tests;
@@ -21,6 +23,7 @@ use crate::value::{EndLabel, NodeId};
 
 pub use faults::Op;
 pub use repair::{INTERRUPTED, INTERRUPTED_STOP};
+pub use runners::{PortError, Scripted, TestRunners, text_block};
 pub use store::{StoreError, TestStore};
 pub use transcript::Transcript;
 

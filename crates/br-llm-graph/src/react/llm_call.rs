@@ -2,7 +2,7 @@ use br_llm_clients_core::{ClientRequest, OutputMode};
 use br_llm_messages::{Author, Conversation, Text, WireMessage, WireUserBlock};
 
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Node, NodeError, NodeFuture};
+use crate::graph::{CheckSite, Context, Node, NodeError, NodeFuture, Output};
 use crate::react::given::{History, Model, Prompt};
 use crate::react::helpers::{answer_text, system_text, wire};
 use crate::react::llm_call_check::{check_conversation, check_output};
@@ -58,6 +58,14 @@ impl LlmOutput {
         match self {
             LlmOutput::Set(key) => key.key(),
             LlmOutput::Append(key) => key.key(),
+        }
+    }
+
+    /// Where it writes, by name, as a description writes it.
+    pub(crate) fn written(&self) -> Output {
+        match self {
+            LlmOutput::Set(key) => Output::Set(key.key().clone()),
+            LlmOutput::Append(key) => Output::Append(key.key().clone()),
         }
     }
 

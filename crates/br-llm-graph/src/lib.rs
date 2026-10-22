@@ -37,8 +37,10 @@
 //! The `react` module holds the parts of an agent: an `LlmCall`, a node that
 //! makes one model call and gives back its answer as data; a `ReactAgent`;
 //! a `GeneratorCritic`. The model is a `Client` of br-llm-clients-core the
-//! host gives; the tools (`Tool`, judged by an optional `Hook`) and the
-//! thread store (`ThreadStore`) are ports the host implements.
+//! host gives; the tools (`Tool`, judged by an optional `Hook`, called with
+//! the id and the name of the call and the origin of its tool node,
+//! `ToolContext`), the thread store (`ThreadStore`) and the runner port
+//! (`RunnerPort`) are ports the host implements.
 //!
 //! A runner gives a model-calling node its model, its system and its
 //! history (`Model`, `Prompt`, `History`), each a value or a function of the
@@ -51,6 +53,16 @@
 //! interruption and gives the thread's id back. Without one it works in
 //! memory, for the current call only. The host's `IdSource` gives every
 //! thread id and turn id, the same id for the same request.
+//!
+//! # Runner calls
+//!
+//! The `runner` module calls another runner and waits for its answer, as a
+//! node of a graph (`RunnerCall`) or as a tool of an agent (`RunnerTool`),
+//! through the host's `RunnerPort`. The library owns the node, the tool and
+//! the call key (`CallKey`: the origin of the node that makes the call and,
+//! for a tool, the id of the tool call), so a resumed run finds the calls it
+//! had started; the child's thread and job, the wait and its deadline are
+//! the port's.
 //!
 //! # Description
 //!
@@ -191,6 +203,7 @@ pub mod observe;
 pub mod origin;
 pub mod react;
 pub mod run;
+pub mod runner;
 pub mod session;
 pub mod state;
 pub mod update;
@@ -216,6 +229,10 @@ pub use react::{
 pub use run::{
     Checkpoint, Control, ControlSender, Cursor, Outcome, PendingEntry, PendingWrites, RunFailure,
     control, run,
+};
+pub use runner::{
+    AnswerBlock, CallKey, RunnerAnswer, RunnerArguments, RunnerCall, RunnerError, RunnerFuture,
+    RunnerOutput, RunnerPort, RunnerReply, RunnerRequest, RunnerTarget, RunnerTool,
 };
 pub use session::{Ended, Session, Start};
 pub use state::{
