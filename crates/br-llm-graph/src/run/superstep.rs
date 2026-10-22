@@ -26,6 +26,19 @@ pub(crate) struct SuperstepOutput {
     pub pause: bool,
 }
 
+/// A node of the superstep, with the context it runs in.
+struct StepNode<'a> {
+    id: &'a NodeId,
+    node: &'a dyn Node,
+    ctx: Context,
+}
+
+/// Runs the nodes of `active` together. The observer hears each node start
+/// before any runs and, once they have all finished, each node finish with
+/// how it ended; a cancel drops them unfinished, without a finish. Both
+/// events and the results come from one list: the nodes of `active` the
+/// graph holds, all of them, since the cursor is checked and an edge to an
+/// unknown node is refused.
 pub(crate) async fn drive_superstep(
     graph: &Graph,
     state: &State,
@@ -36,29 +49,34 @@ pub(crate) async fn drive_superstep(
 ) -> SuperstepOutput {
     let mut held_inputs: Vec<(Key, UserInput)> = Vec::new();
     let mut pause = false;
-    let present: Vec<NodeId> = active
+    let nodes: Vec<StepNode<'_>> = active
         .iter()
-        .filter(|id| graph.node(id).is_some())
-        .cloned()
+        .filter_map(|id| {
+            graph.node(id).map(|node| StepNode {
+                id,
+                node,
+                ctx: ctx.for_node(id),
+            })
+        })
         .collect();
-    let contexts: Vec<Context> = present.iter().map(|id| ctx.for_node(id)).collect();
-    let seen = present.len() > 1;
-    let futures = present.iter().zip(&contexts).filter_map(|(id, node_ctx)| {
-        graph
-            .node(id)
-            .map(|node| run_recorded(node, state, config, node_ctx, seen))
-    });
+    for step_node in &nodes {
+        ctx.observer.node_started(ctx.origin(), step_node.id);
+    }
+    let seen = nodes.len() > 1;
+    let futures = nodes
+        .iter()
+        .map(|step_node| run_recorded(step_node.node, state, config, &step_node.ctx, seen));
     let superstep = join_all(futures);
     futures_util::pin_mut!(superstep);
     let mut channel_open = true;
     let result = loop {
         if !channel_open {
             let raw = superstep.await;
-            break StepResult::Done(pair(present, raw));
+            break done(ctx, &nodes, raw);
         }
         match select(superstep, control.receiver.next()).await {
             Either::Left((raw, _pending_message)) => {
-                break StepResult::Done(pair(present, raw));
+                break done(ctx, &nodes, raw);
             }
             Either::Right((message, remaining)) => {
                 superstep = remaining;
@@ -111,31 +129,35 @@ async fn run_recorded(
     outcome
 }
 
-fn pair(
-    present: Vec<NodeId>,
-    raw: Vec<RawOutcome>,
-) -> Vec<(NodeId, Result<Vec<Update>, NodeFault>)> {
-    present
-        .into_iter()
-        .zip(raw)
-        .map(|(id, outcome)| {
-            let result = match outcome {
-                Ok(Ok(updates)) => Ok(updates),
-                Ok(Err(error)) => Err(NodeFault::Returned(error)),
-                Err(payload) => Err(NodeFault::Panic(panic_message(payload))),
-            };
-            (id, result)
-        })
-        .collect()
+/// The results of a completed superstep, in the order of its nodes; the
+/// observer hears each node finish first.
+fn done(ctx: &Context, nodes: &[StepNode<'_>], raw: Vec<RawOutcome>) -> StepResult {
+    let mut results = Vec::with_capacity(raw.len());
+    for (step_node, outcome) in nodes.iter().zip(raw) {
+        let ended = node_outcome(&outcome);
+        ctx.observer
+            .node_finished(ctx.origin(), step_node.id, ended);
+        results.push((step_node.id.clone(), node_result(outcome)));
+    }
+    StepResult::Done(results)
 }
 
-/// How a node of the superstep ended, from its result. Its updates are
-/// refused only once the superstep is settled: such a node returned them.
-pub(crate) fn node_outcome(result: &Result<Vec<Update>, NodeFault>) -> NodeOutcome {
-    match result {
-        Ok(_) | Err(NodeFault::Refused(_)) => NodeOutcome::Updates,
-        Err(NodeFault::Returned(_)) => NodeOutcome::Error,
-        Err(NodeFault::Panic(_)) => NodeOutcome::Panic,
+/// How a node of the superstep ended: with its updates, returned or
+/// recorded, with its error or with its panic. A refusal of its updates
+/// comes later, when the superstep is settled.
+fn node_outcome(outcome: &RawOutcome) -> NodeOutcome {
+    match outcome {
+        Ok(Ok(_)) => NodeOutcome::Updates,
+        Ok(Err(_)) => NodeOutcome::Error,
+        Err(_) => NodeOutcome::Panic,
+    }
+}
+
+fn node_result(outcome: RawOutcome) -> Result<Vec<Update>, NodeFault> {
+    match outcome {
+        Ok(Ok(updates)) => Ok(updates),
+        Ok(Err(error)) => Err(NodeFault::Returned(error)),
+        Err(payload) => Err(NodeFault::Panic(panic_message(payload))),
     }
 }
 

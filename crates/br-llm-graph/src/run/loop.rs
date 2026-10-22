@@ -10,7 +10,7 @@ use crate::run::control::{Command, Control};
 use crate::run::cursor::Cursor;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::settle::settle;
-use crate::run::superstep::{StepResult, drive_superstep, node_outcome};
+use crate::run::superstep::{StepResult, drive_superstep};
 use crate::state::{Config, State};
 use crate::update::Update;
 use crate::value::NodeId;
@@ -104,9 +104,6 @@ pub(crate) async fn run_nested(
     let mut state = graph.enter_private(state);
 
     loop {
-        for id in &active {
-            ctx.observer.node_started(ctx.origin(), id);
-        }
         let step = drive_superstep(graph, &state, config, ctx, &active, control).await;
         let mut held_inputs: Vec<(_, UserInput)> = step.held_inputs;
         let mut pause = step.pause;
@@ -116,11 +113,6 @@ pub(crate) async fn run_nested(
             }
             StepResult::Done(results) => results,
         };
-        for (id, result) in &results {
-            let outcome = node_outcome(result);
-            ctx.observer.node_finished(ctx.origin(), id, outcome);
-        }
-
         if drain_after_step(control, &mut held_inputs, &mut pause) {
             return cancelled(graph, state, ctx, held_inputs, &active, &deferred);
         }

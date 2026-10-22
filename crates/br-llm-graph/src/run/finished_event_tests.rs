@@ -7,8 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::{GraphError, NodeFault};
-use crate::graph::{Always, Context, FnNode, GraphBuilder, NodeError, NodeFuture};
+use crate::graph::{Always, Context, FnNode, GraphBuilder, Node, NodeError, NodeFuture};
 use crate::observe::NodeOutcome;
+use crate::run::Cursor;
 use crate::run::control::control;
 use crate::run::outcome::Outcome;
 use crate::run::runner::run;
@@ -165,17 +166,21 @@ async fn given_a_node_recorded_before_a_failure_when_resumed_then_it_finished_wi
     );
 }
 
-#[tokio::test]
-async fn given_a_cancel_that_drops_the_running_node_when_run_then_no_node_finished_is_observed() {
-    let waits = FnNode::new(|_s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
+/// A node that never finishes.
+fn waiting_node() -> impl Node {
+    FnNode::new(|_s: &State, _c: &Config, _x: &Context| -> NodeFuture<'_> {
         Box::pin(async {
             futures_util::future::pending::<()>().await;
             Ok(Vec::new())
         })
-    });
+    })
+}
+
+#[tokio::test]
+async fn given_a_cancel_that_drops_the_running_node_when_run_then_no_node_finished_is_observed() {
     let graph = GraphBuilder::new(schema())
         .entry(nid("work"))
-        .node(nid("work"), waits)
+        .node(nid("work"), waiting_node())
         .edge(nid("work"), Always(end("done")))
         .build()
         .unwrap();
@@ -186,6 +191,43 @@ async fn given_a_cancel_that_drops_the_running_node_when_run_then_no_node_finish
     let outcome = run(&graph, &config(), base_state(), None, &ctx, &mut channel).await;
     assert!(matches!(outcome, Ok(Outcome::Cancelled { .. })));
     assert_eq!(recorder.lines(), vec!["started work"]);
+}
+
+#[tokio::test]
+async fn given_a_cancel_while_a_sibling_still_runs_when_run_then_no_node_finished_and_the_finished_node_is_kept()
+ {
+    let graph = GraphBuilder::new(schema())
+        .entry(nid("fast"))
+        .node(nid("fast"), log_node("fast"))
+        .node(nid("waits"), waiting_node())
+        .edge(nid("fast"), Always(end("done")))
+        .edge(nid("waits"), Always(end("done")))
+        .build()
+        .unwrap();
+    let recorder = Arc::new(Recorder::default());
+    let ctx = crate::testkit::context(recorder.clone());
+    let (sender, mut channel) = control();
+    sender.cancel();
+    let both = Cursor::new(vec![nid("fast"), nid("waits")], Vec::new());
+    let outcome = run(
+        &graph,
+        &config(),
+        base_state(),
+        Some(both),
+        &ctx,
+        &mut channel,
+    )
+    .await;
+    let Ok(Outcome::Cancelled { checkpoint }) = outcome else {
+        panic!("expected cancelled");
+    };
+    assert_eq!(recorder.lines(), vec!["started fast", "started waits"]);
+    let pending: Vec<String> = checkpoint
+        .pending
+        .iter()
+        .map(|(occurrence, _)| occurrence.to_string())
+        .collect();
+    assert_eq!(pending, vec!["fast"]);
 }
 
 #[tokio::test]

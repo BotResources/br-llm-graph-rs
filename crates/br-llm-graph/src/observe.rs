@@ -58,7 +58,8 @@ pub trait Observer: Send + Sync {
 
 /// How a node of a superstep ended (`Observer::node_finished`): what the node
 /// itself did. A call whose child fails, even by a panic, returns an error
-/// (`SubGraphFailed`); a panic in a map's body is a panic of the map.
+/// (`SubGraphFailed`), or its capture updates under `OnFailure::Capture`; a
+/// panic in a map's body is a panic of the map.
 ///
 /// Exhaustive on purpose, as `TurnEnd`: an observer matches it to report each
 /// outcome, so an outcome added in a later version must break its build.
