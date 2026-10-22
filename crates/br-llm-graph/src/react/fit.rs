@@ -36,7 +36,7 @@ pub(crate) struct Misfit {
 /// How a value does not fit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Wrong {
-    /// A required parameter the object does not hold.
+    /// A required parameter the object does not hold, or holds as `null`.
     Missing,
     /// A name the shape does not declare.
     Undeclared,
@@ -187,7 +187,7 @@ impl fmt::Display for Misfit {
             write!(f, "`{}`", self.at)?;
         }
         match &self.wrong {
-            Wrong::Missing => f.write_str(" is missing"),
+            Wrong::Missing => f.write_str(" is missing or null"),
             Wrong::Undeclared => f.write_str(" is not in the shape"),
             Wrong::Not(expected) => write!(f, " is not {expected}"),
         }

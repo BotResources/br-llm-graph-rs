@@ -51,7 +51,7 @@ async fn given_no_reply_retries_when_a_structured_reply_does_not_fit_then_the_ca
     .unwrap();
 
     assert!(
-        matches!(returned(&failure.error), GraphError::Structured { message } if message == "`count` is missing"),
+        matches!(returned(&failure.error), GraphError::Structured { message } if message == "`count` is missing or null"),
         "{}",
         failure.error
     );
@@ -73,7 +73,7 @@ async fn given_a_structured_mode_when_a_lax_client_gives_no_structured_block_the
 
     assert!(matches!(
         returned(&error),
-        GraphError::Structured { message } if message == "the reply carries no structured block"
+        GraphError::Structured { message } if message == "the step carries no structured block"
     ));
 }
 

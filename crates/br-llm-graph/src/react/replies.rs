@@ -19,8 +19,8 @@ pub(crate) const REMINDER: &str = "Your reply could not be used: {reason}. Reply
 const REASON: &str = "{reason}";
 
 /// Why a structured reply that calls no tool and holds no structured block
-/// cannot be used.
-const NO_BLOCK: &str = "the reply carries no structured block";
+/// cannot be used: the words of an unreadable verdict, and of `structured`.
+const NO_BLOCK: &str = "the step carries no structured block";
 
 /// Why a reply cannot be used.
 #[derive(Debug, Clone, PartialEq)]
@@ -101,26 +101,31 @@ pub(crate) fn unfit(step: &Step, mode: &OutputMode) -> Option<String> {
 
 /// The reminder of a reply asked for again because of `reason`: the text
 /// `given` resolves to for the context `facts`, or `REMINDER` when it is not
-/// given, each `{reason}` in it replaced by `reason`. A text that resolves
-/// blank fails the node (`Message`: a message cannot hold a blank text).
+/// given, each `{reason}` in it replaced by `reason`. `None` when it
+/// resolves to a blank text: the request is then sent alone, as a blank
+/// system sends no system text.
 pub(crate) fn reminder<'a, N: ModelNode>(
     given: Option<&'a Prompt<N>>,
     state: &'a State,
     config: &'a Config,
     facts: N::Facts<'a>,
     reason: &str,
-) -> Result<Text, NodeError> {
+) -> Result<Option<Text>, NodeError> {
     let template = match given {
         Some(prompt) => prompt.give(state, config, facts)?,
         None => REMINDER.to_owned(),
     };
-    Ok(Text::new(template.replace(REASON, reason)).map_err(GraphError::from)?)
+    Ok(Text::new(template.replace(REASON, reason)).ok())
 }
 
-/// `messages` followed by the reminder `text`: one more user message; or,
-/// when they end with a relay (the entries an agent has not answered yet,
-/// which only the last message may be), one more text of that relay.
-pub(crate) fn reminded(mut messages: Vec<WireMessage>, text: Text) -> Vec<WireMessage> {
+/// `messages` followed by the reminder `text`, when there is one: one more
+/// user message; or, when they end with a relay (the entries an agent has
+/// not answered yet, which only the last message may be), one more text of
+/// that relay.
+pub(crate) fn reminded(mut messages: Vec<WireMessage>, text: Option<Text>) -> Vec<WireMessage> {
+    let Some(text) = text else {
+        return messages;
+    };
     match messages.last_mut() {
         Some(WireMessage::Relay { content }) => content.push(text),
         Some(WireMessage::User { .. } | WireMessage::Assistant { .. }) | None => {

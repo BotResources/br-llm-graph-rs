@@ -23,7 +23,7 @@ use crate::update::Update;
 /// not be used, for its reminder; and whether a retry is left after it.
 pub(crate) struct Ask<'a> {
     pub(crate) attempt: usize,
-    pub(crate) refused: Option<&'a Unusable>,
+    pub(crate) unusable: Option<&'a Unusable>,
     pub(crate) retry_left: bool,
 }
 
@@ -81,7 +81,7 @@ impl<N: LoopNode> LlmNode<N> {
             Some(history) => history.give(state, config, facts)?,
             None => wire(conversation, &self.author)?,
         };
-        if let Some(unusable) = ask.refused {
+        if let Some(unusable) = ask.unusable {
             let text = reminder(
                 self.reminder.as_ref(),
                 state,

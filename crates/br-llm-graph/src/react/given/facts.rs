@@ -12,7 +12,8 @@ pub struct CallFacts {
 }
 
 /// What a ReAct agent's context adds: its conversation and the round;
-/// and, for its schedule, the 0-based index of its turn in the call.
+/// and, for its schedule, the 0-based index of its turn in the call; and
+/// the attempt of the model call.
 #[derive(Clone, Copy)]
 pub struct AgentFacts<'a> {
     pub(crate) conversation: &'a Conversation,
@@ -32,8 +33,8 @@ pub struct SeatCount {
     pub(crate) final_generation: bool,
 }
 
-/// What the generator's context adds: its conversation, the round and
-/// where the call stands.
+/// What the generator's context adds: its conversation, the round, where
+/// the call stands and the attempt of the model call.
 #[derive(Clone, Copy)]
 pub struct GeneratorFacts<'a> {
     pub(crate) conversation: &'a Conversation,

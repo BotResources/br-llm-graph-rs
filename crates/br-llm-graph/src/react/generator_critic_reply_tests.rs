@@ -79,7 +79,7 @@ async fn given_a_structured_generator_with_no_retry_when_its_reply_does_not_fit_
     let (conversation, error) = failed_in(call(&graph, question("explain")).await, "generate");
 
     assert!(
-        matches!(error, GraphError::Structured { ref message } if message == "`text` is missing"),
+        matches!(error, GraphError::Structured { ref message } if message == "`text` is missing or null"),
         "{error}"
     );
     assert_eq!(shape(&conversation), ["user"]);

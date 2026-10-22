@@ -129,10 +129,13 @@ fn given_a_value_that_is_not_an_object_when_checked_then_the_value_itself_is_nam
 }
 
 #[test]
-fn given_a_required_parameter_missing_or_null_when_checked_then_it_is_missing() {
+fn given_a_required_parameter_missing_or_null_when_checked_then_it_is_missing_or_null() {
     let shape = one(ParameterKind::String);
     for value in [json!({}), json!({ "value": null })] {
-        assert_eq!(reason(&shape, value).as_deref(), Some("`value` is missing"));
+        assert_eq!(
+            reason(&shape, value).as_deref(),
+            Some("`value` is missing or null")
+        );
     }
 }
 
@@ -173,7 +176,7 @@ fn given_several_misfits_when_checked_then_the_declared_parameters_come_first_in
     ]);
     assert_eq!(
         reason(&shape, json!({ "extra": 1, "second": 2 })).as_deref(),
-        Some("`first` is missing")
+        Some("`first` is missing or null")
     );
     assert_eq!(
         reason(&shape, json!({ "extra": 1, "first": "a", "second": 2 })).as_deref(),
@@ -213,7 +216,7 @@ fn given_nested_objects_and_arrays_when_an_item_does_not_fit_then_its_path_is_na
         ),
         (
             json!({ "sources": [{ "url": "a" }, { "pages": [] }] }),
-            Some("`sources[1].url` is missing"),
+            Some("`sources[1].url` is missing or null"),
         ),
         (
             json!({ "sources": [{ "url": "a", "pages": [1, "2"] }] }),

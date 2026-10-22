@@ -69,24 +69,28 @@ async fn given_a_reminder_when_a_reply_is_asked_again_then_its_text_holds_the_re
         requests(&client)[1].messages(),
         [
             user_text("doc"),
-            user_text("Attempt 2: `subject` is missing.")
+            user_text("Attempt 2: `subject` is missing or null.")
         ]
     );
 }
 
 #[tokio::test]
-async fn given_a_reminder_that_resolves_blank_when_a_reply_is_asked_again_then_the_call_fails_with_message()
+async fn given_a_reminder_that_resolves_blank_when_a_reply_is_asked_again_then_the_request_is_sent_alone()
  {
-    let client = mock(vec![structured_step(json!({ "count": 1 }))]);
+    let client = mock(vec![
+        structured_step(json!({ "count": 1 })),
+        structured_step(json!({ "subject": "tides", "count": 1 })),
+    ]);
     let call = LlmCall {
         reminder: Some(Prompt::text(" ")),
         ..asking_facts(&client, Some(Count::Fixed(1)))
     };
 
-    let error = summary_of(call).await.unwrap_err();
+    summary_of(call).await.unwrap();
 
-    assert!(matches!(returned(&error), GraphError::Message(_)));
-    assert_eq!(client.calls(), 1, "the retry is not sent");
+    let sent = requests(&client);
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[1].messages(), sent[0].messages());
 }
 
 /// Runs `call` alone in a graph that also declares the int configuration

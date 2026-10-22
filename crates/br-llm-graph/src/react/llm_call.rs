@@ -99,17 +99,20 @@ impl LlmOutput {
 /// `reply_retries` are left: the same request, built for the next attempt
 /// (`RequestContext::attempt`, one higher, so a model function may give
 /// another client), followed by a user message holding the `reminder`
-/// (one more text of the last message when it is a relay). A reply asked
-/// for again is never written. When no retry is left, the node fails with
-/// `Model`, carrying the client's error, or `Structured`, carrying why the
-/// reply does not fit.
+/// (one more text of the last message when it is a relay; none when the
+/// reminder resolves blank). A reply asked for again is never written. When
+/// no retry is left, the node fails with `Model`, carrying the client's
+/// error, or `Structured`, carrying why the reply does not fit.
 ///
 /// The stream events of the call reach the observer with the conversation
 /// key of an `LlmRequest::Conversation`, or the key of `output` for any
-/// other request, which has no conversation key; the events of a reply
-/// asked for again reach it too. Any other error of the client fails the
-/// node with `Model`, a refusal to build the request with `Request`, and an
-/// error of a function as the function returned it.
+/// other request, which has no conversation key. The events of a reply
+/// asked for again reach it too, those of every attempt one after the
+/// other, with no event between two attempts: a refused reply may end
+/// without its `Finish`, and the next attempt starts at block 0. Any other
+/// error of the client fails the node with `Model`, a refusal to build the
+/// request with `Request`, and an error of a function as the function
+/// returned it.
 ///
 /// As the body of a `Map`, an `Append` output makes one model call per item,
 /// at most the map's concurrency limit at once, the answers appended in item
@@ -140,7 +143,7 @@ pub struct LlmCall {
     pub reply_retries: Option<Count>,
     /// The text sent after the request when a reply is asked for again, each
     /// `{reason}` in it replaced by why the reply could not be used; one
-    /// that resolves blank fails the node (`Message`). `None`: `Your reply
+    /// that resolves blank sends the request alone. `None`: `Your reply
     /// could not be used: {reason}. Reply again.`
     pub reminder: Option<Prompt<LlmCall>>,
 }

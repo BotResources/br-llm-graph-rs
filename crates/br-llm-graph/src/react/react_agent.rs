@@ -115,7 +115,8 @@ use crate::value::{EndLabel, Key, NodeId};
 /// `reply_retries` are left, as an `LlmCall` asks: the model is asked again
 /// for the next attempt, and the client it gives is kept for the turn's
 /// other rounds. A reply asked for again never becomes part of the
-/// conversation and counts against no round limit; when no retry is left,
+/// conversation and counts against no round limit, though the observer
+/// hears its stream events (see `Observer::stream`); when no retry is left,
 /// the run fails (`Model` or `Structured`). Durable, with a structured
 /// output mode, the events of a step reach the thread once it is checked,
 /// so a reply asked for again is never stored (the agent does not stream
@@ -164,7 +165,7 @@ pub struct ReactAgent {
     pub reply_retries: Option<Count>,
     /// The text sent after the request when a reply is asked for again, each
     /// `{reason}` in it replaced by why the reply could not be used; one
-    /// that resolves blank fails the node (`Message`). `None`: `Your reply
+    /// that resolves blank sends the request alone. `None`: `Your reply
     /// could not be used: {reason}. Reply again.`
     pub reminder: Option<Prompt<ReactAgent>>,
     /// Extra state keys the caller maps per run, read by the tools.

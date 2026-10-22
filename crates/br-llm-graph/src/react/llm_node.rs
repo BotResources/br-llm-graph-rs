@@ -98,7 +98,7 @@ impl<N: LoopNode> Node for LlmNode<N> {
             loop {
                 let ask = Ask {
                     attempt,
-                    refused: refused.as_ref(),
+                    unusable: refused.as_ref(),
                     retry_left: attempt < attempts,
                 };
                 let now = reentered.as_ref().unwrap_or(state);

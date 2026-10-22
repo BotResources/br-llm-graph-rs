@@ -48,7 +48,7 @@ fn given_a_structured_mode_when_the_final_reply_fits_or_not_then_it_is_used_or_u
     );
     assert_eq!(
         unfit(&text_step("tides"), &mode).as_deref(),
-        Some("the reply carries no structured block")
+        Some("the step carries no structured block")
     );
 }
 
@@ -117,7 +117,9 @@ fn toned() -> (State, Config) {
 fn given_no_reminder_when_one_is_asked_then_the_default_holds_the_reason() {
     let (state, config) = toned();
     let facts = CallFacts { attempt: 2 };
-    let text = reminder::<LlmCall>(None, &state, &config, facts, "`answer` is missing").unwrap();
+    let text = reminder::<LlmCall>(None, &state, &config, facts, "`answer` is missing")
+        .unwrap()
+        .unwrap();
     assert_eq!(
         text.as_str(),
         "Your reply could not be used: `answer` is missing. Reply again."
@@ -144,25 +146,30 @@ fn given_a_reminder_function_when_one_is_asked_then_each_reason_placeholder_is_r
         CallFacts { attempt: 3 },
         "no block",
     )
+    .unwrap()
     .unwrap();
     assert_eq!(
         text.as_str(),
         "Be brief: no block (attempt 3). Again: no block."
     );
     let fixed: Prompt<LlmCall> = Prompt::from_state(&skey("tone"));
-    let text = reminder(Some(&fixed), &state, &config, CallFacts { attempt: 2 }, "x").unwrap();
+    let text = reminder(Some(&fixed), &state, &config, CallFacts { attempt: 2 }, "x")
+        .unwrap()
+        .unwrap();
     assert_eq!(text.as_str(), "Be brief");
 }
 
 #[test]
-fn given_a_reminder_that_resolves_blank_when_one_is_asked_then_the_node_fails_with_message() {
+fn given_a_reminder_that_resolves_blank_when_one_is_asked_then_there_is_none_and_the_request_goes_alone()
+ {
     let (state, config) = toned();
     let blank: Prompt<LlmCall> = Prompt::text("  ");
-    let error = reminder(Some(&blank), &state, &config, CallFacts { attempt: 2 }, "x").unwrap_err();
-    assert!(matches!(
-        error.downcast_ref::<GraphError>(),
-        Some(GraphError::Message(_))
-    ));
+    let none = reminder(Some(&blank), &state, &config, CallFacts { attempt: 2 }, "x").unwrap();
+    assert_eq!(none, None);
+    let user = WireMessage::User {
+        content: vec![WireUserBlock::Text { text: text("q") }],
+    };
+    assert_eq!(reminded(vec![user.clone()], none), [user]);
 }
 
 #[test]
@@ -171,7 +178,7 @@ fn given_messages_ending_with_a_user_or_assistant_message_when_reminded_then_a_u
     let user = WireMessage::User {
         content: vec![WireUserBlock::Text { text: text("q") }],
     };
-    let reminded = reminded(vec![user.clone()], text("again"));
+    let reminded = reminded(vec![user.clone()], Some(text("again")));
     assert_eq!(
         reminded,
         [
@@ -193,7 +200,7 @@ fn given_messages_ending_with_a_relay_when_reminded_then_the_relay_takes_the_rem
     let relay = WireMessage::Relay {
         content: vec![text("meanwhile")],
     };
-    let reminded = reminded(vec![user.clone(), relay], text("again"));
+    let reminded = reminded(vec![user.clone(), relay], Some(text("again")));
     assert_eq!(
         reminded,
         [

@@ -1,8 +1,9 @@
 //! Doctests only (`cfg(doctest)`): the enums a runner builds to configure a
-//! node, `Judgment`, `LlmRequest`, `LlmOutput`, `Ruling` and
-//! `CriticHistory`, may gain variants in a later version. A host builds their variants as before, and
-//! a `match` outside the crate needs a wildcard arm: one without it does not
-//! compile (E0004; rustdoc checks the code itself only on nightly).
+//! node, `Judgment`, `LlmRequest`, `LlmOutput`, `Ruling`, `CriticHistory`
+//! and `Reading`, may gain variants in a later version. A host builds their
+//! variants as before, and a `match` outside the crate needs a wildcard arm:
+//! one without it does not compile (E0004; rustdoc checks the code itself
+//! only on nightly).
 //!
 //! ```
 //! use br_llm_graph::{History, Judgment, LlmRequest, Prompt, Schema};
@@ -126,6 +127,36 @@
 //!     match history {
 //!         CriticHistory::Brief(_) => true,
 //!         CriticHistory::History | CriticHistory::Latest | CriticHistory::Given(_) => false,
+//!     }
+//! }
+//! ```
+//!
+//! The enum of 0.7 a runner builds, what its verdict reader gives, matched
+//! with a wildcard arm.
+//!
+//! ```
+//! use br_llm_graph::{Reading, Verdict};
+//!
+//! let readings = [
+//!     Reading::Verdict(Verdict { is_valid: true, message: String::new() }),
+//!     Reading::Unreadable { reason: "the grade is missing".to_owned() },
+//! ];
+//! let unreadable = readings
+//!     .iter()
+//!     .filter(|reading| match reading {
+//!         Reading::Unreadable { .. } => true,
+//!         Reading::Verdict(_) => false,
+//!         _ => false,
+//!     })
+//!     .count();
+//! assert_eq!(unreadable, 1);
+//! ```
+//!
+//! ```compile_fail,E0004
+//! fn unreadable(reading: &br_llm_graph::Reading) -> bool {
+//!     match reading {
+//!         br_llm_graph::Reading::Unreadable { .. } => true,
+//!         br_llm_graph::Reading::Verdict(_) => false,
 //!     }
 //! }
 //! ```

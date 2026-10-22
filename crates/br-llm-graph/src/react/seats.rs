@@ -64,7 +64,7 @@ pub struct GeneratorSeat {
     pub reply_retries: Option<Count>,
     /// The text sent after the request when a reply is asked for again, each
     /// `{reason}` in it replaced by why the reply could not be used; one
-    /// that resolves blank fails the node (`Message`). `None`: `Your reply
+    /// that resolves blank sends the request alone. `None`: `Your reply
     /// could not be used: {reason}. Reply again.`
     pub reminder: Option<Prompt<GeneratorSeat>>,
 }
@@ -110,10 +110,11 @@ pub enum CriticHistory {
 /// Its model, system, history and texts are given as values or functions of
 /// the critic's context (see `Given`): the state, the configuration, the
 /// attempt number (counted by the verdict retries), the conversation, the
-/// generation number, the budget and the answer it judges. The graph reads one setting of the client the model
-/// gives, at each critic call: its `ReasoningLevel`. The default verdict
-/// shape asks for `thinking` exactly when that level is `Off`, so a critic
-/// that does not reason natively has room to reason before judging.
+/// generation number, the budget and the answer it judges. The graph reads
+/// one setting of the client the model gives, at each critic call: its
+/// `ReasoningLevel`. The default verdict shape asks for `thinking` exactly
+/// when that level is `Off`, so a critic that does not reason natively has
+/// room to reason before judging.
 pub struct CriticSeat {
     /// Who judges the answers.
     pub author: Author,

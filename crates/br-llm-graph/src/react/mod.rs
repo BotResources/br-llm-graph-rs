@@ -11,11 +11,11 @@
 //! cannot be used (refused by the client as unusable or malformed, or, with
 //! a structured output mode, a final reply whose structured block is missing
 //! or does not fit its shape) is asked for again within the node's reply
-//! retries, 0 by default. The tools
-//! (`Tool`, judged by an optional `Hook`) and the thread store (`ThreadStore`)
-//! are ports the host implements. An agent built with a thread store is
-//! durable: it works in a thread and resumes from it; without one it works in
-//! memory, for the current call only.
+//! retries, 0 by default. The tools (`Tool`, judged by an optional `Hook`)
+//! and the thread store (`ThreadStore`) are ports the host implements. An
+//! agent built with a thread store is durable: it works in a thread and
+//! resumes from it; without one it works in memory, for the current call
+//! only.
 //!
 //! Helpers for a node the host writes: `wire` renders a conversation for an
 //! author, `complete` calls a client with the observer as sink, `structured`
@@ -112,6 +112,8 @@ mod generator_critic_prepare_resume_tests;
 #[cfg(test)]
 mod generator_critic_prepare_tests;
 #[cfg(test)]
+mod generator_critic_reentry_tests;
+#[cfg(test)]
 mod generator_critic_repaired_tests;
 #[cfg(test)]
 mod generator_critic_reply_tests;
@@ -191,6 +193,8 @@ mod react_durable_answer_tests;
 mod react_durable_entry_tests;
 #[cfg(test)]
 mod react_durable_finish_tests;
+#[cfg(test)]
+mod react_durable_reentry_tests;
 #[cfg(test)]
 mod react_durable_reply_tests;
 #[cfg(test)]

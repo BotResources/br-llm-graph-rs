@@ -58,13 +58,15 @@ pub enum Reading {
 /// // A shape with `score` (0 to 10) and `notes`: a score of 7 or more passes.
 /// let reader: VerdictReader = Arc::new(|block| {
 ///     let Some(score) = block["score"].as_i64() else {
-///         return Ok(Reading::Unreadable { reason: "score is not an integer".to_owned() });
+///         let reason = "score is not an integer".to_owned();
+///         return Ok(Reading::Unreadable { reason });
 ///     };
 ///     let notes = block["notes"].as_str().unwrap_or_default().to_owned();
 ///     Ok(Reading::Verdict(Verdict { is_valid: score >= 7, message: notes }))
 /// });
 /// let read = reader(&serde_json::json!({ "score": "high" })).unwrap();
-/// assert_eq!(read, Reading::Unreadable { reason: "score is not an integer".to_owned() });
+/// let reason = "score is not an integer".to_owned();
+/// assert_eq!(read, Reading::Unreadable { reason });
 /// ```
 pub type VerdictReader = Arc<dyn Fn(&Json) -> Result<Reading, GraphError> + Send + Sync>;
 

@@ -75,7 +75,7 @@ impl Node for CritiqueNode {
                 };
                 let mut messages = self.view.messages(state, config, facts, judged)?;
                 if attempt > 1 {
-                    messages = reminded(messages, retry_text(&why)?);
+                    messages = reminded(messages, Some(retry_text(&why)?));
                 }
                 match self.ask(state, config, ctx, facts, messages).await? {
                     Reading::Verdict(Verdict {
