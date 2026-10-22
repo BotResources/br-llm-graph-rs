@@ -128,16 +128,27 @@ pub(crate) enum RequestShape {
     History(Origin),
 }
 
-/// An `LlmCall`: how its subjects are given, its request and its output.
+/// An `LlmCall`: how its subjects are given, its request, its output and
+/// what it does with a reply it cannot use.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LlmCallShape {
     pub(crate) model: Origin,
     pub(crate) system: Origin,
     pub(crate) request: RequestShape,
     pub(crate) output: Output,
+    pub(crate) replies: RepliesShape,
 }
 
-/// A model-calling node of an agent: its seat, its tools and its bounds;
+/// What a model-calling node does with a reply it cannot use: its reply
+/// retries, and how its reminder is given.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RepliesShape {
+    pub(crate) retries: Count,
+    pub(crate) reminder: Origin,
+}
+
+/// A model-calling node of an agent: its seat, its tools, its bounds and,
+/// for the ReAct agent and the generator, its reply retries and reminder;
 /// for the critic, what the generator-critic's routing and verdict read.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ModelCallShape {
@@ -149,6 +160,8 @@ pub(crate) struct ModelCallShape {
     pub(crate) enabled: Option<Key>,
     pub(crate) tool_concurrency: Option<Limit>,
     pub(crate) round_limit: Option<RoundLimit>,
+    /// `None` for the critic, which has its verdict retries instead.
+    pub(crate) replies: Option<RepliesShape>,
     pub(crate) critic: Option<CriticShape>,
 }
 

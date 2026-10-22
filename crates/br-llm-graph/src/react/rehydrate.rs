@@ -7,7 +7,7 @@ use br_llm_messages::{Conversation, Entry, TurnId, UserInput};
 use crate::error::GraphError;
 use crate::graph::Context;
 use crate::react::agent_call::ThreadBinding;
-use crate::react::thread_store::{MessageStatus, ThreadView, TurnEnd, thread_failed};
+use crate::react::thread_store::{MessageStatus, ThreadStore, ThreadView, TurnEnd, thread_failed};
 use crate::react::turn_ids::{agent_origin, id_request};
 use crate::value::ThreadId;
 
@@ -76,7 +76,7 @@ pub(crate) async fn enter_thread(
     } else {
         ThreadId::new(given)?
     };
-    let mut view = read(binding, &thread).await?;
+    let mut view = read(store, &thread).await?;
     for input in inputs {
         if view.message(input.id().as_str()).is_none() {
             store
@@ -103,7 +103,7 @@ pub(crate) async fn enter_thread(
             .end_turn(&thread, id, TurnEnd::Failed)
             .await
             .map_err(thread_failed)?;
-        view = read(binding, &thread).await?;
+        view = read(store, &thread).await?;
         *status = view
             .message(id.as_str())
             .map_or(MessageStatus::Failed, |message| message.status);
@@ -115,10 +115,13 @@ pub(crate) async fn enter_thread(
     })
 }
 
-/// The thread `thread`, refused when the store does not hold it.
-async fn read(binding: &ThreadBinding, thread: &ThreadId) -> Result<ThreadView, GraphError> {
-    binding
-        .store
+/// The thread `thread` of `store`, refused when the store does not hold it
+/// (`ThreadNotFound`).
+pub(crate) async fn read(
+    store: &dyn ThreadStore,
+    thread: &ThreadId,
+) -> Result<ThreadView, GraphError> {
+    store
         .read(thread)
         .await
         .map_err(thread_failed)?

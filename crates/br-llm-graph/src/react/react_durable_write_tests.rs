@@ -77,8 +77,10 @@ async fn given_a_tool_round_when_the_agent_runs_then_each_write_reaches_the_thre
         [
             "open t2",
             "event t2",
+            "finish t2",
             "results t2@1",
             "event t2",
+            "finish t2",
             "end t2 Completed"
         ]
     );

@@ -52,6 +52,7 @@ async fn given_an_empty_thread_when_the_agent_answers_then_the_store_creates_its
             "input i1".to_owned(),
             "open t2".to_owned(),
             "event t2".to_owned(),
+            "finish t2".to_owned(),
             "end t2 Completed".to_owned(),
         ]
     );

@@ -17,7 +17,8 @@ use crate::state::{Config, ConfigKey, State, StateKey, ValueType};
 /// Every context holds the state and the configuration of the node's run,
 /// read through typed keys, and only the keys the function declared with its
 /// `Reads`: a key it did not declare is refused (`UnknownKey`), whatever the
-/// state holds. The context of each node adds what that node knows:
+/// state holds; and the attempt number (`RequestContext::attempt`). The
+/// context of each node adds what that node knows:
 ///
 /// - an LLM call's holds nothing more;
 /// - an agent's adds its conversation (`AgentNode`), and the round of the
@@ -26,7 +27,7 @@ use crate::state::{Config, ConfigKey, State, StateKey, ValueType};
 ///   (`GeneratorCriticNode`): the generator's, the critic's and the
 ///   generator-critic's own, which its rule check and its empty-answer
 ///   critique read with the answer judged (`RequestContext::answer_step`);
-/// - the critic's adds the answer it judges and the attempt number.
+/// - the critic's adds the answer it judges.
 pub struct RequestContext<'a, N: ModelNode> {
     state: &'a State,
     config: &'a Config,
@@ -73,6 +74,16 @@ impl<'a, N: ModelNode> RequestContext<'a, N> {
         }
         self.config.get(key)
     }
+
+    /// The attempt of this model call, from 1: one more for each reply
+    /// asked for again, within the node's reply retries (for the critic, its
+    /// verdict retries), so a model function may give another client on a
+    /// retry. The functions of the generator-critic's own context (its rule
+    /// check, its empty-answer critique) judge a generation, never a reply
+    /// asked for again: their attempt is 1.
+    pub fn attempt(&self) -> usize {
+        N::attempt(self.facts)
+    }
 }
 
 impl<'a, N: AgentNode> RequestContext<'a, N> {
@@ -89,7 +100,8 @@ impl<'a, N: LoopNode> RequestContext<'a, N> {
     /// is one reply that calls tools plus the execution of its calls. The
     /// model is asked once per turn, so its function reads the round of the
     /// turn's first call in this call of the agent: 0, or for a turn the
-    /// agent continues in memory, the rounds it had already answered.
+    /// agent continues in memory, the rounds it had already answered; and
+    /// again for a reply asked for again, the round of that call.
     pub fn round(&self) -> usize {
         N::round(self.facts)
     }
@@ -117,13 +129,6 @@ impl<'a> RequestContext<'a, CriticSeat> {
     pub fn answer(&self) -> &'a str {
         let CriticFacts { answer, .. } = self.facts;
         answer
-    }
-
-    /// The attempt of this critic call, from 1: one more for each verdict
-    /// retry.
-    pub fn attempt(&self) -> usize {
-        let CriticFacts { attempt, .. } = self.facts;
-        attempt
     }
 }
 

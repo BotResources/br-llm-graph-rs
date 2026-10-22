@@ -98,6 +98,8 @@ fn given_prompts_tools_clients_and_fixed_values_when_described_then_none_of_them
         request: LlmRequest::Text(Prompt::text("SECRET-REQUEST")),
         output_mode: OutputMode::Plain,
         output: LlmOutput::Set(skey("note")),
+        reply_retries: None,
+        reminder: None,
     };
     let schema = Schema::builder()
         .state_by_name(key("note"), Kind::Str)
@@ -142,6 +144,8 @@ fn graph_with_secret_defaults_and_author() -> crate::graph::Graph {
         request: LlmRequest::Text(Prompt::text("Summarize.")),
         output_mode: OutputMode::Plain,
         output: LlmOutput::Set(skey("note")),
+        reply_retries: None,
+        reminder: None,
     };
     let schema = Schema::builder()
         .state_by_name(key("note"), Kind::Str)

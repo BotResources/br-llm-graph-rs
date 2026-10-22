@@ -4,9 +4,14 @@
 //! call with `SubGraph` or run on its own.
 //!
 //! A model-calling node is built from what the runner gives it (`Given`): its
-//! model (`Model`, a `Client` of br-llm-clients-core), its system (`Prompt`)
-//! and its history (`History`), each a value or a function of the node's
-//! context (`RequestContext`) declaring the keys it reads (`Reads`). The tools
+//! model (`Model`, a `Client` of br-llm-clients-core), its system (`Prompt`),
+//! its history (`History`) and the reminder of a reply asked for again
+//! (`Prompt`), each a value or a function of the node's context
+//! (`RequestContext`) declaring the keys it reads (`Reads`). A reply that
+//! cannot be used (refused by the client as unusable or malformed, or, with
+//! a structured output mode, a final reply whose structured block is missing
+//! or does not fit its shape) is asked for again within the node's reply
+//! retries, 0 by default. The tools
 //! (`Tool`, judged by an optional `Hook`) and the thread store (`ThreadStore`)
 //! are ports the host implements. An agent built with a thread store is
 //! durable: it works in a thread and resumes from it; without one it works in
@@ -29,6 +34,7 @@ mod declarations;
 mod describe;
 mod duo;
 mod enter;
+mod fit;
 mod generator_critic;
 mod generator_critic_build;
 mod generator_critic_names;
@@ -40,10 +46,13 @@ mod hook;
 mod llm_call;
 mod llm_call_check;
 mod llm_node;
+mod llm_node_reentry;
+mod llm_node_reply;
 mod llm_node_target;
 mod react_agent;
 mod react_loop;
 mod rehydrate;
+mod replies;
 mod round_limit;
 mod round_limit_marks;
 mod round_writer;
@@ -81,6 +90,8 @@ mod generator_critic_caller_tests;
 #[cfg(test)]
 mod generator_critic_cut_tests;
 #[cfg(test)]
+mod generator_critic_durable_reply_tests;
+#[cfg(test)]
 mod generator_critic_durable_support;
 #[cfg(test)]
 mod generator_critic_durable_tests;
@@ -103,6 +114,8 @@ mod generator_critic_prepare_tests;
 #[cfg(test)]
 mod generator_critic_repaired_tests;
 #[cfg(test)]
+mod generator_critic_reply_tests;
+#[cfg(test)]
 mod generator_critic_resume_tests;
 #[cfg(test)]
 mod generator_critic_retry_tests;
@@ -121,6 +134,8 @@ mod generator_critic_text_tests;
 #[cfg(test)]
 mod generator_critic_tools_tests;
 #[cfg(test)]
+mod generator_critic_unreadable_tests;
+#[cfg(test)]
 mod generator_critic_verdict_tests;
 #[cfg(test)]
 mod generator_critic_view_support;
@@ -134,6 +149,10 @@ mod llm_call_conversation_tests;
 mod llm_call_given_tests;
 #[cfg(test)]
 mod llm_call_map_tests;
+#[cfg(test)]
+mod llm_call_reply_tests;
+#[cfg(test)]
+mod llm_call_retry_tests;
 #[cfg(test)]
 mod llm_call_support;
 #[cfg(test)]
@@ -153,6 +172,10 @@ mod react_agent_keys_tests;
 #[cfg(test)]
 mod react_agent_map_tests;
 #[cfg(test)]
+mod react_agent_reply_tests;
+#[cfg(test)]
+mod react_agent_retry_tests;
+#[cfg(test)]
 mod react_agent_session_tests;
 #[cfg(test)]
 mod react_agent_support;
@@ -166,6 +189,10 @@ mod react_duplicate_tool_tests;
 mod react_durable_answer_tests;
 #[cfg(test)]
 mod react_durable_entry_tests;
+#[cfg(test)]
+mod react_durable_finish_tests;
+#[cfg(test)]
+mod react_durable_reply_tests;
 #[cfg(test)]
 mod react_durable_resume_tests;
 #[cfg(test)]
@@ -257,4 +284,4 @@ pub use thread_store::{
     MessageStatus, ThreadError, ThreadFuture, ThreadMessage, ThreadStore, ThreadView, TurnEnd,
 };
 pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
-pub use verdict::{Verdict, VerdictOverride, VerdictReader};
+pub use verdict::{Reading, Verdict, VerdictOverride, VerdictReader};

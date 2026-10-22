@@ -141,6 +141,8 @@ async fn main() {
         tool_concurrency: None,
         round_limit: None,
         enabled: Some(keys.enabled.key().clone()),
+        reply_retries: None,
+        reminder: None,
         inputs: Vec::new(),
         thread_store: None,
     }

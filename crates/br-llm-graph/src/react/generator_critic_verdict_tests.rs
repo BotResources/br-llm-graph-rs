@@ -230,18 +230,18 @@ async fn given_a_critic_step_without_a_structured_block_when_the_critic_judges_t
 }
 
 #[tokio::test]
-async fn given_a_text_reply_to_the_verdict_request_from_a_conforming_client_then_model_and_no_critique()
+async fn given_a_text_reply_to_the_verdict_request_from_a_conforming_client_then_an_unreadable_verdict_and_no_critique()
  {
     let critic_client = mock(vec![text_step("looks fine to me")]);
     let graph = duo(&mock(vec![text_step("draft")]), &critic_client)
         .graph()
         .unwrap();
     let (conversation, error) = failed_in(call(&graph, question("explain")).await, "critique");
+    let refused = ClientError::MalformedResponse {
+        detail: "the step does not fit a structured request".to_owned(),
+    };
     assert!(
-        matches!(
-            error,
-            GraphError::Model(ClientError::MalformedResponse { .. })
-        ),
+        matches!(error, GraphError::Structured { ref message } if *message == refused.to_string()),
         "{error}"
     );
     assert_eq!(shape(&conversation), ["user", "writer:draft"]);

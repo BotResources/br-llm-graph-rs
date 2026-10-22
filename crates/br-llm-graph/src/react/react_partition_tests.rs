@@ -39,6 +39,8 @@ fn llm_node(
         output_mode: OutputMode::Plain,
         tool_concurrency: None,
         round_limit: None,
+        reply_retries: crate::graph::Count::Fixed(0),
+        reminder: None,
         call: in_memory_call(),
         seat: None,
     }

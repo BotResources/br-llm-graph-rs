@@ -186,6 +186,8 @@ fn split_agent(gauge: &Arc<Gauge>, runs: usize) -> Arc<crate::graph::Graph> {
         tool_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
         round_limit: None,
         enabled: None,
+        reply_retries: None,
+        reminder: None,
         inputs: Vec::new(),
         thread_store: None,
     }

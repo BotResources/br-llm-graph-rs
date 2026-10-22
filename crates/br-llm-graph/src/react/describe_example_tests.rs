@@ -9,8 +9,8 @@ use serde_json::{Value as Json, json};
 
 use crate::describe::test_support::{assert_written, json};
 use crate::graph::{
-    Always, FnEdge, FnNode, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Node, NodeFuture,
-    Output, SubGraph, Target,
+    Always, Count, FnEdge, FnNode, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Node,
+    NodeFuture, Output, SubGraph, Target,
 };
 use crate::react::given::{Model, Prompt};
 use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
@@ -67,6 +67,8 @@ fn researcher() -> Arc<Graph> {
             on_limit: OnLimit::Error,
         }),
         enabled: None,
+        reply_retries: None,
+        reminder: None,
         inputs: Vec::new(),
         thread_store: None,
     }
@@ -84,6 +86,8 @@ fn summarize() -> Arc<Graph> {
         request: LlmRequest::Text(Prompt::from_state(&topic)),
         output_mode: OutputMode::Plain,
         output: LlmOutput::Set(note.clone()),
+        reply_retries: Some(Count::Fixed(2)),
+        reminder: Some(Prompt::text("{reason}: write the note again.")),
     };
     Arc::new(
         GraphBuilder::new(schema.build())
@@ -179,7 +183,9 @@ fn given_a_node_a_map_a_call_and_an_agent_when_described_then_the_json_is_the_pu
                                                "edge": {"targets": [{"end": "done"}]},
                                                "model": "fixed", "system": "fixed",
                                                "request": {"text": "ready_made"},
-                                               "output": {"set": "note"}}]}}},
+                                               "output": {"set": "note"},
+                                               "reply_retries": {"fixed": 2},
+                                               "reminder": "fixed"}]}}},
                 {"id": "researcher", "kind": "react_agent", "realizes": ["Researcher"],
                  "edge": {"targets": [{"end": "done"}]},
                  "inputs": [{"child": "opening", "source": {"from": "question"}}],
@@ -198,7 +204,8 @@ fn given_a_node_a_map_a_call_and_an_agent_when_described_then_the_json_is_the_pu
                               "author": {"id": "researcher"},
                               "model": "fixed", "system": "fixed", "history": "ready_made",
                               "tools": ["search", "fetch"],
-                              "round_limit": {"max_rounds": {"fixed": 4}, "on_limit": "error"}},
+                              "round_limit": {"max_rounds": {"fixed": 4}, "on_limit": "error"},
+                              "reply_retries": {"fixed": 0}, "reminder": "ready_made"},
                              {"id": "tools", "kind": "tools", "edge": {"targets": [{"node": "llm"}]},
                               "tools": ["search", "fetch"]},
                              {"id": "answer", "kind": "node", "edge": {"targets": [{"end": "done"}]}}]}}

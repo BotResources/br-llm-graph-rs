@@ -1,24 +1,22 @@
 use std::sync::Arc;
 
-use br_llm_clients_core::{ClientRequest, OutputMode, ToolSpec};
-use br_llm_messages::{Author, StopReason, Turn, TurnId};
+use br_llm_clients_core::{Client, OutputMode, ToolSpec};
+use br_llm_messages::{Author, TurnId};
 
 use crate::describe::NodeDescription;
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Limit, Node, NodeFuture};
+use crate::graph::{CheckSite, Context, Count, Limit, Node, NodeError, NodeFuture};
 use crate::react::agent_call::AgentCall;
 use crate::react::duo::Duo;
 use crate::react::given::{History, LoopNode, Model, Prompt, SeatCount};
-use crate::react::helpers::{check_enabled, enabled_names, system_text, wire};
-use crate::react::llm_node_target::{Target, answered_rounds};
+use crate::react::helpers::{check_enabled, enabled_names};
+use crate::react::llm_node_reply::{Ask, Replied};
+use crate::react::llm_node_target::Target;
+use crate::react::replies::Unusable;
 use crate::react::round_limit::RoundLimit;
-use crate::react::sink::complete_in;
-use crate::react::thread_store::TurnEnd;
 use crate::react::tool::Tool;
 use crate::react::turn_clients::TurnClients;
-use crate::react::turn_writer::TurnWriter;
 use crate::state::{Config, Schema, State};
-use crate::update::Update;
 use crate::value::Key;
 
 /// The model-call step of the ReAct loop of the agent `N`: calls the client
@@ -31,16 +29,25 @@ use crate::value::Key;
 /// for `author`; the declared tools, filtered by the names `enabled` holds
 /// when set (names matching no tool are ignored); and `output_mode`. The
 /// functions read the agent's context: the state, the configuration, the
-/// conversation and the round, the rounds already answered in the turn the
-/// reply goes to (0 for a new turn). The reply is added as a new step of the
-/// turn the agent writes when that turn awaits a step, else as a new turn of
-/// the author under an id from the id source (see `target`): in memory, the
-/// author's last turn; durable, the turn of the call's rank.
+/// conversation, the round, the rounds already answered in the turn the
+/// reply goes to (0 for a new turn), and the attempt. The reply is added as
+/// a new step of the turn the agent writes when that turn awaits a step,
+/// else as a new turn of the author under an id from the id source (see
+/// `target`): in memory, the author's last turn; durable, the turn of the
+/// call's rank.
+///
+/// A reply that cannot be used (see `judged`) is asked for again while
+/// `reply_retries` are left (see `reply`), the attempt one higher: the model
+/// is asked again for it, and the client it gives is kept for the turn's
+/// other rounds. It is never added to the conversation and counts against
+/// no round limit. When no retry is left, the node fails with `Model` or
+/// `Structured`.
 ///
 /// For a durable agent the turn is written to its thread first: a new turn
-/// is opened under its id, the sink pushes each stream event into it, and a
-/// reply that awaits no tool result completes it; only then is the reply
-/// applied to the conversation.
+/// is opened under its id, the sink pushes each stream event into it (with a
+/// structured output mode, once the step is checked), the store is given
+/// the finished step, and a reply that awaits no tool result completes it;
+/// only then is the reply applied to the conversation.
 ///
 /// At build, the node checks its `enabled` key (`EnabledKeyMismatch`) and the
 /// keys its functions declare (`UnknownKey`, `KindMismatch`).
@@ -64,6 +71,12 @@ pub(crate) struct LlmNode<N: LoopNode> {
     /// The bound on the tool rounds of one turn: the one source the loop
     /// reads (`ReactLoop::add`) and the description writes.
     pub(crate) round_limit: Option<RoundLimit>,
+    /// The times a reply that cannot be used is asked for again: the one
+    /// source the node reads and the description writes. The agent's entry
+    /// checks it with its other bounds.
+    pub(crate) reply_retries: Count,
+    /// The reminder of a reply asked for again. `None`: `REMINDER`.
+    pub(crate) reminder: Option<Prompt<N>>,
     /// The call of the agent: the turn the reply goes to and, for a durable
     /// agent, the thread it streams into.
     pub(crate) call: AgentCall,
@@ -75,73 +88,39 @@ pub(crate) struct LlmNode<N: LoopNode> {
 impl<N: LoopNode> Node for LlmNode<N> {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         Box::pin(async move {
-            let conversation = state.conversation(&self.key)?;
-            let target = self.target(state, ctx, conversation)?;
-            let round = match &target {
-                Target::Step(turn) => answered_rounds(turn),
-                Target::Open { .. } => 0,
-            };
-            let count = self.count(state, config, &target)?;
-            let facts = N::loop_facts(conversation, round, self.turn_index(state, &target)?, count);
-            let messages = match &self.history {
-                Some(history) => history.give(state, config, facts)?,
-                None => wire(conversation, &self.author)?,
-            };
-            let request = ClientRequest::new(
-                system_text(self.system.give(state, config, facts)?),
-                messages,
-                self.declared_tools(state)?,
-                self.output_mode.clone(),
-            )
-            .map_err(GraphError::Request)?;
-            let turn_id = match &target {
-                Target::Step(turn) => turn.id().clone(),
-                Target::Open { id, .. } => id.clone(),
-            };
-            let client = self.client(state, config, ctx, facts, &turn_id)?;
-
-            let writer = match &self.call.thread {
-                Some(binding) => Some(TurnWriter {
-                    store: binding.store.as_ref(),
-                    thread: binding.thread(state)?,
-                    turn: turn_id.clone(),
-                }),
-                None => None,
-            };
-            if let (Some(writer), Target::Open { .. }) = (&writer, &target) {
-                writer.open(&self.author).await?;
-            }
-            let step =
-                complete_in(client.as_ref(), &request, ctx, &self.key, writer.as_ref()).await?;
-            if !matches!(step.stop_reason(), StopReason::AwaitingToolResults) {
-                TurnClients::of(ctx).forget(ctx);
-            }
-            if let Some(writer) = &writer
-                && !matches!(step.stop_reason(), StopReason::AwaitingToolResults)
-            {
-                writer.end(TurnEnd::Completed).await?;
-            }
-
-            Ok(match target {
-                Target::Step(_) => vec![Update::PushStep {
-                    key: self.key.clone(),
-                    turn: turn_id,
-                    step,
-                }],
-                Target::Open { moved, .. } => {
-                    let turn = Turn::new(turn_id, Some(self.author.clone()), step);
-                    let added = self.call.add_turn(turn.id());
-                    let mut updates = vec![Update::PushTurn {
-                        key: self.key.clone(),
-                        turn,
-                    }];
-                    updates.extend(added);
-                    if let Some(position) = moved {
-                        updates.push(self.call.move_to(position));
+            let attempts = self.reply_retries.resolve(config)?.saturating_add(1);
+            // The state as a resumed run would find it, once a turn the
+            // client's refused reply had streamed into was failed.
+            let mut reentered: Option<State> = None;
+            let mut opened: Option<TurnId> = None;
+            let mut refused: Option<Unusable> = None;
+            let mut attempt = 1;
+            loop {
+                let ask = Ask {
+                    attempt,
+                    refused: refused.as_ref(),
+                    retry_left: attempt < attempts,
+                };
+                let now = reentered.as_ref().unwrap_or(state);
+                match self.reply(now, config, ctx, ask, &mut opened).await? {
+                    Replied::Used(updates) => {
+                        return Ok(self.reentered(reentered.as_ref(), updates)?);
                     }
-                    updates
+                    Replied::Unusable { unusable, .. } if attempt >= attempts => {
+                        return Err(unusable.into_error().into());
+                    }
+                    Replied::Unusable {
+                        unusable,
+                        reentered: again,
+                    } => {
+                        if again.is_some() {
+                            reentered = again;
+                        }
+                        refused = Some(unusable);
+                        attempt += 1;
+                    }
                 }
-            })
+            }
         })
     }
 
@@ -152,32 +131,40 @@ impl<N: LoopNode> Node for LlmNode<N> {
         if let Some(history) = &self.history {
             history.reads().check(schema)?;
         }
+        if let Some(reminder) = &self.reminder {
+            reminder.reads().check(schema)?;
+        }
         Ok(())
     }
 
-    /// `model_call`: the seat's author, how its model, system and history
-    /// are given, its tools, its enabled key and its bounds.
+    /// `model_call`: the seat's author, how its model, system, history and
+    /// reminder are given, its tools, its enabled key, its bounds and its
+    /// reply retries.
     fn describe(&self) -> NodeDescription {
         self.description()
     }
 }
 
 impl<N: LoopNode> LlmNode<N> {
-    /// The client called for this model call: the one `model` gave for the
-    /// turn `turn`, asked at the turn's first round (in this call, for a turn
-    /// it continues) for the context of that round, and kept in the call's
-    /// run for the turn's other rounds, so a turn is run by one client (see
-    /// `TurnClients`).
-    fn client<'a>(
+    /// The client called for this model call: on a first attempt, the one
+    /// `model` gave for the turn `turn`, asked at the turn's first round (in
+    /// this call, for a turn it continues) for the context of that round,
+    /// and kept in the call's run for the turn's other rounds, so a turn is
+    /// run by one client (see `TurnClients`); for a reply asked for again,
+    /// the one `model` gives for the attempt, kept in its place.
+    pub(crate) fn client<'a>(
         &'a self,
         state: &'a State,
         config: &'a Config,
         ctx: &Context,
         facts: N::Facts<'a>,
         turn: &TurnId,
-    ) -> Result<Arc<dyn br_llm_clients_core::Client>, crate::graph::NodeError> {
+        attempt: usize,
+    ) -> Result<Arc<dyn Client>, NodeError> {
         let clients = TurnClients::of(ctx);
-        if let Some(kept) = clients.kept(ctx, turn) {
+        if attempt == 1
+            && let Some(kept) = clients.kept(ctx, turn)
+        {
             return Ok(kept);
         }
         let client = self.model.give(state, config, facts)?;
@@ -188,7 +175,7 @@ impl<N: LoopNode> LlmNode<N> {
     /// Where the call of a generator-critic stands for the generator's
     /// context: the number of the generation the reply goes to, counted
     /// among the generator's turns of the call. Nothing for a ReAct agent.
-    fn count(
+    pub(crate) fn count(
         &self,
         state: &State,
         config: &Config,
@@ -205,7 +192,7 @@ impl<N: LoopNode> LlmNode<N> {
         duo.count(config, &turns, turns.generations_before(writing) + 1)
     }
 
-    fn declared_tools(&self, state: &State) -> Result<Vec<ToolSpec>, GraphError> {
+    pub(crate) fn declared_tools(&self, state: &State) -> Result<Vec<ToolSpec>, GraphError> {
         let specs = self.tools.iter().map(|tool| tool.spec());
         let Some(key) = &self.enabled else {
             return Ok(specs.cloned().collect());

@@ -181,3 +181,75 @@ async fn given_an_action_planned_after_a_call_when_it_succeeds_then_the_action_r
         .unwrap();
     assert!(ran.load(Ordering::SeqCst));
 }
+
+/// The step `body` folds into, with the model `model`.
+fn answered(body: &str, model: &str) -> br_llm_messages::Step {
+    br_llm_messages::Step::new(
+        vec![br_llm_messages::AssistantBlock::Text {
+            text: br_llm_messages::Text::new(body).unwrap(),
+        }],
+        br_llm_messages::StopReason::EndTurn,
+        None,
+        Some(br_llm_messages::ModelId::new(model).unwrap()),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn given_a_step_folded_from_its_events_when_it_is_finished_then_the_store_keeps_it_with_its_model()
+ {
+    let store = with_open_turn().await;
+    for event in text_events("hello") {
+        store
+            .push_event(&thread(), &turn("t1"), &event)
+            .await
+            .unwrap();
+    }
+    store
+        .finish_step(&thread(), &turn("t1"), &answered("hello", "m1"))
+        .await
+        .unwrap();
+    let finished = store.finished(&thread(), &turn("t1"));
+    assert_eq!(finished, [answered("hello", "m1")]);
+    assert_eq!(store.log().last().map(String::as_str), Some("finish t1"));
+}
+
+#[tokio::test]
+async fn given_a_step_the_store_has_not_folded_when_it_is_finished_then_refused() {
+    let store = with_open_turn().await;
+    let error = store
+        .finish_step(&thread(), &turn("t1"), &answered("hello", "m1"))
+        .await
+        .unwrap_err();
+    assert!(matches!(stored(error), StoreError::Refused(_)));
+    let events = text_events("hello");
+    for event in &events[..2] {
+        store
+            .push_event(&thread(), &turn("t1"), event)
+            .await
+            .unwrap();
+    }
+    let error = store
+        .finish_step(&thread(), &turn("t1"), &answered("hello", "m1"))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(stored(error), StoreError::Refused(_)),
+        "a step under way"
+    );
+    for event in &events[2..] {
+        store
+            .push_event(&thread(), &turn("t1"), event)
+            .await
+            .unwrap();
+    }
+    let error = store
+        .finish_step(&thread(), &turn("t1"), &answered("goodbye", "m1"))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(stored(error), StoreError::Refused(_)),
+        "another step"
+    );
+    assert!(store.finished(&thread(), &turn("t1")).is_empty());
+}

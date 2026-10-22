@@ -5,7 +5,9 @@
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use br_llm_messages::{Author, Conversation, StepDraft, StreamEvent, Turn, TurnId, UserInput};
+use br_llm_messages::{
+    Author, Conversation, Step, StepDraft, StreamEvent, Turn, TurnId, UserInput,
+};
 
 use crate::origin::Origin;
 use crate::react::{MessageStatus, ThreadError, ThreadMessage, ThreadView};
@@ -42,13 +44,15 @@ impl std::fmt::Display for StoreError {
 impl std::error::Error for StoreError {}
 
 /// A turn of a thread: the steps and results held so far (`None` before its
-/// first step), and the events of the step under way.
+/// first step), the events of the step under way, and the steps the library
+/// gave once their stream ended, with their model and usage.
 pub(crate) struct TurnRecord {
     pub(crate) id: TurnId,
     pub(crate) author: Author,
     pub(crate) status: MessageStatus,
     pub(crate) turn: Option<Turn>,
     pub(crate) draft: Option<Draft>,
+    pub(crate) finished: Vec<Step>,
 }
 
 /// The step under way: the draft folding it and the events it was given.
@@ -87,9 +91,9 @@ impl TestStore {
     }
 
     /// The operations done so far, one line each: `create {thread}`,
-    /// `input {id}`, `open {turn}`, `event {turn}`, `results {turn}@{index}`,
-    /// `end {turn} {status:?}`, `read {thread}`; a refused one ends with
-    /// ` refused`.
+    /// `input {id}`, `open {turn}`, `event {turn}`, `finish {turn}`,
+    /// `results {turn}@{index}`, `end {turn} {status:?}`, `read {thread}`; a
+    /// refused one ends with ` refused`.
     pub fn log(&self) -> Vec<String> {
         self.lock().log.clone()
     }
@@ -100,6 +104,23 @@ impl TestStore {
             .threads
             .get(thread)
             .map(|thread| view(thread).expect("a thread of the test store renders"))
+    }
+
+    /// The steps the library gave for the turn `turn` of `thread` once their
+    /// stream ended (`finish_step`), in order, each with its model and its
+    /// usage; none for a turn the store does not hold.
+    pub fn finished(&self, thread: &ThreadId, turn: &TurnId) -> Vec<Step> {
+        let inner = self.lock();
+        let Some(held) = inner.threads.get(thread) else {
+            return Vec::new();
+        };
+        held.messages
+            .iter()
+            .find_map(|message| match message {
+                Message::Turn(record) if &record.id == turn => Some(record.finished.clone()),
+                Message::Turn(_) | Message::Input(_) => None,
+            })
+            .unwrap_or_default()
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {

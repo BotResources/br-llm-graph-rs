@@ -1,6 +1,7 @@
 //! A ReAct agent's description: its own graph, its own nodes included; its
 //! model-calling node holds its author, its tool names, its enabled key, its
-//! tool concurrency and round limits, and how each subject is given.
+//! tool concurrency and round limits, its reply retries, and how each
+//! subject is given.
 
 use std::sync::Arc;
 
@@ -42,7 +43,8 @@ fn given_a_react_agent_when_described_then_its_own_graph_and_nodes_are_written()
                  "edge": {"targets": [{"node": "tools"}, {"node": "answer"}]},
                  "author": {"id": "agent"},
                  "model": "fixed", "system": "ready_made", "history": "ready_made",
-                 "tools": ["echo"]},
+                 "tools": ["echo"],
+                 "reply_retries": {"fixed": 0}, "reminder": "ready_made"},
                 {"id": "tools", "kind": "tools", "edge": {"targets": [{"node": "llm"}]},
                  "tools": ["echo"]},
                 {"id": "answer", "kind": "node", "edge": {"targets": [{"end": "done"}]}}
@@ -101,6 +103,30 @@ fn given_subjects_given_each_way_when_described_then_each_says_how_never_what() 
     assert_eq!(
         (llm["system"].clone(), llm["history"].clone()),
         (json!("fixed"), json!("function"))
+    );
+}
+
+#[test]
+fn given_reply_retries_and_a_reminder_when_described_then_the_model_call_holds_the_count_and_how_the_reminder_is_given()
+ {
+    let mut agent = agent(&mock(Vec::new()));
+    agent.reply_retries = Some(crate::graph::Count::Config(key("retries")));
+    agent.reminder = Some(Prompt::text("Your JSON was wrong: {reason}."));
+    let described = agent.graph().unwrap().describe();
+    let llm = node_json(&described, "llm");
+    assert_eq!(llm["reply_retries"], json!({"config": "retries"}));
+    assert_eq!(llm["reminder"], "fixed");
+    assert_eq!(
+        json(&described)["schema"]["config"]["retries"],
+        json!({"type": "int"})
+    );
+    let mut agent = crate::react::react_agent_support::agent(&mock(Vec::new()));
+    agent.reply_retries = Some(crate::graph::Count::Fixed(2));
+    agent.reminder = Some(Prompt::from_fn(Reads::new(), |_| Ok("{reason}".to_owned())));
+    let llm = node_json(&agent.graph().unwrap().describe(), "llm");
+    assert_eq!(
+        (llm["reply_retries"].clone(), llm["reminder"].clone()),
+        (json!({"fixed": 2}), json!("function"))
     );
 }
 

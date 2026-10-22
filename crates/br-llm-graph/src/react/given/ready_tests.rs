@@ -8,7 +8,7 @@ use br_llm_clients_core::Client;
 
 use crate::error::GraphError;
 use crate::react::given::ready::{from_start, with_tail};
-use crate::react::given::{Model, Prompt, Reads};
+use crate::react::given::{CallFacts, Model, Prompt, Reads};
 use crate::react::llm_call::LlmCall;
 use crate::react::test_support::{ckey, key, mock, skey};
 use crate::state::{Config, Kind, Schema, State, Value};
@@ -47,7 +47,9 @@ fn texts() -> (State, Config) {
 
 fn given(prompt: &Prompt<LlmCall>) -> String {
     let (state, config) = texts();
-    prompt.give(&state, &config, ()).unwrap()
+    prompt
+        .give(&state, &config, CallFacts { attempt: 1 })
+        .unwrap()
 }
 
 #[test]
@@ -88,7 +90,7 @@ fn given_a_text_read_from_a_key_when_built_then_it_declares_that_key_with_its_ki
 fn given_a_text_read_from_a_key_of_another_kind_when_given_then_kind_mismatch() {
     let (state, config) = texts();
     let error = Prompt::<LlmCall>::from_state(&skey("count"))
-        .give(&state, &config, ())
+        .give(&state, &config, CallFacts { attempt: 1 })
         .unwrap_err();
     assert!(matches!(
         error.downcast_ref::<GraphError>(),
@@ -102,7 +104,7 @@ fn given_a_fixed_client_when_given_then_that_client() {
     let client: Arc<dyn Client> = Arc::new(mock(Vec::new()));
     let (state, config) = texts();
     let given = Model::<LlmCall>::client(client.clone())
-        .give(&state, &config, ())
+        .give(&state, &config, CallFacts { attempt: 1 })
         .unwrap();
     assert!(Arc::ptr_eq(&given, &client));
 }

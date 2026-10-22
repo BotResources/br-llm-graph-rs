@@ -2,6 +2,7 @@
 //! system, its history...) a value, or a function of the node's context.
 
 mod context;
+pub(crate) mod facts;
 mod nodes;
 mod origin;
 mod reads;
@@ -17,7 +18,7 @@ use crate::state::{Config, State};
 
 pub use context::RequestContext;
 pub use nodes::{AgentNode, Budgeted, GeneratorCriticNode, LoopNode, ModelNode, Scheduled};
-pub(crate) use nodes::{CheckFacts, CriticFacts, SeatCount};
+pub(crate) use nodes::{CallFacts, CheckFacts, CriticFacts, SeatCount};
 pub(crate) use origin::Origin;
 pub use reads::Reads;
 
@@ -33,13 +34,14 @@ type GiveFn<N, T> = dyn for<'a> Fn(&RequestContext<'a, N>) -> Result<T, NodeErro
 /// `GeneratorCritic`) is built from what the runner gives it, one subject at
 /// a time, each of a fixed type: the model gives a client (`Model`), the
 /// system a text (`Prompt`), the history the conversation to send
-/// (`History`).
+/// (`History`), the reminder of a reply asked for again a text (`Prompt`).
 ///
 /// A function:
 /// - reads the context of its node (`RequestContext`), and only that: the
 ///   state and the configuration through typed keys, and only the keys
-///   declared with it in its `Reads`; an agent's context adds its
-///   conversation, and more for some nodes (see `RequestContext`);
+///   declared with it in its `Reads`, and the attempt number; an agent's
+///   context adds its conversation, and more for some nodes (see
+///   `RequestContext`);
 /// - is synchronous and does no I/O: what it needs for every run (prompts,
 ///   clients, catalogues) is given to it when the node is built, typed by the
 ///   runner, as what the closure captures; it never goes through the state.

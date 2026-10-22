@@ -3,7 +3,7 @@
 //! repaired.
 
 use br_llm_messages::{
-    Author, StepDraft, StreamEvent, ToolResult, Turn, TurnId, TurnItem, UserInput,
+    Author, Step, StepDraft, StreamEvent, ToolResult, Turn, TurnId, TurnItem, UserInput,
 };
 
 use crate::origin::Origin;
@@ -173,6 +173,7 @@ impl ThreadStore for TestStore {
                 status: MessageStatus::Streaming,
                 turn: None,
                 draft: None,
+                finished: Vec::new(),
             })));
             Ok(())
         });
@@ -187,6 +188,37 @@ impl ThreadStore for TestStore {
     ) -> ThreadFuture<'a, ()> {
         let result = self.write(Op::PushEvent, format!("event {turn}"), |inner| {
             fold(open_turn_mut(thread_mut(inner, thread)?, turn)?, event)
+        });
+        Box::pin(async move { result })
+    }
+
+    /// Keeps `step` beside the step its events folded into, which it must
+    /// be (its content and stop reason), once that stream has ended.
+    fn finish_step<'a>(
+        &'a self,
+        thread: &'a ThreadId,
+        turn: &'a TurnId,
+        step: &'a Step,
+    ) -> ThreadFuture<'a, ()> {
+        let result = self.write(Op::FinishStep, format!("finish {turn}"), |inner| {
+            let record = open_turn_mut(thread_mut(inner, thread)?, turn)?;
+            let folded = items(record).iter().rev().find_map(|item| match item {
+                TurnItem::Step(folded) => Some(folded),
+                TurnItem::ToolResults(_) => None,
+            });
+            match folded {
+                Some(folded)
+                    if record.draft.is_none()
+                        && folded.content() == step.content()
+                        && folded.stop_reason() == step.stop_reason() =>
+                {
+                    record.finished.push(step.clone());
+                    Ok(())
+                }
+                Some(_) | None => Err(StoreError::Refused(format!(
+                    "turn {turn} has not folded this step"
+                ))),
+            }
         });
         Box::pin(async move { result })
     }

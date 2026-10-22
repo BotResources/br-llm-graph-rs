@@ -41,6 +41,8 @@ fn summarize() -> Arc<Graph> {
         request: LlmRequest::Text(Prompt::from_state(&topic)),
         output_mode: OutputMode::Plain,
         output: LlmOutput::Set(note.clone()),
+        reply_retries: None,
+        reminder: None,
     };
     let graph = GraphBuilder::new(schema.build())
         .entry(id("summarize"))
@@ -70,6 +72,8 @@ fn researcher() -> Arc<Graph> {
             on_limit: OnLimit::Error,
         }),
         enabled: None,
+        reply_retries: None,
+        reminder: None,
         inputs: Vec::new(),
         thread_store: None,
     }

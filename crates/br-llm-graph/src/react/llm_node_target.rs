@@ -29,15 +29,12 @@ pub(crate) fn answered_rounds(turn: &Turn) -> usize {
 }
 
 impl<N: LoopNode> LlmNode<N> {
-    /// The 0-based index of the turn the reply goes to among the call's
-    /// turns, as the call ranks them: 0 for a turn the call continues in
-    /// memory.
-    pub(crate) fn turn_index(
-        &self,
-        state: &State,
-        target: &Target<'_>,
-    ) -> Result<usize, GraphError> {
-        let rank = match (target, self.call.position(state)?) {
+    /// The rank of the turn the reply goes to among the call's turns, as the
+    /// id source counts them (1 for the first): the call's rank, or the
+    /// next one when the reply opens it. A turn the call continues in memory
+    /// has the call's rank, 1.
+    pub(crate) fn rank(&self, state: &State, target: &Target<'_>) -> Result<usize, GraphError> {
+        Ok(match (target, self.call.position(state)?) {
             (
                 Target::Open {
                     moved: Some(Position::Writing(rank)),
@@ -46,8 +43,7 @@ impl<N: LoopNode> LlmNode<N> {
                 _,
             ) => *rank,
             (_, Position::Writing(rank) | Position::Answered(rank)) => rank,
-        };
-        Ok(rank.saturating_sub(1))
+        })
     }
 
     /// Where the reply goes. In memory, the author's last turn while it

@@ -1,6 +1,7 @@
 //! A generator-critic's description: its own graph; each seat described like
-//! a ReAct agent's model-calling node; the counts on the nodes that read
-//! them.
+//! a ReAct agent's model-calling node, the generator with its reply retries
+//! and reminder, the critic with its verdict retries instead; the counts on
+//! the nodes that read them.
 
 use br_llm_clients_core::{Parameter, ParameterKind, Parameters, StructuredShape};
 use serde_json::json;
@@ -50,6 +51,8 @@ fn given_a_generator_critic_when_described_then_its_nodes_hold_its_seats_and_cou
     let generate = node_json(&described, "generate");
     assert_eq!(generate["join"], true);
     assert_eq!(generate["author"], json!({"id": "writer"}));
+    assert_eq!(generate["reply_retries"], json!({"fixed": 0}));
+    assert_eq!(generate["reminder"], "ready_made");
     assert_written(
         &node_json(&described, "check"),
         &json!({
@@ -88,7 +91,17 @@ fn given_its_options_given_each_way_when_described_then_each_says_how() {
     duo.empty_answer_critique = Some(Prompt::text("Say something."));
     duo.critic.review_request = Some(Prompt::from_config(&ckey("review")));
     duo.critic.history = CriticHistory::Given(History::from_fn(Reads::new(), |_| Ok(Vec::new())));
+    duo.generator.reply_retries = Some(Count::Config(key("generator_retries")));
+    duo.generator.reminder = Some(Prompt::from_fn(Reads::new(), |_| {
+        Ok("Again: {reason}.".to_owned())
+    }));
     let described = duo.graph().unwrap().describe();
+    let generate = node_json(&described, "generate");
+    assert_eq!(
+        generate["reply_retries"],
+        json!({"config": "generator_retries"})
+    );
+    assert_eq!(generate["reminder"], "function");
     let check = node_json(&described, "check");
     assert_eq!(check["revision_limit"], json!({"config": "revisions"}));
     assert_eq!(check["rule_check"], "function");

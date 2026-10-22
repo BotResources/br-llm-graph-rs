@@ -21,12 +21,52 @@ pub struct Verdict {
     pub message: String,
 }
 
+/// What a verdict reader gives for the critic's structured block: the
+/// verdict, or that the block cannot be read, and why. A failure is the
+/// reader's error, which fails the run as returned.
+///
+/// More readings may come in a later version: a `match` on it outside the
+/// crate needs a wildcard arm.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Reading {
+    /// The verdict: its `message` is what the generator reads in a
+    /// critique, or what an acceptance holds. A rejection whose message is
+    /// blank is still an unreadable verdict.
+    Verdict(Verdict),
+    /// The block cannot be read as a verdict: an unreadable verdict, asked
+    /// for again with `reason` while verdict retries are left (the critic
+    /// reads `Your reply could not be read as a verdict: {reason}. Reply
+    /// again with the verdict.`); after the last retry the run fails with
+    /// `Structured`, carrying it.
+    Unreadable {
+        /// Why the block cannot be read, as the critic will read it.
+        reason: String,
+    },
+}
+
 /// Reads a verdict from the critic's structured block: pure and synchronous.
-/// The verdict's `message` is what the generator reads in a critique, or
-/// what an acceptance holds. Its error fails the run as returned, without a
-/// retry; a rejection it gives with a blank message is an unreadable
-/// verdict, asked again while verdict retries are left.
-pub type VerdictReader = Arc<dyn Fn(&Json) -> Result<Verdict, GraphError> + Send + Sync>;
+/// It gives the verdict, its `message` as the generator will read it; or it
+/// says that the block cannot be read, with a reason, which makes it an
+/// unreadable verdict asked for again with that reason; or it fails, and its
+/// error fails the run as returned, without a retry.
+///
+/// ```
+/// use std::sync::Arc;
+/// use br_llm_graph::{Reading, Verdict, VerdictReader};
+///
+/// // A shape with `score` (0 to 10) and `notes`: a score of 7 or more passes.
+/// let reader: VerdictReader = Arc::new(|block| {
+///     let Some(score) = block["score"].as_i64() else {
+///         return Ok(Reading::Unreadable { reason: "score is not an integer".to_owned() });
+///     };
+///     let notes = block["notes"].as_str().unwrap_or_default().to_owned();
+///     Ok(Reading::Verdict(Verdict { is_valid: score >= 7, message: notes }))
+/// });
+/// let read = reader(&serde_json::json!({ "score": "high" })).unwrap();
+/// assert_eq!(read, Reading::Unreadable { reason: "score is not an integer".to_owned() });
+/// ```
+pub type VerdictReader = Arc<dyn Fn(&Json) -> Result<Reading, GraphError> + Send + Sync>;
 
 /// A verdict shape of the caller's, sent instead of the default one; the
 /// descriptions of the critic seat are then ignored.
@@ -35,7 +75,7 @@ pub type VerdictReader = Arc<dyn Fn(&Json) -> Result<Verdict, GraphError> + Send
 /// checks the shape: its parameters include `is_valid` (boolean) and
 /// `message` (string), both required (`VerdictShapeMismatch`). With a
 /// `reader`, the shape is the caller's concern and the reader gives the
-/// verdict.
+/// verdict, or says why the block cannot be read.
 pub struct VerdictOverride {
     /// The shape sent instead of the default one.
     pub shape: StructuredShape,
@@ -64,13 +104,6 @@ pub(crate) enum VerdictForm {
         message: Prompt<CriticSeat>,
     },
     Override(VerdictOverride),
-}
-
-/// What reading the critic's step gives, short of a reader's error: a
-/// verdict, or the reason it is unreadable.
-pub(crate) enum Reading {
-    Verdict(Verdict),
-    Unreadable(String),
 }
 
 impl VerdictForm {
@@ -159,29 +192,40 @@ impl VerdictForm {
     }
 
     /// Reads the verdict of the critic's step. A missing structured block, a
-    /// block that does not read as the default verdict (without a reader) or
-    /// a rejection with a blank message (empty or whitespace only) is
-    /// unreadable; an error of a reader is returned as it is.
+    /// block that does not read as the default verdict (without a reader), a
+    /// block the reader says it cannot read, or a rejection with a blank
+    /// message (empty or whitespace only) is unreadable; an error of a reader
+    /// is returned as it is.
     pub(crate) fn read(&self, step: &Step) -> Result<Reading, GraphError> {
         let Some(value) = step.structured().next() else {
-            return Ok(Reading::Unreadable(NO_BLOCK.to_owned()));
+            return Ok(unreadable(NO_BLOCK));
         };
         let verdict = match self {
             VerdictForm::Override(VerdictOverride {
                 reader: Some(reader),
                 ..
-            }) => reader(value)?,
+            }) => match reader(value)? {
+                Reading::Verdict(verdict) => verdict,
+                unreadable @ Reading::Unreadable { .. } => return Ok(unreadable),
+            },
             VerdictForm::Override(_) | VerdictForm::Default { .. } => {
                 match serde_json::from_value::<Verdict>(value.clone()) {
                     Ok(verdict) => verdict,
-                    Err(error) => return Ok(Reading::Unreadable(error.to_string())),
+                    Err(error) => return Ok(unreadable(&error.to_string())),
                 }
             }
         };
         if !verdict.is_valid && verdict.message.trim().is_empty() {
-            return Ok(Reading::Unreadable(BLANK_REJECTION.to_owned()));
+            return Ok(unreadable(BLANK_REJECTION));
         }
         Ok(Reading::Verdict(verdict))
+    }
+}
+
+/// An unreadable verdict, for `reason`.
+pub(crate) fn unreadable(reason: &str) -> Reading {
+    Reading::Unreadable {
+        reason: reason.to_owned(),
     }
 }
 

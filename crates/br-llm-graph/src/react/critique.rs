@@ -3,7 +3,7 @@
 //! the critique it records.
 
 use br_llm_clients_core::{ClientRequest, ReasoningLevel};
-use br_llm_messages::{Text, WireMessage, WireUserBlock};
+use br_llm_messages::{Text, WireMessage};
 
 use crate::error::GraphError;
 use crate::graph::{Context, Count, Node, NodeFuture};
@@ -12,9 +12,10 @@ use crate::react::critic_writer::record;
 use crate::react::duo::TurnKind;
 use crate::react::given::{CriticFacts, Model, Prompt};
 use crate::react::helpers::{answer_text, final_step};
+use crate::react::replies::{refuses, reminded};
 use crate::react::seats::CriticSeat;
-use crate::react::sink::complete_in;
-use crate::react::verdict::{Reading, Verdict, VerdictForm};
+use crate::react::sink::complete;
+use crate::react::verdict::{Reading, Verdict, VerdictForm, unreadable};
 use crate::state::{Config, State};
 use crate::value::Key;
 
@@ -36,9 +37,11 @@ pub(crate) const ACCEPTED_TEXT: &str = "Accepted.";
 /// `thinking` in it exactly when that client's `ReasoningLevel` is `Off`.
 /// Its stream events carry the key `critic`, and reach no thread.
 ///
-/// An unreadable verdict is asked again while `retries` are left: the same
+/// An unreadable verdict, a reply the client refuses as unusable or
+/// malformed included, is asked again while `retries` are left: the same
 /// request for the next attempt, then a user message saying why the reply
-/// could not be read. After the last retry the node fails with `Structured`,
+/// could not be read (one more text of the last message when it is a
+/// relay). After the last retry the node fails with `Structured`,
 /// and nothing is recorded; a retry is never recorded.
 pub(crate) struct CritiqueNode {
     pub(crate) model: Model<CriticSeat>,
@@ -62,7 +65,7 @@ impl Node for CritiqueNode {
             let count = duo.count(config, &turns, turns.generations())?;
             let conversation = state.conversation(&duo.conversation)?;
             let attempts = self.retries.resolve(config)?.saturating_add(1);
-            let mut unreadable = String::new();
+            let mut why = String::new();
             for attempt in 1..=attempts {
                 let facts = CriticFacts {
                     conversation,
@@ -72,7 +75,7 @@ impl Node for CritiqueNode {
                 };
                 let mut messages = self.view.messages(state, config, facts, judged)?;
                 if attempt > 1 {
-                    messages.push(retry_message(&unreadable)?);
+                    messages = reminded(messages, retry_text(&why)?);
                 }
                 match self.ask(state, config, ctx, facts, messages).await? {
                     Reading::Verdict(Verdict {
@@ -86,13 +89,10 @@ impl Node for CritiqueNode {
                         let text = Text::new(message)?;
                         return Ok(record(duo, state, ctx, TurnKind::Critique, text).await?);
                     }
-                    Reading::Unreadable(reason) => unreadable = reason,
+                    Reading::Unreadable { reason } => why = reason,
                 }
             }
-            Err(GraphError::Structured {
-                message: unreadable,
-            }
-            .into())
+            Err(GraphError::Structured { message: why }.into())
         })
     }
 
@@ -104,7 +104,9 @@ impl Node for CritiqueNode {
 
 impl CritiqueNode {
     /// One call of the critic for its context `facts`, sending `messages`:
-    /// what it gives, read as a verdict.
+    /// what it gives, read as a verdict. A reply the client refuses as
+    /// unusable or malformed is an unreadable verdict, its reason the
+    /// client's error.
     async fn ask(
         &self,
         state: &State,
@@ -125,18 +127,20 @@ impl CritiqueNode {
                 .output_mode(state, config, facts, with_thinking)?,
         )
         .map_err(GraphError::Request)?;
-        let step = complete_in(client.as_ref(), &request, ctx, &self.stream_key, None).await?;
+        let step = match complete(client.as_ref(), &request, ctx, &self.stream_key).await {
+            Ok(step) => step,
+            Err(GraphError::Model(error)) if refuses(&error) => {
+                return Ok(unreadable(&error.to_string()));
+            }
+            Err(error) => return Err(error.into()),
+        };
         Ok(self.verdict.read(&step)?)
     }
 }
 
-/// The message that asks the critic again after an unreadable verdict.
-fn retry_message(reason: &str) -> Result<WireMessage, GraphError> {
-    Ok(WireMessage::User {
-        content: vec![WireUserBlock::Text {
-            text: Text::new(format!(
-                "Your reply could not be read as a verdict: {reason}. Reply again with the verdict."
-            ))?,
-        }],
-    })
+/// The text that asks the critic again after an unreadable verdict.
+fn retry_text(reason: &str) -> Result<Text, GraphError> {
+    Ok(Text::new(format!(
+        "Your reply could not be read as a verdict: {reason}. Reply again with the verdict."
+    ))?)
 }

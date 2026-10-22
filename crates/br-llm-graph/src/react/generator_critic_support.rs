@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use br_llm_clients_core::OutputMode;
+use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
 use br_llm_clients_mock::MockClient;
 use br_llm_messages::{
     Author, Conversation, InputId, Step, Text, UserBlock, UserInput, UserSource,
@@ -76,6 +76,8 @@ pub(crate) fn generator(client: &MockClient) -> GeneratorSeat {
         tool_concurrency: None,
         round_limit: None,
         enabled: None,
+        reply_retries: None,
+        reminder: None,
     }
 }
 
@@ -255,4 +257,22 @@ pub(crate) fn with_budget(
     }
     .graph()
     .unwrap()
+}
+
+/// The shape `draft`: `text` (string), required.
+pub(crate) fn drafted() -> OutputMode {
+    let parameters = Parameters::new(vec![
+        Parameter::new("text", "", true, ParameterKind::String).unwrap(),
+    ])
+    .unwrap();
+    OutputMode::Structured(StructuredShape::new("draft", None, parameters).unwrap())
+}
+
+/// The generator on `client`, asking for `draft`, with `retries`.
+pub(crate) fn drafting(client: &MockClient, retries: Option<Count>) -> GeneratorSeat {
+    GeneratorSeat {
+        output_mode: drafted(),
+        reply_retries: retries,
+        ..generator(client)
+    }
 }

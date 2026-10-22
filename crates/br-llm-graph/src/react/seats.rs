@@ -6,7 +6,7 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_messages::{Author, Conversation};
 
-use crate::graph::Limit;
+use crate::graph::{Count, Limit};
 use crate::react::given::{History, Model, Prompt};
 use crate::react::round_limit::RoundLimit;
 use crate::react::tool::Tool;
@@ -16,10 +16,17 @@ use crate::value::{Key, NodeId};
 
 /// The generator's seat: who writes the answers, with what, and its tools.
 ///
-/// Its model, system and history are given as values or functions of the
-/// generator's context (see `Given`): the state, the configuration, the
-/// conversation, the round, the generation number and the budget. A change of
-/// client never changes the seat's author.
+/// Its model, system, history and reminder are given as values or functions
+/// of the generator's context (see `Given`): the state, the configuration,
+/// the attempt number, the conversation, the round, the generation number
+/// and the budget. A change of client never changes the seat's author.
+///
+/// A reply that cannot be used (refused by the client as unusable or
+/// malformed, or, with a structured output mode, a final reply whose
+/// structured block is missing or does not fit its shape, as a ReAct
+/// agent's) is asked for again within `reply_retries`, inside the same
+/// generation: a retry is no generation, no revision and no critique. When
+/// no retry is left, the run fails.
 pub struct GeneratorSeat {
     /// Who writes the answers.
     pub author: Author,
@@ -52,6 +59,14 @@ pub struct GeneratorSeat {
     /// input of the graph, a list of strings. A call naming another tool is
     /// answered with an error result, never executed.
     pub enabled: Option<Key>,
+    /// The times a reply that cannot be used is asked for again. `None`: 0,
+    /// the run fails on the first.
+    pub reply_retries: Option<Count>,
+    /// The text sent after the request when a reply is asked for again, each
+    /// `{reason}` in it replaced by why the reply could not be used; one
+    /// that resolves blank fails the node (`Message`). `None`: `Your reply
+    /// could not be used: {reason}. Reply again.`
+    pub reminder: Option<Prompt<GeneratorSeat>>,
 }
 
 /// What the critic reads before the answer it judges. Each default ends
@@ -94,8 +109,8 @@ pub enum CriticHistory {
 ///
 /// Its model, system, history and texts are given as values or functions of
 /// the critic's context (see `Given`): the state, the configuration, the
-/// conversation, the generation number, the budget, the answer it judges and
-/// the attempt number. The graph reads one setting of the client the model
+/// attempt number (counted by the verdict retries), the conversation, the
+/// generation number, the budget and the answer it judges. The graph reads one setting of the client the model
 /// gives, at each critic call: its `ReasoningLevel`. The default verdict
 /// shape asks for `thinking` exactly when that level is `Off`, so a critic
 /// that does not reason natively has room to reason before judging.

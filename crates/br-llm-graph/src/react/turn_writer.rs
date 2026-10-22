@@ -1,7 +1,7 @@
 //! A durable agent's turn in its thread: the message its nodes write, under
 //! the turn's id, before they apply what they wrote to `conversation`.
 
-use br_llm_messages::{Author, BlockKind, StopReason, StreamEvent, Text, ToolResult, TurnId};
+use br_llm_messages::{Author, BlockKind, Step, StopReason, StreamEvent, Text, ToolResult, TurnId};
 
 use crate::error::GraphError;
 use crate::react::thread_store::{ThreadStore, TurnEnd, thread_failed};
@@ -31,6 +31,24 @@ impl TurnWriter<'_> {
             .map_err(thread_failed)
     }
 
+    /// Pushes `events`, the events of a step held until it was checked, in
+    /// order.
+    pub(crate) async fn push_events(&self, events: &[StreamEvent]) -> Result<(), GraphError> {
+        for event in events {
+            self.push_event(event).await?;
+        }
+        Ok(())
+    }
+
+    /// Gives the store `step`, the step the client returned, once its stream
+    /// has ended.
+    pub(crate) async fn finish_step(&self, step: &Step) -> Result<(), GraphError> {
+        self.store
+            .finish_step(&self.thread, &self.turn, step)
+            .await
+            .map_err(thread_failed)
+    }
+
     /// Pushes `results`, one tool results item, at `index` among the turn's
     /// items.
     pub(crate) async fn push_results(
@@ -51,10 +69,7 @@ impl TurnWriter<'_> {
         text: &Text,
         stop_reason: StopReason,
     ) -> Result<(), GraphError> {
-        for event in text_step_events(text, stop_reason) {
-            self.push_event(&event).await?;
-        }
-        Ok(())
+        self.push_events(&text_step_events(text, stop_reason)).await
     }
 
     /// Completes, fails or cancels the turn.

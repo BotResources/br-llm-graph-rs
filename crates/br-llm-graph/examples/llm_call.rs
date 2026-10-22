@@ -1,21 +1,24 @@
 //! One model call per item, then one over the results: `LlmCall` as the body
 //! of a `Map` appends a summary per document, in document order, at most two
 //! calls at once; a second `LlmCall` reads the summaries as its request and
-//! sets a title. Each call keeps no conversation: its answer is data.
+//! sets a title, a structured reply checked against its shape: the first
+//! reply does not fit and is asked for again, once, with the reminder. Each
+//! call keeps no conversation: its answer is data.
 
 #[allow(dead_code)]
 mod common;
 
 use std::num::NonZeroUsize;
 
-use br_llm_clients_core::OutputMode;
+use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
 use br_llm_graph::{
-    Always, Config, ConfigKey, EndLabel, GraphBuilder, ItemFailure, Limit, LlmCall, LlmOutput,
-    LlmRequest, Map, Model, NodeId, Outcome, Prompt, Reads, Schema, StateKey, Target, Value,
-    control, run,
+    Always, Config, ConfigKey, Count, EndLabel, GraphBuilder, ItemFailure, Limit, LlmCall,
+    LlmOutput, LlmRequest, Map, Model, NodeId, Outcome, Prompt, Reads, Schema, StateKey, Target,
+    Value, control, run,
 };
+use serde_json::json;
 
-use common::{context, scripted, text_step};
+use common::{context, scripted, structured_step, text_step};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -23,7 +26,9 @@ async fn main() {
         text_step("Tides follow the moon."),
         text_step("Spring tides come with full and new moons."),
         text_step("Neap tides come with quarter moons."),
-        text_step("How the moon drives the tides"),
+        // Not the shape asked for: `headline` is not one of its parameters.
+        structured_step(json!({ "headline": "Moon and tides" })),
+        structured_step(json!({ "title": "How the moon drives the tides" })),
     ]);
 
     // State: the documents, the one being read, the summaries and the title;
@@ -49,17 +54,34 @@ async fn main() {
         })),
         output_mode: OutputMode::Plain,
         output: LlmOutput::Append(summaries.clone()),
+        reply_retries: None,
+        reminder: None,
     };
     let each = Map::new(&documents, &document, summarize)
         .max_concurrency(Limit::Fixed(NonZeroUsize::new(2).expect("two")))
         .on_item_failure(ItemFailure::Finish);
-    // A list of strings is a text too: its items joined by a blank line.
+    // A list of strings is a text too: its items joined by a blank line. The
+    // title is a structured reply: one that does not fit its shape is asked
+    // for again, once, the same request followed by the reminder.
+    let shape = StructuredShape::new(
+        "title",
+        None,
+        Parameters::new(vec![
+            Parameter::new("title", "A short title", true, ParameterKind::String).expect("param"),
+        ])
+        .expect("parameters"),
+    )
+    .expect("shape");
     let entitle = LlmCall {
         model: Model::client(client),
         system: Prompt::from_config(&style),
         request: LlmRequest::Text(Prompt::from_state_list(&summaries)),
-        output_mode: OutputMode::Plain,
+        output_mode: OutputMode::Structured(shape),
         output: LlmOutput::Set(title.clone()),
+        reply_retries: Some(Count::Fixed(1)),
+        reminder: Some(Prompt::text(
+            "Your title could not be used: {reason}. Give it again.",
+        )),
     };
 
     let id = |name: &str| NodeId::new(name).expect("node id");

@@ -16,7 +16,7 @@ use crate::react::generator_critic_verdict_tests::{critic_at, judged_with, shape
 use crate::react::given::Prompt;
 use crate::react::seats::CriticSeat;
 use crate::react::test_support::*;
-use crate::react::verdict::{Verdict, VerdictOverride, VerdictReader};
+use crate::react::verdict::{Reading, Verdict, VerdictOverride, VerdictReader};
 
 /// A shape of the caller's: a grade among `pass` and `fail`, and notes.
 fn graded_shape() -> StructuredShape {
@@ -47,10 +47,10 @@ fn graded_reader() -> VerdictReader {
             .ok_or_else(|| GraphError::Structured {
                 message: "no grade".to_owned(),
             })?;
-        Ok(Verdict {
+        Ok(Reading::Verdict(Verdict {
             is_valid: grade == "pass",
             message: value["notes"].as_str().unwrap_or_default().to_owned(),
-        })
+        }))
     })
 }
 

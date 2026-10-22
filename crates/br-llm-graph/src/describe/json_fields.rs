@@ -9,7 +9,7 @@ use crate::describe::json_values::{
 };
 use crate::describe::shape::{
     CallShape, CheckShape, CriticShape, ItemPolicy, LlmCallShape, MapShape, ModelCallShape,
-    RequestShape, Source,
+    RepliesShape, RequestShape, Source,
 };
 use crate::value::Key;
 
@@ -86,7 +86,13 @@ pub(crate) fn llm_call_fields<M: SerializeMap>(
             },
         )?,
     }
-    map.serialize_entry("output", &written(&call.output))
+    map.serialize_entry("output", &written(&call.output))?;
+    replies_fields(&call.replies, map)
+}
+
+fn replies_fields<M: SerializeMap>(replies: &RepliesShape, map: &mut M) -> Result<(), M::Error> {
+    map.serialize_entry("reply_retries", &count_json(&replies.retries))?;
+    map.serialize_entry("reminder", replies.reminder.as_str())
 }
 
 pub(crate) fn model_call_fields<M: SerializeMap>(
@@ -111,6 +117,9 @@ pub(crate) fn model_call_fields<M: SerializeMap>(
     }
     if let Some(round_limit) = &call.round_limit {
         map.serialize_entry("round_limit", &round_limit_json(round_limit))?;
+    }
+    if let Some(replies) = &call.replies {
+        replies_fields(replies, map)?;
     }
     if let Some(critic) = &call.critic {
         critic_fields(critic, map)?;

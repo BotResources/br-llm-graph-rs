@@ -2,10 +2,11 @@ use br_llm_clients_core::{ClientRequest, OutputMode};
 use br_llm_messages::{Author, Conversation, Text, WireMessage, WireUserBlock};
 
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Node, NodeError, NodeFuture};
-use crate::react::given::{History, Model, Prompt};
+use crate::graph::{CheckSite, Context, Count, Node, NodeError, NodeFuture};
+use crate::react::given::{CallFacts, History, Model, Prompt};
 use crate::react::helpers::{answer_text, system_text, wire};
 use crate::react::llm_call_check::{check_conversation, check_output};
+use crate::react::replies::{Unusable, judged, reminded, reminder};
 use crate::react::sink::complete;
 use crate::state::{Config, Schema, State, StateKey, Value};
 use crate::update::Update;
@@ -88,11 +89,27 @@ impl LlmOutput {
 /// one, else its text blocks joined verbatim; it is written through
 /// `output`. Nothing else is written: the call keeps no conversation.
 ///
+/// With a structured output mode, the reply is checked against its shape
+/// before its answer is written: it fits when its structured block is an
+/// object that holds every required parameter and no name the shape does
+/// not declare, each value of its parameter's kind. A reply cannot be used
+/// when it does not fit, when it has no structured block, or, whatever the
+/// mode, when the client refuses it as unusable (`ReplyUnusable`) or
+/// malformed (`MalformedResponse`). Such a reply is asked for again while
+/// `reply_retries` are left: the same request, built for the next attempt
+/// (`RequestContext::attempt`, one higher, so a model function may give
+/// another client), followed by a user message holding the `reminder`
+/// (one more text of the last message when it is a relay). A reply asked
+/// for again is never written. When no retry is left, the node fails with
+/// `Model`, carrying the client's error, or `Structured`, carrying why the
+/// reply does not fit.
+///
 /// The stream events of the call reach the observer with the conversation
 /// key of an `LlmRequest::Conversation`, or the key of `output` for any
-/// other request, which has no conversation key. An error of the client
-/// fails the node with `Model`, a refusal to build the request with
-/// `Request`, and an error of a function as the function returned it.
+/// other request, which has no conversation key; the events of a reply
+/// asked for again reach it too. Any other error of the client fails the
+/// node with `Model`, a refusal to build the request with `Request`, and an
+/// error of a function as the function returned it.
 ///
 /// As the body of a `Map`, an `Append` output makes one model call per item,
 /// at most the map's concurrency limit at once, the answers appended in item
@@ -101,8 +118,11 @@ impl LlmOutput {
 /// At build, the call checks the keys its functions declare (`UnknownKey`,
 /// or `KindMismatch` when the graph declares one with another kind), its
 /// conversation key (`UnknownKey`, or `KindMismatch` when it is not a
-/// conversation) and its output key, refused with the error writing a string
-/// through it would give (`UnknownKey`, `KindMismatch`, `AppendNotList`).
+/// conversation), its output key, refused with the error writing a string
+/// through it would give (`UnknownKey`, `KindMismatch`, `AppendNotList`),
+/// and the key of its reply retries (`CountKeyMismatch`). A negative count
+/// read at run time fails the node (`CountNegative`) before the model is
+/// called.
 pub struct LlmCall {
     /// The client the call calls.
     pub model: Model<LlmCall>,
@@ -115,28 +135,68 @@ pub struct LlmCall {
     pub output_mode: OutputMode,
     /// Where the answer goes.
     pub output: LlmOutput,
+    /// The times a reply that cannot be used is asked for again. `None`: 0,
+    /// the node fails on the first.
+    pub reply_retries: Option<Count>,
+    /// The text sent after the request when a reply is asked for again, each
+    /// `{reason}` in it replaced by why the reply could not be used; one
+    /// that resolves blank fails the node (`Message`). `None`: `Your reply
+    /// could not be used: {reason}. Reply again.`
+    pub reminder: Option<Prompt<LlmCall>>,
 }
 
 impl Node for LlmCall {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         Box::pin(async move {
-            let (messages, key) = self.messages(state, config)?;
-            let request = ClientRequest::new(
-                system_text(self.system.give(state, config, ())?),
-                messages,
-                Vec::new(),
-                self.output_mode.clone(),
-            )
-            .map_err(GraphError::Request)?;
-            let client = self.model.give(state, config, ())?;
-            let step = complete(client.as_ref(), &request, ctx, key).await?;
-            Ok(vec![self.output.update(answer_text(&step))])
+            let attempts = match &self.reply_retries {
+                Some(retries) => retries.resolve(config)?.saturating_add(1),
+                None => 1,
+            };
+            let mut refused: Option<Unusable> = None;
+            let mut attempt = 1;
+            loop {
+                let facts = CallFacts { attempt };
+                let (mut messages, key) = self.messages(state, config, facts)?;
+                if let Some(unusable) = &refused {
+                    let text = reminder(
+                        self.reminder.as_ref(),
+                        state,
+                        config,
+                        facts,
+                        &unusable.reason(),
+                    )?;
+                    messages = reminded(messages, text);
+                }
+                let request = ClientRequest::new(
+                    system_text(self.system.give(state, config, facts)?),
+                    messages,
+                    Vec::new(),
+                    self.output_mode.clone(),
+                )
+                .map_err(GraphError::Request)?;
+                let client = self.model.give(state, config, facts)?;
+                let result = complete(client.as_ref(), &request, ctx, key).await;
+                match judged(result, &self.output_mode)? {
+                    Ok(step) => return Ok(vec![self.output.update(answer_text(&step))]),
+                    Err(unusable) if attempt < attempts => {
+                        refused = Some(unusable);
+                        attempt += 1;
+                    }
+                    Err(unusable) => return Err(unusable.into_error().into()),
+                }
+            }
         })
     }
 
     fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
         self.model.reads().check(schema)?;
         self.system.reads().check(schema)?;
+        if let Some(reminder) = &self.reminder {
+            reminder.reads().check(schema)?;
+        }
+        if let Some(retries) = &self.reply_retries {
+            retries.check(schema)?;
+        }
         match &self.request {
             LlmRequest::Text(text) => text.reads().check(schema)?,
             LlmRequest::Conversation { key, .. } => check_conversation(schema, key.key())?,
@@ -152,22 +212,26 @@ impl Node for LlmCall {
 }
 
 impl LlmCall {
-    /// The messages of the request, with the key its stream events carry.
+    /// The messages of the request for the context `facts`, with the key its
+    /// stream events carry.
     fn messages<'a>(
         &'a self,
         state: &'a State,
         config: &'a Config,
+        facts: CallFacts,
     ) -> Result<(Vec<WireMessage>, &'a Key), NodeError> {
         Ok(match &self.request {
             LlmRequest::Text(text) => {
-                let text = Text::new(text.give(state, config, ())?).map_err(GraphError::from)?;
+                let text = Text::new(text.give(state, config, facts)?).map_err(GraphError::from)?;
                 let message = WireMessage::User {
                     content: vec![WireUserBlock::Text { text }],
                 };
                 (vec![message], self.output.key())
             }
             LlmRequest::Conversation { key, author } => (wire(state.get(key)?, author)?, key.key()),
-            LlmRequest::History(history) => (history.give(state, config, ())?, self.output.key()),
+            LlmRequest::History(history) => {
+                (history.give(state, config, facts)?, self.output.key())
+            }
         })
     }
 }

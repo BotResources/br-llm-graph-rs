@@ -3,13 +3,13 @@
 
 use crate::describe::NodeDescription;
 use crate::describe::shape::{
-    AuthorShape, CheckShape, CriticShape, LlmCallShape, ModelCallShape, RequestShape, Shape,
-    ToolsShape,
+    AuthorShape, CheckShape, CriticShape, LlmCallShape, ModelCallShape, RepliesShape, RequestShape,
+    Shape, ToolsShape,
 };
-use crate::graph::Output;
+use crate::graph::{Count, Output};
 use crate::react::check::CheckNode;
 use crate::react::critique::CritiqueNode;
-use crate::react::given::{History, LoopNode, Origin};
+use crate::react::given::{History, LoopNode, ModelNode, Origin, Prompt};
 use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
 use crate::react::llm_node::LlmNode;
 use crate::react::seats::CriticHistory;
@@ -26,13 +26,22 @@ fn names(tools: &[std::sync::Arc<dyn Tool>]) -> Vec<String> {
 }
 
 /// How a history is given: by default (`None`), the node's own, ready-made.
-fn history_origin<N: crate::react::given::ModelNode>(history: Option<&History<N>>) -> Origin {
+fn history_origin<N: ModelNode>(history: Option<&History<N>>) -> Origin {
     history.map_or(Origin::ReadyMade, History::origin)
 }
 
+/// The reply retries and how the reminder is given: by default (`None`),
+/// the library's text, ready-made.
+fn replies<N: ModelNode>(retries: Count, reminder: Option<&Prompt<N>>) -> RepliesShape {
+    RepliesShape {
+        retries,
+        reminder: reminder.map_or(Origin::ReadyMade, Prompt::origin),
+    }
+}
+
 impl LlmCall {
-    /// `llm_call`: how its model and system are given, its request and its
-    /// output.
+    /// `llm_call`: how its model and system are given, its request, its
+    /// output, its reply retries and how its reminder is given.
     pub(crate) fn description(&self) -> NodeDescription {
         let request = match &self.request {
             LlmRequest::Text(text) => RequestShape::Text(text.origin()),
@@ -51,6 +60,10 @@ impl LlmCall {
             system: self.system.origin(),
             request,
             output,
+            replies: replies(
+                self.reply_retries.clone().unwrap_or(Count::Fixed(0)),
+                self.reminder.as_ref(),
+            ),
         }))
     }
 }
@@ -67,6 +80,7 @@ impl<N: LoopNode> LlmNode<N> {
             enabled: self.enabled.clone(),
             tool_concurrency: self.tool_concurrency.clone(),
             round_limit: self.round_limit.clone(),
+            replies: Some(replies(self.reply_retries.clone(), self.reminder.as_ref())),
             critic: None,
         })))
     }
@@ -103,6 +117,7 @@ impl CritiqueNode {
             enabled: None,
             tool_concurrency: None,
             round_limit: None,
+            replies: None,
             critic: Some(CriticShape {
                 max_critiques: duo.budget.clone(),
                 final_generation: duo.final_generation,

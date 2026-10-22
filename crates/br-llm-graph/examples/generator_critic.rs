@@ -154,6 +154,8 @@ fn generator_critic(store: Arc<MemoryStore>) -> Arc<Graph> {
         tool_concurrency: None,
         round_limit: None,
         enabled: None,
+        reply_retries: None,
+        reminder: None,
     };
     let critic = CriticSeat {
         review_request: Some(Prompt::from_config(&config_key("review_request"))),

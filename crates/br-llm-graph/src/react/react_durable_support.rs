@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use br_llm_clients_mock::MockClient;
-use br_llm_messages::{Conversation, InputId, Text, UserBlock, UserInput, UserSource};
+use br_llm_messages::{Conversation, InputId, Text, TurnId, UserBlock, UserInput, UserSource};
 
 use crate::error::GraphError;
 use crate::graph::{Context, Graph};
@@ -162,4 +162,20 @@ pub(crate) fn writes(store: &TestStore) -> Vec<String> {
 /// The thread id the test id source gives the n-th new request.
 pub(crate) fn nth_thread(n: usize) -> ThreadId {
     ThreadId::new(format!("01900000-0000-7000-8000-{n:012x}")).unwrap()
+}
+
+pub(crate) fn named_turn(id: &str) -> TurnId {
+    TurnId::new(id).unwrap()
+}
+
+/// The lines of the store's log that name `turn`.
+pub(crate) fn store_lines(store: &TestStore, turn: &str) -> Vec<String> {
+    writes(store)
+        .into_iter()
+        .filter(|line| {
+            line.split(' ')
+                .nth(1)
+                .is_some_and(|named| named.starts_with(turn))
+        })
+        .collect()
 }

@@ -14,11 +14,12 @@ use crate::value::Key;
 /// # Seats and keys
 ///
 /// Each seat's model, system and history are given as values or functions of
-/// its context (see `Given`, `RequestContext`): the generator's adds the
+/// its context (see `Given`, `RequestContext`), which holds the state, the
+/// configuration and the attempt number: the generator's adds the
 /// conversation, the round, the generation number and the budget; the
-/// critic's the conversation, the generation number, the budget, the answer
-/// it judges and the attempt number. A change of client never changes a
-/// seat's author; two seats with one author are refused (`SameAuthor`).
+/// critic's the conversation, the generation number, the budget and the
+/// answer it judges. A change of client never changes a seat's author; two
+/// seats with one author are refused (`SameAuthor`).
 ///
 /// - Inputs: `opening` (conversation), what the caller adds before the
 ///   generator answers, typically one user input; durable, user inputs
@@ -38,11 +39,11 @@ use crate::value::Key;
 ///   nor an output, never part of a checkpoint of the graph, so a run of it
 ///   resumed from a checkpoint enters again through its entry.
 /// - Configuration: the keys of the budget, the revision limit and the
-///   verdict retries, the generator's tool concurrency and round limit, and
-///   each configuration key a function declares, of its kind. The edge of
-///   `route` resolves the counts and the limits, in that order, before
-///   anything is routed: a refused one (`CountNegative`, `LimitNotPositive`)
-///   is the run's error itself, and no model is called.
+///   verdict retries, the generator's reply retries, tool concurrency and
+///   round limit, and each configuration key a function declares, of its
+///   kind. The edge of `route` resolves the counts and the limits, in that
+///   order, before anything is routed: a refused one (`CountNegative`,
+///   `LimitNotPositive`) is the run's error itself, and no model is called.
 ///
 /// One key given twice with one kind is declared once (a key several
 /// functions read, a key a function reads that is also `enabled`, a key of
@@ -94,7 +95,13 @@ use crate::value::Key;
 ///
 /// A generation is the ReAct loop of the generator on `conversation`; each
 /// opens a new generator turn, so the round limit counts per generation.
-/// The check judges each generation before the critic:
+/// With a structured output mode, the generator's final reply is checked
+/// against its shape, as a ReAct agent's is, before the check below. A
+/// reply that cannot be used (see `GeneratorSeat`) is asked for again
+/// within the generator's reply retries, inside the same generation: a
+/// retry is no generation, no revision and no critique. When no retry is
+/// left, the run fails (`Model` or `Structured`, inside the `NodeFailed` of
+/// `generate`). The check judges each generation before the critic:
 /// - an empty answer (its final step holds no non-blank text and no
 ///   structured block, or a generation the round limit cut with `End`) is
 ///   rejected without the critic: where the critic would judge it, a
@@ -137,16 +144,19 @@ use crate::value::Key;
 /// is present exactly when the `ReasoningLevel` of the client the critic's
 /// model gives for that call is `Off`. Each description is the seat's, given
 /// at each critic call, or its default (see `CriticSeat`). An override sends
-/// the caller's shape (see `VerdictOverride`). A missing structured block, a
-/// block that does not read as the default verdict, or a rejection whose
-/// message is blank is an unreadable verdict: while `verdict_retries` are
-/// left, the critic is asked again, its request followed by a user message
-/// `Your reply could not be read as a verdict: {reason}. Reply again with
-/// the verdict.`, the attempt number of its context one higher; after the
-/// last retry the run fails with `Structured` and no critique is recorded.
-/// Retries are not recorded and do not count against the budget. A
-/// conforming client refuses a reply without a structured block itself
-/// (`MalformedResponse`): the critique then fails with `Model`.
+/// the caller's shape (see `VerdictOverride`), read by its reader when it
+/// has one. A missing structured block, a block that does not read as the
+/// default verdict, a block the reader says it cannot read
+/// (`Reading::Unreadable`), a rejection whose message is blank, or a reply
+/// the client refuses as unusable (`ReplyUnusable`) or malformed
+/// (`MalformedResponse`, which a conforming client gives for a reply
+/// without a structured block) is an unreadable verdict: while
+/// `verdict_retries` are left, the critic is asked again, its request
+/// followed by a user message `Your reply could not be read as a verdict:
+/// {reason}. Reply again with the verdict.`, the attempt number of its
+/// context one higher; after the last retry the run fails with `Structured`
+/// and no critique is recorded. Retries are not recorded and do not count
+/// against the budget.
 pub struct GeneratorCritic {
     /// Who writes the answers.
     pub generator: GeneratorSeat,

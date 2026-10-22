@@ -43,14 +43,17 @@
 //! A runner gives a model-calling node its model, its system and its
 //! history (`Model`, `Prompt`, `History`), each a value or a function of the
 //! node's context (`Given`, `RequestContext`), declaring the keys it reads
-//! (`Reads`). An agent takes `opening`, what the caller adds before it
-//! answers, and keeps its own conversation in a private key, never part of a
-//! checkpoint. Built with a thread store it is durable: it works in the
-//! thread its input `thread` names (the empty string asks the store to
-//! create one), writes every step there first, resumes from it after an
-//! interruption and gives the thread's id back. Without one it works in
-//! memory, for the current call only. The host's `IdSource` gives every
-//! thread id and turn id, the same id for the same request.
+//! (`Reads`). A reply the node cannot use (refused by the client as unusable
+//! or malformed, or, with a structured output mode, a final reply that does
+//! not fit its shape) is asked for again within its reply retries, with a
+//! reminder the runner may give. An agent takes `opening`, what the caller
+//! adds before it answers, and keeps its own conversation in a private key,
+//! never part of a checkpoint. Built with a thread store it is durable: it
+//! works in the thread its input `thread` names (the empty string asks the
+//! store to create one), writes every step there first, resumes from it
+//! after an interruption and gives the thread's id back. Without one it
+//! works in memory, for the current call only. The host's `IdSource` gives
+//! every thread id and turn id, the same id for the same request.
 //!
 //! # Description
 //!
@@ -208,8 +211,8 @@ pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
     AgentNode, Budgeted, CriticHistory, CriticSeat, GeneratorCritic, GeneratorCriticNode,
     GeneratorSeat, Given, History, Hook, HookError, HookFuture, Judgment, LlmCall, LlmOutput,
-    LlmRequest, LoopNode, MessageStatus, Model, ModelNode, OnLimit, Prompt, ReactAgent, Reads,
-    RequestContext, RoundLimit, RuleCheck, Ruling, Scheduled, ThreadError, ThreadFuture,
+    LlmRequest, LoopNode, MessageStatus, Model, ModelNode, OnLimit, Prompt, ReactAgent, Reading,
+    Reads, RequestContext, RoundLimit, RuleCheck, Ruling, Scheduled, ThreadError, ThreadFuture,
     ThreadMessage, ThreadStore, ThreadView, Tool, ToolError, ToolFuture, ToolOutput, TurnEnd,
     Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
 };
