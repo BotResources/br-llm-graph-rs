@@ -18,7 +18,8 @@ impl<N: LoopNode> LlmNode<N> {
     /// it, and gives the state a resumed run would find: `conversation` is
     /// the thread read again, and the call writes the turn of the next rank.
     /// For the generator-critic, the failed turn is not one of the call's
-    /// turns: a reply asked for again is no generation.
+    /// turns: a reply asked for again is no generation, and the entry of a
+    /// later run leaves the failed turn out too (see `RouteNode`).
     pub(crate) async fn reenter(
         &self,
         state: &State,

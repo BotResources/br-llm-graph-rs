@@ -85,13 +85,17 @@ use crate::value::Key;
 /// `validated` without calling a model; nothing goes to the generator.
 ///
 /// Durable, a turn found open on entry is failed and repaired by the store
-/// (see `ThreadStore`), then routed by its kind. A repaired generation is a
-/// generation: it goes to the check, which may judge it empty or pass it on
-/// its partial text. A message of the critic is a judgment only with one of
-/// the three stop reasons above: a repaired one (cut while it was written,
-/// with another stop reason or no step) is not one of the call's turns, so
-/// the critic judges the same answer again, exactly as an uninterrupted call
-/// would, and it is not counted against the budget.
+/// (see `ThreadStore`), then routed by its kind. A turn of the generator the
+/// thread holds failed or cancelled (cut by a crash, or failed under a reply
+/// asked for again) is no generation: it stays in the conversation, is
+/// neither judged nor counted, and the generator answers again in the turn
+/// of the next rank; a reply asked for again after its turn was failed is
+/// made there, inside the same generation. A message of the critic is a
+/// judgment only with one of the three stop reasons above: a repaired one
+/// (cut while it was written, with another stop reason or no step) is not
+/// one of the call's turns, so the critic judges the same answer again,
+/// exactly as an uninterrupted call would, and it is not counted against
+/// the budget.
 ///
 /// A generation is the ReAct loop of the generator on `conversation`; each
 /// opens a new generator turn, so the round limit counts per generation.
