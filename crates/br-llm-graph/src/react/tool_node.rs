@@ -37,7 +37,8 @@ use crate::value::Key;
 /// no tool node runs (`declared`, the tools the agent declares): each is not
 /// executed, it is answered with an error result naming the tools offered to
 /// the call (the declared tools the `enabled` key holds, when set, in the
-/// order declared), in call order among the node's own, and the turn goes on.
+/// order declared) or saying that none is, in call order among the node's
+/// own, and the turn goes on.
 /// Without a tool, a ReAct agent or a generator seat still has its node
 /// `tools`, which answers them.
 ///

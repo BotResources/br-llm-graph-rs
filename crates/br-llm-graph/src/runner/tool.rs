@@ -9,7 +9,8 @@ use serde_json::Value;
 
 use crate::react::{Hook, Tool, ToolContext, ToolError, ToolFuture, ToolOutput, text_or};
 use crate::runner::answer::{AnswerBlock, RunnerAnswer};
-use crate::runner::port::{CallKey, RunnerPort, RunnerReply, RunnerRequest};
+use crate::runner::key::CallKey;
+use crate::runner::port::{RunnerPort, RunnerReply, RunnerRequest};
 use crate::runner::target::RunnerTarget;
 use crate::state::{Config, State};
 
@@ -17,12 +18,13 @@ use crate::state::{Config, State};
 /// the runner's, its arguments those of the tool call, and its result the
 /// child's answer.
 ///
-/// Each call's key is the origin of the tool node that runs it and the id of
-/// the tool call (see `CallKey`). A durable agent never runs a call twice: a
-/// call a crash interrupted is answered as interrupted and never awaited
-/// again, so the port's deadline or cleanup settles its child. An agent in
-/// memory restarts from its `opening`, and the keys follow the ids of the
-/// model's new tool calls (see `RunnerPort`).
+/// Each call's key is the origin of the tool node that runs it, the call's
+/// arguments and the id of the tool call (see `CallKey`). A durable agent
+/// never runs a call twice: a call a crash interrupted is answered as
+/// interrupted and never awaited again, so the port's deadline or cleanup
+/// settles its child. An agent in memory restarts from its `opening`, and
+/// the keys follow the ids of the model's new tool calls (see
+/// `RunnerPort`).
 ///
 /// The arguments of the tool call go to the port as they are, a JSON
 /// object: the graph does not check them against the spec's parameters,
@@ -79,7 +81,7 @@ impl Tool for RunnerTool {
                 ));
             };
             let request = RunnerRequest::new(
-                CallKey::new(call.origin.clone(), Some(call.id.clone())),
+                CallKey::new(call.origin.clone(), &arguments, Some(call.id.clone())),
                 self.target.clone(),
                 arguments,
             );

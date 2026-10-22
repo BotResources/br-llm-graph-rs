@@ -69,7 +69,10 @@ impl MemoryRunners {
 /// from.
 fn key_text(key: &CallKey) -> String {
     let tool_call = key.tool_call.as_ref().map_or("-", |id| id.as_str());
-    format!("{}/{}/{tool_call}", key.origin.run, key.origin.occurrence)
+    format!(
+        "{}/{}/{}/{tool_call}",
+        key.origin.run, key.origin.occurrence, key.arguments
+    )
 }
 
 /// The guard of a child under way: armed when the child is created, it

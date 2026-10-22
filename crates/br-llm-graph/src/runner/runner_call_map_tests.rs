@@ -67,7 +67,13 @@ async fn given_a_runner_call_as_a_map_body_when_run_then_one_call_per_item_under
     keys.sort_by_key(|key| key.origin.occurrence.to_string());
     assert_eq!(
         keys,
-        ["each[0]", "each[1]", "each[2]", "each[3]"].map(|item| call_key("run-1", item, None))
+        [
+            ("each[0]", "a"),
+            ("each[1]", "b"),
+            ("each[2]", "c"),
+            ("each[3]", "d")
+        ]
+        .map(|(item, document)| call_key("run-1", item, None, &about(document)))
     );
 }
 
@@ -94,14 +100,11 @@ async fn given_a_child_failing_for_one_item_and_a_capture_when_run_then_its_reas
     );
 
     assert_eq!(texts(&state, "answers"), ["analysis of a", "analysis of c"]);
-    assert_eq!(
-        texts(&state, "failures"),
-        ["runner documentalist failed: no such document"]
-    );
+    assert_eq!(texts(&state, "failures"), ["no such document"]);
     assert_eq!(
         texts(&state, "threads"),
-        ["each[0]", "each[2]"].map(|item| {
-            port.thread_of(&call_key("run-1", item, None))
+        [("each[0]", "a"), ("each[2]", "c")].map(|(item, document)| {
+            port.thread_of(&call_key("run-1", item, None, &about(document)))
                 .as_str()
                 .to_owned()
         })

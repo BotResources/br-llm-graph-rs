@@ -19,7 +19,7 @@ use crate::react::test_support::results_of;
 use crate::react::{Hook, HookFuture, Judgment};
 use crate::run::{Outcome, control, run};
 use crate::runner::RunnerTool;
-use crate::runner::test_support::{call_key, calling, key, nid, scripted, tool};
+use crate::runner::test_support::{call_key, calling, key, nid, object, scripted, tool};
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::testkit::{TestRunners, TestStore, text_block};
 use crate::value::{EndLabel, ThreadId};
@@ -76,7 +76,15 @@ async fn given_a_runner_tool_with_a_hook_when_it_refuses_a_call_then_the_port_is
         ]
         .map(|(name, error, text)| (name.to_owned(), error, text.to_owned()))
     );
-    assert_eq!(port.keys(), [call_key("", "tools", Some("c2"))]);
+    assert_eq!(
+        port.keys(),
+        [call_key(
+            "",
+            "tools",
+            Some("c2"),
+            &object(json!({"question": "tides?"}))
+        )]
+    );
 }
 
 #[tokio::test]
@@ -119,7 +127,15 @@ async fn given_a_cancel_while_a_runner_tool_call_waits_when_run_then_the_call_is
     };
 
     assert!(matches!(outcome, Ok(Outcome::Cancelled { .. })));
-    assert_eq!(port.dropped(), [call_key("run-1", "tools", Some("c1"))]);
+    assert_eq!(
+        port.dropped(),
+        [call_key(
+            "run-1",
+            "tools",
+            Some("c1"),
+            &object(json!({"question": "tides?"}))
+        )]
+    );
 }
 
 #[tokio::test]
@@ -185,7 +201,15 @@ async fn given_a_runner_tool_of_a_durable_agent_called_as_a_node_when_run_then_i
     };
 
     assert_eq!(state.str(&key("answer")).unwrap(), "d1 answers");
-    assert_eq!(port.keys(), [call_key("run-1", "agent/tools", Some("c1"))]);
+    assert_eq!(
+        port.keys(),
+        [call_key(
+            "run-1",
+            "agent/tools",
+            Some("c1"),
+            &object(json!({"question": "tides?"}))
+        )]
+    );
     let thread = ThreadId::new(state.str(&key("thread")).unwrap()).unwrap();
     let view = store.view(&thread).unwrap();
     let Some(Entry::Turn(turn)) = view.conversation.entries().last() else {

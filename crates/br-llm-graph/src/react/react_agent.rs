@@ -112,7 +112,9 @@ use crate::value::{EndLabel, Key, NodeId};
 /// is not executed: the first tool node answers it with the error result
 /// `Tool {name} is not available: this call was not executed. The tools
 /// available are: {names}.`, `names` the tools offered to the call (those of
-/// `enabled`, when set) in the order of `tools`, and the turn goes on. The
+/// `enabled`, when set) in the order of `tools`, or `Tool {name} is not
+/// available: this call was not executed. No tool is available.` when none
+/// is offered, and the turn goes on. The
 /// graph's own nodes are `enter`, `llm`, `answer` and, without a split,
 /// `tools`, even without a tool: a tool node or a round-limit node of one of
 /// these ids collides with it (`DuplicateNode`).

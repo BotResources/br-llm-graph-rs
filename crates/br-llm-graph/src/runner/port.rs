@@ -5,11 +5,10 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use br_llm_messages::ToolCallId;
 use serde_json::{Map, Value};
 
-use crate::origin::Origin;
 use crate::runner::answer::RunnerAnswer;
+use crate::runner::key::CallKey;
 use crate::runner::target::RunnerTarget;
 
 /// The error of a runner port, of the host's type: it fails a runner call
@@ -21,41 +20,6 @@ pub type RunnerError = Box<dyn std::error::Error + Send + Sync>;
 /// One call of a runner port under way.
 pub type RunnerFuture<'a> =
     Pin<Box<dyn Future<Output = Result<RunnerReply, RunnerError>> + Send + 'a>>;
-
-/// What names one runner call across attempts: the origin of the node that
-/// makes it and, for a runner tool, the id of the tool call.
-///
-/// - `origin`: the run id and the occurrence of the node that makes the
-///   call: the runner call node (an item of a map as `m[3]`, a node of a
-///   called graph as `call/x`), or the tool node that runs a runner tool.
-/// - `tool_call`: the id of the tool call a runner tool answers; `None` for
-///   a runner call node.
-///
-/// The same key names the same call. A resumed run keeps its run id, so it
-/// gives the keys it gave before, and the port finds the call it had started
-/// instead of starting another. The port derives from the key whatever it
-/// creates (the child's thread, its job, the id of its answer). A host that
-/// wants a new attempt of its job to find the calls of the earlier one gives
-/// that attempt the same run id.
-///
-/// Its fields are read by the host's port and built with `new`: it may gain
-/// fields in a later version.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub struct CallKey {
-    /// The run id and the occurrence of the node that makes the call.
-    pub origin: Origin,
-    /// The id of the tool call, for a runner tool.
-    pub tool_call: Option<ToolCallId>,
-}
-
-impl CallKey {
-    /// The key of the call the node at `origin` makes, answering the tool
-    /// call `tool_call` for a runner tool.
-    pub fn new(origin: Origin, tool_call: Option<ToolCallId>) -> Self {
-        Self { origin, tool_call }
-    }
-}
 
 /// One call a runner port takes: its key, its target and its arguments.
 ///

@@ -76,11 +76,16 @@ pub(crate) fn not_enabled(name: &ToolName) -> String {
 }
 
 /// The text answering a call of `name`, a tool no tool node of the loop
-/// runs: it names the tools `offered` to the call, in the order declared.
+/// runs: it names the tools `offered` to the call, in the order declared, or
+/// says that none is.
 pub(crate) fn unavailable(name: &ToolName, offered: &[&ToolName]) -> String {
+    let not_executed = format!("Tool {name} is not available: this call was not executed.");
+    if offered.is_empty() {
+        return format!("{not_executed} No tool is available.");
+    }
     let offered: Vec<&str> = offered.iter().map(|name| name.as_str()).collect();
     format!(
-        "Tool {name} is not available: this call was not executed. The tools available are: {}.",
+        "{not_executed} The tools available are: {}.",
         offered.join(", ")
     )
 }

@@ -9,7 +9,8 @@ use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Node, NodeFuture, Output};
 use crate::react::check_text_output;
 use crate::runner::arguments::RunnerArguments;
-use crate::runner::port::{CallKey, RunnerPort, RunnerReply, RunnerRequest, runner_failed};
+use crate::runner::key::CallKey;
+use crate::runner::port::{RunnerPort, RunnerReply, RunnerRequest, runner_failed};
 use crate::runner::target::RunnerTarget;
 use crate::state::{Config, Schema, State, StateKey, Value};
 use crate::update::Update;
@@ -54,14 +55,14 @@ impl RunnerOutput {
 /// A node that asks another runner for an answer through the runner port,
 /// waits for it and gives it back as data.
 ///
-/// Each run makes one call: its key is the node's origin, the run id and the
-/// node's occurrence (see `CallKey`), its target `target`, its arguments
-/// those `arguments` give for the state and the configuration. The port
-/// does the rest: the child's thread and job, the wait, a deadline when
-/// there is one, the read-back (see `RunnerPort`). An occurrence does not
-/// tell the supersteps of a run apart: a node a loop of its graph runs again
-/// in one run calls under the same key, and the port finds the call it had
-/// made.
+/// Each run makes one call: its arguments those `arguments` give for the
+/// state and the configuration, its target `target`, its key the node's
+/// origin (the run id and the node's occurrence) and its arguments (see
+/// `CallKey`). The port does the rest: the child's thread and job, the wait,
+/// a deadline when there is one, the read-back (see `RunnerPort`). A node
+/// that a loop of its graph runs again with the same arguments names the
+/// same call and gets the same answer; with other arguments, it makes
+/// another call.
 ///
 /// The answer's text (the JSON text of its structured block when it has
 /// one, else its text blocks joined verbatim) is written through `output`,
@@ -72,7 +73,9 @@ impl RunnerOutput {
 /// someone else, or did not answer in time) fails the node with
 /// `RunnerFailed`, naming the target and carrying the reason: the `Capture`
 /// of a call or of a map holding the node turns it into data, as for any
-/// failure of a node, its reason the error's message. An error of the port
+/// failure of a node. Its message is the child's reason as it gave it, so a
+/// map's capture of the reason records it verbatim (a call's records the
+/// failure of its graph, which names the node). An error of the port
 /// fails the node with `Runner`, carrying it; an error of an arguments
 /// function fails it as returned. A cancel of the run drops the call under
 /// way, whose child the port cancels.
@@ -106,10 +109,11 @@ pub struct RunnerCall {
 impl Node for RunnerCall {
     fn run<'a>(&'a self, state: &'a State, config: &'a Config, ctx: &'a Context) -> NodeFuture<'a> {
         Box::pin(async move {
+            let arguments = self.arguments.give(state, config)?;
             let request = RunnerRequest::new(
-                CallKey::new(ctx.origin().clone(), None),
+                CallKey::new(ctx.origin().clone(), &arguments, None),
                 self.target.clone(),
-                self.arguments.give(state, config)?,
+                arguments,
             );
             let answer = match self.port.call(&request).await {
                 Ok(RunnerReply::Answered(answer)) => answer,

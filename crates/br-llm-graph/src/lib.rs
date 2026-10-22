@@ -59,10 +59,10 @@
 //! The `runner` module calls another runner and waits for its answer, as a
 //! node of a graph (`RunnerCall`) or as a tool of an agent (`RunnerTool`),
 //! through the host's `RunnerPort`. The library owns the node, the tool and
-//! the call key (`CallKey`: the origin of the node that makes the call and,
-//! for a tool, the id of the tool call), so a resumed run finds the calls it
-//! had started; the child's thread and job, the wait and its deadline are
-//! the port's.
+//! the call key (`CallKey`: the origin of the node that makes the call and
+//! its arguments, and, for a tool, the id of the tool call), so a resumed run
+//! finds the calls it had started; the child's thread and job, the wait and
+//! its deadline are the port's.
 //!
 //! # Description
 //!

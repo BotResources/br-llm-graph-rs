@@ -47,7 +47,7 @@ async fn given_an_answer_when_the_node_runs_then_its_text_is_set_and_the_call_is
     let [call] = calls.as_slice() else {
         panic!("one call, got {calls:?}");
     };
-    assert_eq!(call.key, call_key("run-1", "ask", None));
+    assert_eq!(call.key, call_key("run-1", "ask", None, &in_french()));
     assert_eq!(call.target.as_str(), "documentalist");
     assert_eq!(call.arguments, in_french());
 }
@@ -66,7 +66,8 @@ async fn given_an_append_output_and_a_thread_output_when_run_then_the_answer_is_
     assert_eq!(texts(&state, "answers"), ["an answer"]);
     assert_eq!(
         state.str(&key("thread")).unwrap(),
-        port.thread_of(&call_key("run-1", "ask", None)).as_str()
+        port.thread_of(&call_key("run-1", "ask", None, &in_french()))
+            .as_str()
     );
 }
 
@@ -166,10 +167,7 @@ async fn given_a_child_that_fails_when_run_then_the_node_fails_with_runner_faile
         GraphError::RunnerFailed { target: named, reason }
             if named.as_str() == "documentalist" && reason == "the child job failed"
     ));
-    assert_eq!(
-        error.to_string(),
-        "runner documentalist failed: the child job failed"
-    );
+    assert_eq!(error.to_string(), "the child job failed");
     assert!(std::error::Error::source(error).is_none());
     assert_eq!(failure.checkpoint.state.str(&key("answer")).unwrap(), "");
 }
@@ -225,6 +223,9 @@ async fn given_a_cancel_while_the_call_waits_when_run_then_the_call_is_dropped_o
         panic!("expected cancelled");
     };
     assert_eq!(checkpoint.state.str(&key("answer")).unwrap(), "");
-    assert_eq!(port.dropped(), [call_key("run-1", "ask", None)]);
+    assert_eq!(
+        port.dropped(),
+        [call_key("run-1", "ask", None, &in_french())]
+    );
     assert_eq!(port.calls().len(), 1);
 }

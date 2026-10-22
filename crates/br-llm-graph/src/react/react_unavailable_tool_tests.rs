@@ -26,6 +26,15 @@ fn unavailable(name: &str, offered: &str) -> (String, bool, String) {
     )
 }
 
+/// The result answering a call of `name` when no tool is offered.
+fn none_available(name: &str) -> (String, bool, String) {
+    (
+        name.to_owned(),
+        true,
+        format!("Tool {name} is not available: this call was not executed. No tool is available."),
+    )
+}
+
 #[tokio::test]
 async fn given_a_reply_that_calls_only_a_tool_no_node_runs_when_run_then_it_is_answered_and_the_model_is_called_again()
  {
@@ -151,7 +160,7 @@ async fn given_a_split_of_the_tools_when_a_call_names_no_tool_then_the_first_too
 }
 
 #[tokio::test]
-async fn given_an_agent_without_a_tool_when_its_model_calls_one_then_its_tools_node_answers_naming_none()
+async fn given_an_agent_without_a_tool_when_its_model_calls_one_then_its_tools_node_answers_that_none_is_available()
  {
     let client = mock(vec![
         tool_call_step("c1", "ghost", json!({})),
@@ -162,7 +171,7 @@ async fn given_an_agent_without_a_tool_when_its_model_calls_one_then_its_tools_n
     let done = finished(call(&agent.graph().unwrap(), question("hi")).await);
 
     assert_eq!(done.str(&key("answer")).unwrap(), "done");
-    assert_eq!(results_of(&last_turn(&done)), [unavailable("ghost", "")]);
+    assert_eq!(results_of(&last_turn(&done)), [none_available("ghost")]);
     assert_eq!(requests(&client).len(), 2);
 }
 
@@ -237,6 +246,24 @@ async fn given_a_generation_that_calls_a_tool_no_node_runs_when_run_then_it_is_a
     assert_eq!(done.str(&key("answer")).unwrap(), "the answer");
     assert_eq!(
         sent_results(&requests(&writer)[1]),
-        [unavailable("ghost", "")]
+        [none_available("ghost")]
     );
+}
+
+#[tokio::test]
+async fn given_an_enabled_key_that_offers_no_tool_when_a_call_names_no_tool_then_none_is_available()
+{
+    let client = mock(vec![calls_step(&["ghost"]), text_step("done")]);
+    let mut agent = agent(&client);
+    agent.enabled = Some(key("enabled"));
+    let graph = agent.graph().unwrap();
+    let state = graph
+        .start_state([
+            (key("opening"), Value::conversation(question("hi"))),
+            (key("enabled"), Value::list(Vec::new())),
+        ])
+        .unwrap();
+    let done = finished(run_agent(&graph, state).await);
+
+    assert_eq!(results_of(&last_turn(&done)), [none_available("ghost")]);
 }

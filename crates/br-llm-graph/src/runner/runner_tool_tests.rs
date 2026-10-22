@@ -15,7 +15,7 @@ use crate::react::react_agent_support::{agent, call, call_in, ctx, finished, las
 use crate::react::test_gate::beside;
 use crate::react::test_support::{requests, results_of, sent_results};
 use crate::runner::AnswerBlock;
-use crate::runner::test_support::{call_key, calling, key, scripted, tool};
+use crate::runner::test_support::{call_key, calling, key, object, scripted, tool};
 use crate::testkit::{Scripted, TestRunners, text_block};
 
 /// The answer of a call of `ask_a_document`: what the document it is asked
@@ -89,7 +89,12 @@ async fn given_runner_tools_called_in_one_reply_when_run_then_they_run_at_once_w
     keys.sort_by_key(|key| key.tool_call.clone().map(|id| id.as_str().to_owned()));
     assert_eq!(
         keys,
-        ["c1", "c2", "c3"].map(|id| call_key("run-1", "tools", Some(id)))
+        [
+            ("c1", json!({"question": "tides?"})),
+            ("c2", json!({"document_id": "d1"})),
+            ("c3", json!({"document_id": "d2"})),
+        ]
+        .map(|(id, arguments)| call_key("run-1", "tools", Some(id), &object(arguments)))
     );
     let asked = port.calls();
     let selection = asked

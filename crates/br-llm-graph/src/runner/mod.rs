@@ -3,9 +3,10 @@
 //! port, the host's (`RunnerPort`), and waits for it.
 //!
 //! The library owns the node, the tool and the call key (`CallKey`: the
-//! origin of the node that makes the call and, for a tool, the id of the
-//! tool call), so a resumed run, which keeps its run id, gives the keys it
-//! gave before and the port finds the calls it had started. Everything else
+//! origin of the node that makes the call and its arguments, and, for a
+//! tool, the id of the tool call), so a resumed run, which keeps its run id,
+//! gives the keys it gave before and the port finds the calls it had
+//! started. Everything else
 //! is the port's: the child's thread and job, the wait and its deadline,
 //! reading the answer back, finishing or cancelling the job.
 //!
@@ -20,12 +21,15 @@
 mod answer;
 mod arguments;
 mod call;
+mod key;
 mod port;
 mod target;
 mod tool;
 
 #[cfg(test)]
 mod runner_call_check_tests;
+#[cfg(test)]
+mod runner_call_loop_tests;
 #[cfg(test)]
 mod runner_call_map_tests;
 #[cfg(test)]
@@ -46,6 +50,7 @@ mod test_support;
 pub use answer::{AnswerBlock, RunnerAnswer};
 pub use arguments::RunnerArguments;
 pub use call::{RunnerCall, RunnerOutput};
-pub use port::{CallKey, RunnerError, RunnerFuture, RunnerPort, RunnerReply, RunnerRequest};
+pub use key::CallKey;
+pub use port::{RunnerError, RunnerFuture, RunnerPort, RunnerReply, RunnerRequest};
 pub use target::RunnerTarget;
 pub use tool::RunnerTool;

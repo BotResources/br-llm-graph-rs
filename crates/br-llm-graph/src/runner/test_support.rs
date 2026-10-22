@@ -201,16 +201,36 @@ pub(crate) fn texts(state: &State, name: &str) -> Vec<String> {
     list.into_iter().map(str::to_owned).collect()
 }
 
-/// The key of the call made by the node at `occurrence` under `run`, for
-/// the tool call `tool_call` when given.
-pub(crate) fn call_key(run: &str, occurrence: &str, tool_call: Option<&str>) -> CallKey {
+/// The key of the call made with `arguments` by the node at `occurrence`
+/// under `run`, for the tool call `tool_call` when given.
+pub(crate) fn call_key(
+    run: &str,
+    occurrence: &str,
+    tool_call: Option<&str>,
+    arguments: &Map<String, Json>,
+) -> CallKey {
     CallKey::new(
         Origin {
             run: RunId::new(run),
             occurrence: OccurrenceKey::parse(occurrence).unwrap(),
         },
+        arguments,
         tool_call.map(|id| br_llm_messages::ToolCallId::new(id).unwrap()),
     )
+}
+
+/// The object `{"document": document}`, the arguments of
+/// `ask_about_document`.
+pub(crate) fn about(document: &str) -> Map<String, Json> {
+    Map::from_iter([("document".to_owned(), Json::from(document))])
+}
+
+/// The JSON object `value`.
+pub(crate) fn object(value: Json) -> Map<String, Json> {
+    match value {
+        Json::Object(object) => object,
+        other => panic!("expected an object, got {other}"),
+    }
 }
 
 /// The runner tool `name` calling `runner` through `port`, without a hook.

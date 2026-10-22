@@ -52,7 +52,7 @@ fn analysing() -> Arc<TestRunners> {
 async fn given_a_map_cancelled_while_one_call_waits_when_resumed_then_only_that_item_is_called_again_under_its_key()
  {
     let port = analysing();
-    let waiting = call_key("run-1", "each[1]", None);
+    let waiting = call_key("run-1", "each[1]", None, &about("b"));
     port.hold_call(waiting.clone());
     let graph = mapped(ask_about_document(&port), None, ItemFailure::Finish);
     let (sender, mut channel) = control();
@@ -81,7 +81,12 @@ async fn given_a_map_cancelled_while_one_call_waits_when_resumed_then_only_that_
     first.sort_by_key(|key| key.origin.occurrence.to_string());
     assert_eq!(
         first,
-        ["each[0]", "each[1]", "each[2]"].map(|item| call_key("run-1", item, None))
+        [("each[0]", "a"), ("each[1]", "b"), ("each[2]", "c")].map(|(item, document)| call_key(
+            "run-1",
+            item,
+            None,
+            &about(document)
+        ))
     );
     assert!(texts(&checkpoint.state, "answers").is_empty());
 
@@ -146,8 +151,8 @@ async fn given_a_node_its_port_failed_when_the_run_is_resumed_from_its_checkpoin
     assert_eq!(
         port.keys(),
         [
-            call_key("run-1", "ask", None),
-            call_key("run-1", "ask", None)
+            call_key("run-1", "ask", None, &in_french()),
+            call_key("run-1", "ask", None, &in_french())
         ]
     );
 }

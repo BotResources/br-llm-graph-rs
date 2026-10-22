@@ -1,7 +1,8 @@
 //! A runner port kept in memory: each target answers as the test scripts
-//! it, every call is kept with its key, a held target or call waits until
-//! it is released, and a call dropped before it ends is counted. Its
-//! `RunnerPort` implementation is in `runners_port`.
+//! it, a call under the key of a settled one gets that call's end instead
+//! of a new child, every call is kept with its key, a held target or call
+//! waits until it is released, and a call dropped before it ends is
+//! counted. Its `RunnerPort` implementation is in `runners_port`.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -47,6 +48,9 @@ pub(crate) struct Inner {
     pub(crate) dropped: Vec<CallKey>,
     /// The keys seen, in order: the n-th answers in the n-th thread.
     threads: Vec<CallKey>,
+    /// The end of each call settled, by key, and the children made.
+    ended: HashMap<CallKey, RunnerReply>,
+    made: usize,
     held: HashSet<String>,
     held_calls: HashSet<CallKey>,
     /// The calls waiting at a hold, and their wakers.
@@ -192,22 +196,35 @@ impl TestRunners {
         ThreadId::new(format!("01900000-0000-7000-9000-{number:012x}")).unwrap()
     }
 
-    /// The reply of `request`, as its target's script says.
+    /// The reply of `request`: the end of the call its key names when the
+    /// port settled one, else what its target's script says, a child made.
+    /// An error of the port settles nothing.
     pub(crate) fn reply(&self, request: &RunnerRequest) -> Result<RunnerReply, RunnerError> {
         let scripted = {
-            let inner = self.lock();
+            let mut inner = self.lock();
+            if let Some(ended) = inner.ended.get(&request.key) {
+                return Ok(ended.clone());
+            }
             let Some(script) = inner.scripts.get(request.target.as_str()) else {
                 return Err(PortError(format!("no script for runner {}", request.target)).into());
             };
-            script(request)
+            let scripted = script(request);
+            inner.made += 1;
+            scripted
         };
-        match scripted {
-            Scripted::Answer(blocks) => Ok(RunnerReply::Answered(RunnerAnswer::new(
-                blocks,
-                self.thread_of(&request.key),
-            ))),
-            Scripted::Fail(reason) => Ok(RunnerReply::Failed { reason }),
-            Scripted::Break(text) => Err(PortError(text).into()),
-        }
+        let reply = match scripted {
+            Scripted::Answer(blocks) => {
+                RunnerReply::Answered(RunnerAnswer::new(blocks, self.thread_of(&request.key)))
+            }
+            Scripted::Fail(reason) => RunnerReply::Failed { reason },
+            Scripted::Break(text) => return Err(PortError(text).into()),
+        };
+        self.lock().ended.insert(request.key.clone(), reply.clone());
+        Ok(reply)
+    }
+
+    /// The children the port made: a call found under its key makes none.
+    pub fn made(&self) -> usize {
+        self.lock().made
     }
 }

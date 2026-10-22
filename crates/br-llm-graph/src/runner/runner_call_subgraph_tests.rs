@@ -82,9 +82,10 @@ async fn given_a_runner_call_in_a_called_graph_when_the_call_restarts_then_it_is
     assert_eq!(
         port.keys(),
         [
-            call_key("run-1", "call/x", None),
-            call_key("run-1", "call/x", None)
+            call_key("run-1", "call/x", None, &in_french()),
+            call_key("run-1", "call/x", None, &in_french())
         ],
         "nothing is recorded inside a called graph: the call is made again under its key"
     );
+    assert_eq!(port.made(), 1, "the port finds the call under its key");
 }

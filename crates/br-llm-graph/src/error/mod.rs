@@ -266,7 +266,9 @@ pub enum GraphError {
     /// other than user inputs.
     OpeningNotInputs,
     /// The child of a runner call failed as expected: it refused, failed,
-    /// was cancelled by someone else, or did not answer in time.
+    /// was cancelled by someone else, or did not answer in time. Its message
+    /// is the reason, as the child gave it, so a `Capture` from the reason
+    /// records it so.
     RunnerFailed {
         /// The runner type the call targets.
         target: RunnerTarget,
