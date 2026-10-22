@@ -26,17 +26,57 @@ use crate::value::{Key, NodeId};
 /// the tool nodes share that limit, at most that many calls at once across
 /// all of them.
 ///
-/// The first of `tool_nodes` also answers the pending calls that name a tool
-/// no tool node runs, so a reply that calls one goes to the tool nodes like
-/// any other and the turn goes on: the agents always give the loop one tool
-/// node at least (`tools` without a split, even without a tool).
+/// The tool nodes are `split`, or without a split one node, `tools_node`,
+/// that runs every tool the model call declares, even without a tool: the
+/// loop always has a first tool node (`ToolNodes`), which also answers the
+/// pending calls that name a tool no tool node runs, so a reply that calls
+/// one goes to the tool nodes like any other and the turn goes on.
 pub(crate) struct ReactLoop {
     pub(crate) llm: NodeId,
-    pub(crate) tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
+    /// How the tools are split between tool nodes; empty: no split.
+    pub(crate) split: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
+    /// The id of the one tool node without a split.
+    pub(crate) tools_node: NodeId,
     pub(crate) after: Target,
     /// The thread of a durable agent, which its tool nodes and its limit
     /// node write to.
     pub(crate) thread: Option<ThreadBinding>,
+}
+
+/// One tool node of a loop: its id and the tools it runs.
+type ToolNodeSpec = (NodeId, Vec<Arc<dyn Tool>>);
+
+/// The tool nodes of a loop, in registration order: one at least, and the
+/// first also answers the calls that name a tool no tool node runs.
+struct ToolNodes {
+    first: ToolNodeSpec,
+    others: Vec<ToolNodeSpec>,
+}
+
+impl ToolNodes {
+    /// The nodes of `split`; without a split, one node `id` running every
+    /// one of `declared`.
+    fn new(split: Vec<ToolNodeSpec>, declared: &[Arc<dyn Tool>], id: NodeId) -> Self {
+        let mut split = split.into_iter();
+        match split.next() {
+            Some(first) => Self {
+                first,
+                others: split.collect(),
+            },
+            None => Self {
+                first: (id, declared.to_vec()),
+                others: Vec::new(),
+            },
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &ToolNodeSpec> {
+        std::iter::once(&self.first).chain(&self.others)
+    }
+
+    fn len(&self) -> usize {
+        1 + self.others.len()
+    }
 }
 
 impl ReactLoop {
@@ -46,7 +86,8 @@ impl ReactLoop {
         llm_node: LlmNode<N>,
     ) -> Result<GraphBuilder, GraphError> {
         self.check_names(&llm_node)?;
-        self.check_partition(&llm_node)?;
+        let tool_nodes = ToolNodes::new(self.split, &llm_node.tools, self.tools_node);
+        check_partition(&tool_nodes, &llm_node)?;
         let tool_concurrency = llm_node.tool_concurrency.clone();
         let round_limit = llm_node.round_limit.clone();
         if let Some(limit) = &tool_concurrency {
@@ -72,8 +113,8 @@ impl ReactLoop {
         // One round of results per superstep for all the tool nodes of a
         // durable agent: its item is written whole.
         let rounds = Arc::new(RoundWriters::default());
-        let nodes = self.tool_nodes.len();
-        for (node, (id, tools)) in self.tool_nodes.iter().enumerate() {
+        let nodes = tool_nodes.len();
+        for (node, (id, tools)) in tool_nodes.iter().enumerate() {
             builder = builder.node(
                 id.clone(),
                 ToolNode {
@@ -96,9 +137,14 @@ impl ReactLoop {
 
         builder = builder.edge(
             self.llm.clone(),
-            self.llm_edge(key.clone(), author.clone(), round_limit.clone()),
+            llm_edge(
+                (&self.llm, &tool_nodes, &self.after),
+                key.clone(),
+                author.clone(),
+                round_limit.clone(),
+            ),
         );
-        for (id, _) in &self.tool_nodes {
+        for (id, _) in tool_nodes.iter() {
             builder = builder.edge(id.clone(), Always(Target::Node(self.llm.clone())));
         }
         if let Some(round_limit) = &round_limit {
@@ -132,80 +178,84 @@ impl ReactLoop {
         }
         Ok(())
     }
+}
 
-    fn check_partition<N: LoopNode>(&self, llm_node: &LlmNode<N>) -> Result<(), GraphError> {
-        let declared: HashSet<&ToolName> = llm_node
-            .tools
-            .iter()
-            .map(|tool| tool.spec().name())
-            .collect();
-        let mut counts: HashMap<&ToolName, usize> = HashMap::new();
-        for (_, tools) in &self.tool_nodes {
-            for tool in tools {
-                let name = tool.spec().name();
-                if !declared.contains(name) {
-                    return Err(GraphError::ToolNotDeclared { name: name.clone() });
-                }
-                *counts.entry(name).or_insert(0) += 1;
-            }
-        }
-        for tool in &llm_node.tools {
+/// Each tool of a tool node must be declared (`ToolNotDeclared`), and each
+/// declared tool run by exactly one tool node (`ToolNotCovered`,
+/// `ToolCoveredTwice`).
+fn check_partition<N: LoopNode>(
+    tool_nodes: &ToolNodes,
+    llm_node: &LlmNode<N>,
+) -> Result<(), GraphError> {
+    let declared: HashSet<&ToolName> = llm_node
+        .tools
+        .iter()
+        .map(|tool| tool.spec().name())
+        .collect();
+    let mut counts: HashMap<&ToolName, usize> = HashMap::new();
+    for (_, tools) in tool_nodes.iter() {
+        for tool in tools {
             let name = tool.spec().name();
-            match counts.get(name).copied().unwrap_or(0) {
-                0 => return Err(GraphError::ToolNotCovered { name: name.clone() }),
-                1 => {}
-                _ => return Err(GraphError::ToolCoveredTwice { name: name.clone() }),
+            if !declared.contains(name) {
+                return Err(GraphError::ToolNotDeclared { name: name.clone() });
             }
+            *counts.entry(name).or_insert(0) += 1;
         }
-        Ok(())
     }
+    for tool in &llm_node.tools {
+        let name = tool.spec().name();
+        match counts.get(name).copied().unwrap_or(0) {
+            0 => return Err(GraphError::ToolNotCovered { name: name.clone() }),
+            1 => {}
+            _ => return Err(GraphError::ToolCoveredTwice { name: name.clone() }),
+        }
+    }
+    Ok(())
+}
 
-    /// The edge after the model call: to the tool nodes while the reply
-    /// calls tools, to the round-limit node past the last allowed round,
-    /// else where the loop ends (`after`). It declares all of them. A reply
-    /// that calls a tool no tool node runs goes to the tool nodes too: the
-    /// first answers that call; past the last allowed round, the limit
-    /// handles it first.
-    fn llm_edge(
-        &self,
-        key: Key,
-        author: Author,
-        round_limit: Option<RoundLimit>,
-    ) -> impl Edge + 'static {
-        let tool_targets: Vec<Target> = self
-            .tool_nodes
-            .iter()
-            .map(|(id, _)| Target::Node(id.clone()))
-            .collect();
-        let after = self.after.clone();
-        let llm = self.llm.clone();
-        // The tool nodes, the round-limit node when it has one, then where
-        // the loop ends.
-        let limit_node = round_limit
-            .as_ref()
-            .and_then(RoundLimit::node)
-            .map(|node| Target::Node(node.clone()));
-        let declared: Vec<Target> = tool_targets
-            .iter()
-            .cloned()
-            .chain(limit_node)
-            .chain(std::iter::once(after.clone()))
-            .collect();
-        FnEdge::new(move |state, config| {
-            let conversation = state.conversation(&key)?;
-            match last_turn_state(conversation, &author) {
-                Some(TurnState::AwaitingToolResults { .. }) => {
-                    if let Some(round_limit) = &round_limit {
-                        let max = round_limit.max_rounds.resolve(config)?.get();
-                        if completed_rounds(conversation, &author) >= max {
-                            return round_limit.reached(&llm, conversation, &author, max);
-                        }
+/// The edge after the model call `llm`: to the tool nodes while the reply
+/// calls tools, to the round-limit node past the last allowed round, else
+/// where the loop ends (`after`). It declares all of them. A reply that
+/// calls a tool no tool node runs goes to the tool nodes too: the first
+/// answers that call; past the last allowed round, the limit handles it
+/// first.
+fn llm_edge(
+    (llm, tool_nodes, after): (&NodeId, &ToolNodes, &Target),
+    key: Key,
+    author: Author,
+    round_limit: Option<RoundLimit>,
+) -> impl Edge + 'static {
+    let tool_targets: Vec<Target> = tool_nodes
+        .iter()
+        .map(|(id, _)| Target::Node(id.clone()))
+        .collect();
+    let (llm, after) = (llm.clone(), after.clone());
+    // The tool nodes, the round-limit node when it has one, then where the
+    // loop ends.
+    let limit_node = round_limit
+        .as_ref()
+        .and_then(RoundLimit::node)
+        .map(|node| Target::Node(node.clone()));
+    let declared: Vec<Target> = tool_targets
+        .iter()
+        .cloned()
+        .chain(limit_node)
+        .chain(std::iter::once(after.clone()))
+        .collect();
+    FnEdge::new(move |state, config| {
+        let conversation = state.conversation(&key)?;
+        match last_turn_state(conversation, &author) {
+            Some(TurnState::AwaitingToolResults { .. }) => {
+                if let Some(round_limit) = &round_limit {
+                    let max = round_limit.max_rounds.resolve(config)?.get();
+                    if completed_rounds(conversation, &author) >= max {
+                        return round_limit.reached(&llm, conversation, &author, max);
                     }
-                    Ok(tool_targets.clone())
                 }
-                _ => Ok(vec![after.clone()]),
+                Ok(tool_targets.clone())
             }
-        })
-        .targets(declared)
-    }
+            _ => Ok(vec![after.clone()]),
+        }
+    })
+    .targets(declared)
 }

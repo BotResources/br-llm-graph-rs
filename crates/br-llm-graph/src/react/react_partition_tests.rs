@@ -1,6 +1,7 @@
 //! The split of the tools between the tool nodes of a ReAct loop: each
-//! declared tool run by exactly one tool node, and no tool node running a
-//! tool the model call does not declare.
+//! declared tool run by exactly one tool node, no tool node running a tool
+//! the model call does not declare, and without a split one node running
+//! them all.
 
 use std::sync::Arc;
 
@@ -44,7 +45,8 @@ fn given_tool_not_covered_when_react_loop_added_then_refused() {
     let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), Vec::new())],
+        tools_node: nid("tools"),
+        split: vec![(nid("tools"), Vec::new())],
         after: Target::End(EndLabel::new("done").unwrap()),
         thread: None,
     };
@@ -56,20 +58,29 @@ fn given_tool_not_covered_when_react_loop_added_then_refused() {
 }
 
 #[test]
-fn given_zero_tool_nodes_when_react_loop_added_then_tool_not_covered() {
+fn given_no_split_when_react_loop_added_then_its_one_tool_node_runs_every_declared_tool() {
     let client = Arc::new(mock(vec![text_step("x")]));
-    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
+    let llm = llm_node(client, vec![Arc::new(EchoTool), Arc::new(TallyTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: Vec::new(),
+        tools_node: nid("tools"),
+        split: Vec::new(),
         after: Target::End(EndLabel::new("done").unwrap()),
         thread: None,
     };
-    let result = react.add(GraphBuilder::new(schema()).entry(nid("llm")), llm);
-    assert!(matches!(
-        result.err(),
-        Some(crate::error::GraphError::ToolNotCovered { .. })
-    ));
+    let graph = react
+        .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
+        .unwrap()
+        .build()
+        .unwrap();
+    let described = crate::describe::test_support::json(&graph.describe());
+    let tools = described["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "tools")
+        .unwrap();
+    assert_eq!(tools["tools"], serde_json::json!(["echo", "tally"]));
 }
 
 #[test]
@@ -78,7 +89,8 @@ fn given_tool_covered_twice_when_react_loop_added_then_refused() {
     let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![
+        tools_node: nid("tools"),
+        split: vec![
             (nid("t1"), vec![Arc::new(EchoTool)]),
             (nid("t2"), vec![Arc::new(EchoTool)]),
         ],
@@ -98,7 +110,8 @@ fn given_tool_node_tool_not_declared_when_react_loop_added_then_refused() {
     let llm = llm_node(client, vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool), Arc::new(TallyTool)])],
+        tools_node: nid("tools"),
+        split: vec![(nid("tools"), vec![Arc::new(EchoTool), Arc::new(TallyTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
         thread: None,
     };
@@ -115,7 +128,8 @@ fn given_one_tool_node_listing_a_tool_twice_when_react_loop_added_then_tool_cove
     let llm = llm_node(Arc::new(mock(Vec::new())), vec![Arc::new(EchoTool)]);
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool), Arc::new(EchoTool)])],
+        tools_node: nid("tools"),
+        split: vec![(nid("tools"), vec![Arc::new(EchoTool), Arc::new(EchoTool)])],
         after: Target::End(EndLabel::new("done").unwrap()),
         thread: None,
     };

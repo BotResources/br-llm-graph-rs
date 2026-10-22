@@ -7,7 +7,7 @@ use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::{Always, Graph, GraphBuilder, Limit, Target};
 use crate::react::agent_answer::AnswerNode;
-use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag, split_tools};
+use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag};
 use crate::react::bounds::Bounds;
 use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
@@ -199,8 +199,6 @@ impl ReactAgent {
         keys.release(&mut schema);
 
         let call = keys.call(self.thread_store);
-        let tools_node = NodeId::new("tools")?;
-        let tool_nodes = split_tools(self.tool_nodes, &self.tools, &tools_node);
         let bounds = Bounds::new(
             [],
             [
@@ -212,7 +210,8 @@ impl ReactAgent {
         let answer_flag = flag.clone().zip(self.round_limit.clone());
         let react = ReactLoop {
             llm: llm.clone(),
-            tool_nodes,
+            split: self.tool_nodes,
+            tools_node: NodeId::new("tools")?,
             after: Target::Node(answer_node.clone()),
             thread: call.thread.clone(),
         };

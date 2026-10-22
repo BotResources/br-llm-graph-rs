@@ -83,9 +83,13 @@ impl RunnerOutput {
 /// the thread, is refused there (`MapBodySet`). A resumed map calls the
 /// port only for the items that did not finish, under the keys they had.
 ///
+/// A description writes it as `runner_call`: its target, how its arguments
+/// are given (fixed or a function), never their value, and its outputs.
+///
 /// At build, the node checks its outputs, refused with the error writing a
 /// string through them would give (`UnknownKey`, `KindMismatch`,
-/// `AppendNotList`).
+/// `AppendNotList`), and an answer and a thread that `Set` one key
+/// (`SetConflict`, which their one batch would meet once the child ran).
 pub struct RunnerCall {
     /// The runner type of the runner it calls.
     pub target: RunnerTarget,
@@ -128,9 +132,19 @@ impl Node for RunnerCall {
 
     fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
         check_text_output(schema, &self.output.written(), site)?;
-        match &self.thread {
-            Some(thread) => check_text_output(schema, &thread.written(), site),
-            None => Ok(()),
+        let Some(thread) = &self.thread else {
+            return Ok(());
+        };
+        check_text_output(schema, &thread.written(), site)?;
+        // Both in one batch: two `Set` of one key would be refused after the
+        // child ran.
+        match (&self.output, thread) {
+            (RunnerOutput::Set(answer), RunnerOutput::Set(thread)) if answer == thread => {
+                Err(GraphError::SetConflict {
+                    key: answer.key().clone(),
+                })
+            }
+            _ => Ok(()),
         }
     }
 
@@ -139,7 +153,7 @@ impl Node for RunnerCall {
     fn describe(&self) -> NodeDescription {
         NodeDescription::of(Shape::RunnerCall(RunnerCallShape {
             target: self.target.as_str().to_owned(),
-            arguments: self.arguments.origin(),
+            arguments: self.arguments.how_given(),
             output: self.output.written(),
             thread: self.thread.as_ref().map(RunnerOutput::written),
         }))

@@ -31,9 +31,13 @@ mod runner_call_map_tests;
 #[cfg(test)]
 mod runner_call_resume_tests;
 #[cfg(test)]
+mod runner_call_subgraph_tests;
+#[cfg(test)]
 mod runner_call_tests;
 #[cfg(test)]
 mod runner_describe_tests;
+#[cfg(test)]
+mod runner_tool_agent_tests;
 #[cfg(test)]
 mod runner_tool_tests;
 #[cfg(test)]

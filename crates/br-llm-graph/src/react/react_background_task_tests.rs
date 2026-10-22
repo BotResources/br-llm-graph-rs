@@ -102,7 +102,8 @@ async fn given_background_task_when_completion_arrives_then_relaunch_finishes() 
     };
     let react = ReactLoop {
         llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![start_task])],
+        tools_node: nid("tools"),
+        split: vec![(nid("tools"), vec![start_task])],
         after: Target::Node(nid("gate")),
         thread: None,
     };

@@ -229,7 +229,8 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
         };
         ReactLoop {
             llm: nid("llm"),
-            tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
+            tools_node: nid("tools"),
+            split: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
             after: Target::End(EndLabel::new("done").unwrap()),
             thread: None,
         }

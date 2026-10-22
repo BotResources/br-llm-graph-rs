@@ -127,9 +127,20 @@ pub enum RunnerReply {
 /// child is created, and disarmed once the call has decided the child's
 /// fate, does both.
 ///
-/// A runner call recorded by an earlier attempt of its superstep is not run
-/// again (see `Context::record`); one that did not finish, or whose node
-/// failed, calls the port again under the same key.
+/// What a resumed run asks of the port, which it must handle:
+/// - a runner call node that finished in the interrupted superstep, or a map
+///   item that finished, is recorded and not run again; one that did not
+///   finish, or whose node failed, calls the port again under its key;
+/// - inside a called graph nothing is recorded: the call restarts whole, so
+///   its runner calls that had finished are made again under their keys, and
+///   the port finds them and gives the ends it had;
+/// - a runner tool of a durable agent whose call a crash interrupted is
+///   answered as interrupted when the agent enters its thread again, and is
+///   never awaited again: the port's deadline or its own cleanup settles that
+///   call's child;
+/// - a runner tool of an agent in memory restarts with the agent: the model
+///   is asked again and its new tool calls give their own ids, so the keys
+///   follow the model's new ids.
 pub trait RunnerPort: Send + Sync {
     /// Makes the call `request`, or finds the one its key names, and waits
     /// for its end.

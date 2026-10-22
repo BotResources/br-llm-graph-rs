@@ -6,9 +6,7 @@ use std::sync::Arc;
 use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::{Always, FnEdge, Graph, GraphBuilder, Target};
-use crate::react::agent_build::{
-    AgentKeys, declare_count, declare_limit, round_limit_flag, split_tools,
-};
+use crate::react::agent_build::{AgentKeys, declare_count, declare_limit, round_limit_flag};
 use crate::react::bounds::Bounds;
 use crate::react::check::{CheckNode, EMPTY_ANSWER_CRITIQUE};
 use crate::react::critic_view::CriticView;
@@ -180,11 +178,11 @@ impl GeneratorCritic {
             flag.as_ref(),
         );
 
-        let tool_nodes = split_tools(generator.tool_nodes, &generator.tools, &names.tools);
         let flag_limit = flag.zip(generator.round_limit.clone());
         let react = ReactLoop {
             llm: names.generate.clone(),
-            tool_nodes,
+            split: generator.tool_nodes,
+            tools_node: names.tools.clone(),
             after: Target::Node(names.check.clone()),
             thread: call.thread.clone(),
         };

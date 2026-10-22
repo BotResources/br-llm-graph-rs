@@ -107,3 +107,22 @@ fn given_a_refused_output_when_the_graph_is_built_then_invalid_node_naming_the_r
             if node == nid("ask") && matches!(*source, GraphError::UnknownKey { .. })
     ));
 }
+
+#[test]
+fn given_an_answer_and_a_thread_that_set_one_key_when_built_then_set_conflict_before_any_call() {
+    let port = Arc::new(TestRunners::new());
+    let node = RunnerCall {
+        thread: Some(set_answer()),
+        ..ask(&port, set_answer())
+    };
+    assert!(matches!(
+        node.check(&schema(), CheckSite::Graph),
+        Err(GraphError::SetConflict { key: found }) if found == key("answer")
+    ));
+    // Appending both to one list is one batch of appends: no conflict.
+    let both_appended = RunnerCall {
+        thread: Some(append_answers()),
+        ..ask(&port, append_answers())
+    };
+    assert!(both_appended.check(&schema(), CheckSite::Graph).is_ok());
+}

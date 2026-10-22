@@ -6,56 +6,17 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use br_llm_clients_mock::{MockClient, Reply};
-use br_llm_messages::{
-    AssistantBlock, Step, StopReason, Text, ToolCall, ToolCallId, ToolName, ToolResultBlock,
-    TurnItem,
-};
+use br_llm_messages::{Text, ToolResultBlock, TurnItem};
 use serde_json::{Value as Json, json};
 
 use crate::graph::Limit;
 use crate::origin::RunId;
 use crate::react::react_agent_support::{agent, call, call_in, ctx, finished, last_turn, question};
 use crate::react::test_gate::beside;
-use crate::react::test_support::{
-    mock_at, push, requests, results_of, sent_results, spec, text_step,
-};
-use crate::runner::test_support::{call_key, key, target};
-use crate::runner::{AnswerBlock, RunnerTool};
+use crate::react::test_support::{requests, results_of, sent_results};
+use crate::runner::AnswerBlock;
+use crate::runner::test_support::{call_key, calling, key, scripted, tool};
 use crate::testkit::{Scripted, TestRunners, text_block};
-
-/// The runner tool `name` calling `runner` through `port`.
-fn tool(name: &str, runner: &str, port: &Arc<TestRunners>) -> Arc<RunnerTool> {
-    Arc::new(RunnerTool {
-        spec: spec(name),
-        target: target(runner),
-        port: port.clone(),
-    })
-}
-
-/// A step calling each `(id, tool, arguments)`, in order.
-fn calling(calls: &[(&str, &str, Json)]) -> Step {
-    let blocks = calls
-        .iter()
-        .map(|(id, name, arguments)| {
-            AssistantBlock::ToolCall(ToolCall {
-                id: ToolCallId::new(*id).unwrap(),
-                name: ToolName::new(*name).unwrap(),
-                arguments: arguments.clone(),
-            })
-        })
-        .collect();
-    Step::new(blocks, StopReason::AwaitingToolResults, None, None).unwrap()
-}
-
-/// A client answering `first` with its tool call ids as written, then
-/// `text`.
-fn scripted(first: Step, text: &str) -> MockClient {
-    let client = mock_at(br_llm_clients_core::ReasoningLevel::Medium);
-    client.push_reply(Reply::success(first).build().unwrap());
-    push(&client, text_step(text));
-    client
-}
 
 /// The answer of a call of `ask_a_document`: what the document it is asked
 /// about says.

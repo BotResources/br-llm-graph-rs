@@ -141,6 +141,7 @@ async fn main() {
         ),
         target: RunnerTarget::new("documentalist").expect("target"),
         port: port.clone(),
+        hook: None,
     };
     let agent = ReactAgent {
         author: Author::new("librarian", "librarian").expect("author"),
@@ -168,9 +169,10 @@ async fn main() {
     let (_sender, mut channel) = control();
     match run(&agent, &config, state, None, &quiet_context(), &mut channel).await {
         Ok(Outcome::Finished { state, .. }) => println!(
-            "runner_call: the agent says {} ({} calls settled)",
+            "runner_call: the agent says {} ({} calls settled, {} children cancelled)",
             state.get(&answer).expect("answer"),
-            port.settled()
+            port.settled(),
+            port.cancelled_children().len()
         ),
         Ok(_) => println!("runner_call agent paused or cancelled"),
         Err(failure) => println!("runner_call agent failed: {}", failure.error),

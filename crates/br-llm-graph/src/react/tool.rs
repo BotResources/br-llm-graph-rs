@@ -24,9 +24,12 @@ pub type ToolFuture<'a> = Pin<Box<dyn Future<Output = Result<ToolOutput, ToolErr
 /// Which call a tool runs, and where: the id and the name of the call, and
 /// the origin of the tool node that runs it.
 ///
-/// - `id`: the id of the tool call, which its result answers. A run that runs
-///   the call again (a resumed run, an agent in memory asked again) gives it
-///   the id it had.
+/// - `id`: the id of the tool call, which its result answers. A durable
+///   agent never runs a call twice: a call a crash left without a result is
+///   answered as interrupted when the agent enters its thread again, and is
+///   not run again. An agent in memory restarts from its `opening`: the
+///   model is asked again, and the calls of its new reply have the ids the
+///   client gives them, possibly those of the calls before (see `Hook`).
 /// - `name`: the name the call gives, the name of the tool.
 /// - `origin`: the run id and the occurrence of the tool node that runs the
 ///   call, below the node that calls the agent's graph (`agent/tools`).

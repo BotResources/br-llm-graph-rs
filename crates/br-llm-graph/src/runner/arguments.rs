@@ -6,7 +6,9 @@ use std::sync::Arc;
 use serde_json::{Map, Value};
 
 use crate::graph::NodeError;
-use crate::react::Origin;
+// How a subject is given (fixed, ready-made, a function), as a description
+// writes it: not the origin of a call (`CallKey::origin`).
+use crate::react::Origin as HowGiven;
 use crate::state::{Config, State};
 
 /// A function giving the arguments of one call.
@@ -36,7 +38,7 @@ type ArgumentsFn = dyn Fn(&State, &Config) -> Result<Map<String, Value>, NodeErr
 pub struct RunnerArguments {
     give: Arc<ArgumentsFn>,
     /// How they are given, for the graph's description.
-    origin: Origin,
+    given: HowGiven,
 }
 
 impl RunnerArguments {
@@ -44,7 +46,7 @@ impl RunnerArguments {
     pub fn value(arguments: Map<String, Value>) -> Self {
         Self {
             give: Arc::new(move |_, _| Ok(arguments.clone())),
-            origin: Origin::Fixed,
+            given: HowGiven::Fixed,
         }
     }
 
@@ -55,7 +57,7 @@ impl RunnerArguments {
     {
         Self {
             give: Arc::new(give),
-            origin: Origin::Function,
+            given: HowGiven::Function,
         }
     }
 
@@ -69,7 +71,7 @@ impl RunnerArguments {
     }
 
     /// How they are given: fixed or by a function.
-    pub(crate) fn origin(&self) -> Origin {
-        self.origin
+    pub(crate) fn how_given(&self) -> HowGiven {
+        self.given
     }
 }

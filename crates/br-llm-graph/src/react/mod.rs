@@ -171,7 +171,7 @@ mod react_durable_entry_tests;
 #[cfg(test)]
 mod react_durable_resume_tests;
 #[cfg(test)]
-mod react_durable_support;
+pub(crate) mod react_durable_support;
 #[cfg(test)]
 mod react_durable_write_tests;
 #[cfg(test)]
@@ -224,6 +224,8 @@ mod react_tool_context_tests;
 mod react_tool_result_tests;
 #[cfg(test)]
 mod react_turn_client_tests;
+#[cfg(test)]
+mod react_unavailable_resume_tests;
 #[cfg(test)]
 mod react_unavailable_tool_tests;
 #[cfg(test)]

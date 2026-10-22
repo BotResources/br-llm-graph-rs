@@ -1,5 +1,5 @@
 //! What the builds of the two agents share: the declarations of their
-//! keys and the refusals of their own node ids.
+//! keys, their private keys and their round-limit flag.
 
 use std::sync::Arc;
 
@@ -9,9 +9,8 @@ use crate::graph::{Count, Limit};
 use crate::react::agent_call::{AgentCall, ThreadBinding};
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::thread_store::ThreadStore;
-use crate::react::tool::Tool;
 use crate::state::{Kind, Schema, SchemaBuilder};
-use crate::value::{Key, NodeId};
+use crate::value::Key;
 
 /// The keys every agent has: its inputs `opening` and, durable, `thread`
 /// (also an output), its output `answer`, and its private keys
@@ -174,22 +173,6 @@ pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuild
     match count {
         Count::Config(key) => schema.config_by_name(key.clone(), Kind::Int),
         Count::Fixed(_) => schema,
-    }
-}
-
-/// The split of `tools` between tool nodes: `tool_nodes`, or without a
-/// split one node, `id`, that runs them all. Without a tool too, so a reply
-/// that calls a tool the agent does not have is answered there, and a
-/// round-limit node of that id collides with it (`DuplicateNode`).
-pub(crate) fn split_tools(
-    tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
-    tools: &[Arc<dyn Tool>],
-    id: &NodeId,
-) -> Vec<(NodeId, Vec<Arc<dyn Tool>>)> {
-    if tool_nodes.is_empty() {
-        vec![(id.clone(), tools.to_vec())]
-    } else {
-        tool_nodes
     }
 }
 

@@ -68,7 +68,7 @@ let ask = RunnerCall {
 };
 let each = Map::new(&documents, &document, ask).max_concurrency(two); // one call per document
 
-let select = RunnerTool { spec, target: RunnerTarget::new("documentalist")?, port }; // a tool of an agent
+let select = RunnerTool { spec, target: RunnerTarget::new("documentalist")?, port, hook: None }; // a tool of an agent
 ```
 
 A built graph describes itself as data, without running anything: its entry, its signature, its schema and its nodes in registration order, each with its kind, its realizes labels, the targets its edge declares and the fields of its kind, nested graphs included (the child of a call, the body of a map, an agent's own graph). A host or a CI job compares it with the graph it meant to build, such as a Runner's intent graph; the library compares and draws nothing. An edge built from a function declares its targets with `FnEdge::targets` (an `Always` declares its own): the build refuses a declared node the graph does not hold (`EdgeToUnknownNode`) and the run refuses a target the edge did not declare (`UndeclaredTarget`), so the description cannot be false. A description writes no state value, default, prompt, client, author name or secret: a subject a runner gives, and the arguments of a runner call, are written as how they are given (`fixed`, `ready_made`, `function`), a fixed value mapped into a call and a state key's default as their kinds, an author by its id and never its name, and no tool argument is written. It does write the graph's fixed bounds: fixed limits and counts, and the generator-critic's `final_generation`.

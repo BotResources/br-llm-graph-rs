@@ -7,7 +7,7 @@ use br_llm_clients_core::ToolSpec;
 use br_llm_messages::{Text, ToolResultBlock};
 use serde_json::Value;
 
-use crate::react::{Tool, ToolContext, ToolError, ToolFuture, ToolOutput, text_or};
+use crate::react::{Hook, Tool, ToolContext, ToolError, ToolFuture, ToolOutput, text_or};
 use crate::runner::answer::{AnswerBlock, RunnerAnswer};
 use crate::runner::port::{CallKey, RunnerPort, RunnerReply, RunnerRequest};
 use crate::runner::target::RunnerTarget;
@@ -18,11 +18,16 @@ use crate::state::{Config, State};
 /// child's answer.
 ///
 /// Each call's key is the origin of the tool node that runs it and the id of
-/// the tool call (see `CallKey`), so a call run again under its id finds the
-/// call it had started. The arguments of the tool call go to the port as
-/// they are, a JSON object: the graph does not check them against the
-/// spec's parameters, which is the port's to do; arguments that are not an
-/// object are a tool error, and the port is not called.
+/// the tool call (see `CallKey`). A durable agent never runs a call twice: a
+/// call a crash interrupted is answered as interrupted and never awaited
+/// again, so the port's deadline or cleanup settles its child. An agent in
+/// memory restarts from its `opening`, and the keys follow the ids of the
+/// model's new tool calls (see `RunnerPort`).
+///
+/// The arguments of the tool call go to the port as they are, a JSON
+/// object: the graph does not check them against the spec's parameters,
+/// which is the port's to do; arguments that are not an object are a tool
+/// error, and the port is not called.
 ///
 /// The result holds the answer's blocks in order, a structured value as its
 /// JSON text. An expected failure of the child gives an error result holding
@@ -32,9 +37,13 @@ use crate::state::{Config, State};
 ///
 /// Runner tools called in one reply run at once, within the agent's tool
 /// concurrency limit, as any tools do; a cancel of the run drops the calls
-/// under way, whose children the port cancels. It has no hook: a host that
-/// judges its calls gives a tool of its own that holds it, gives its spec
-/// and its call, and gives a hook.
+/// under way, whose children the port cancels.
+///
+/// With a hook, each call is judged before the port is called, as any tool's
+/// call is (see `Hook`): a refused call never reaches the port.
+///
+/// A description writes it by its name, as any tool, among the tools of its
+/// tool node.
 pub struct RunnerTool {
     /// The declaration the model reads, given by the runner.
     pub spec: ToolSpec,
@@ -42,11 +51,18 @@ pub struct RunnerTool {
     pub target: RunnerTarget,
     /// The port the calls go through, the host's.
     pub port: Arc<dyn RunnerPort>,
+    /// The hook that judges each call before the port is called. `None`:
+    /// every call is made.
+    pub hook: Option<Arc<dyn Hook>>,
 }
 
 impl Tool for RunnerTool {
     fn spec(&self) -> &ToolSpec {
         &self.spec
+    }
+
+    fn hook(&self) -> Option<&dyn Hook> {
+        self.hook.as_deref()
     }
 
     fn call<'a>(

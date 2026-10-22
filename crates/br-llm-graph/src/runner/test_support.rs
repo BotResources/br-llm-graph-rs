@@ -1,11 +1,13 @@
 //! What the runner call tests share: a schema with the keys a runner call
-//! writes, the call of `documentalist` on the test port, and the graphs that
-//! hold it.
+//! writes, the call of `documentalist` on the test port, the graphs that
+//! hold it, and a runner tool with the client that calls it.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use br_llm_clients_mock::{MockClient, Reply};
+use br_llm_messages::{AssistantBlock, Step, StopReason, ToolCall, ToolCallId, ToolName};
 use serde_json::{Map, Value as Json};
 
 use crate::graph::{
@@ -14,7 +16,7 @@ use crate::graph::{
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::{OccurrenceKey, Origin, RunId};
 use crate::run::{Control, Outcome, RunFailure, control, run};
-use crate::runner::{CallKey, RunnerArguments, RunnerCall, RunnerOutput, RunnerTarget};
+use crate::runner::{CallKey, RunnerArguments, RunnerCall, RunnerOutput, RunnerTarget, RunnerTool};
 use crate::state::{Config, Kind, Schema, State, StateKey, Value};
 use crate::testkit::{SeqIds, TestRunners};
 use crate::value::{EndLabel, Key, NodeId};
@@ -209,4 +211,38 @@ pub(crate) fn call_key(run: &str, occurrence: &str, tool_call: Option<&str>) -> 
         },
         tool_call.map(|id| br_llm_messages::ToolCallId::new(id).unwrap()),
     )
+}
+
+/// The runner tool `name` calling `runner` through `port`, without a hook.
+pub(crate) fn tool(name: &str, runner: &str, port: &Arc<TestRunners>) -> Arc<RunnerTool> {
+    Arc::new(RunnerTool {
+        spec: crate::react::test_support::spec(name),
+        target: target(runner),
+        port: port.clone(),
+        hook: None,
+    })
+}
+
+/// A step calling each `(id, tool, arguments)`, in order.
+pub(crate) fn calling(calls: &[(&str, &str, Json)]) -> Step {
+    let blocks = calls
+        .iter()
+        .map(|(id, name, arguments)| {
+            AssistantBlock::ToolCall(ToolCall {
+                id: ToolCallId::new(*id).unwrap(),
+                name: ToolName::new(*name).unwrap(),
+                arguments: arguments.clone(),
+            })
+        })
+        .collect();
+    Step::new(blocks, StopReason::AwaitingToolResults, None, None).unwrap()
+}
+
+/// A client answering `first` with its tool call ids as written, then
+/// `text`.
+pub(crate) fn scripted(first: Step, text: &str) -> MockClient {
+    let client = crate::react::test_support::mock_at(br_llm_clients_core::ReasoningLevel::Medium);
+    client.push_reply(Reply::success(first).build().unwrap());
+    crate::react::test_support::push(&client, crate::react::test_support::text_step(text));
+    client
 }
