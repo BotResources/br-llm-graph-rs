@@ -18,10 +18,11 @@ pub trait Observer: Send + Sync {
     fn node_started(&self, origin: &Origin, node: &NodeId) {
         let _ = (origin, node);
     }
-    /// A node of the superstep, after the superstep completes; not when a
-    /// cancel drops the nodes while they run.
-    fn node_finished(&self, origin: &Origin, node: &NodeId) {
-        let _ = (origin, node);
+    /// A node of the superstep, after the superstep completes, with how it
+    /// ended; not when a cancel drops the nodes while they run. A cancel
+    /// received just as the superstep completes comes after the event.
+    fn node_finished(&self, origin: &Origin, node: &NodeId, outcome: NodeOutcome) {
+        let _ = (origin, node, outcome);
     }
     /// A model stream event, with the conversation key of the calling node,
     /// or the output key of an `LlmCall` whose request is not a conversation
@@ -53,6 +54,24 @@ pub trait Observer: Send + Sync {
     fn recorded(&self, origin: &Origin, entry: &PendingEntry) {
         let _ = (origin, entry);
     }
+}
+
+/// How a node of a superstep ended (`Observer::node_finished`): what the node
+/// itself did. A call whose child fails, even by a panic, returns an error
+/// (`SubGraphFailed`); a panic in a map's body is a panic of the map.
+///
+/// Exhaustive on purpose, as `TurnEnd`: an observer matches it to report each
+/// outcome, so an outcome added in a later version must break its build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeOutcome {
+    /// The node returned its updates, or reused those it had recorded and did
+    /// not run again. Applying the superstep may still refuse them
+    /// (`NodeFault::Refused`).
+    Updates,
+    /// The node returned an error (`NodeFault::Returned`).
+    Error,
+    /// The node panicked (`NodeFault::Panic`).
+    Panic,
 }
 
 /// An observer that ignores every event.

@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use br_llm_messages::{InputId, Text, UserBlock, UserInput, UserSource};
 
 use crate::graph::{Context, Edge, FnEdge, Target};
 use crate::graph::{FnNode, Node, NodeFuture};
-use crate::observe::NoopObserver;
+use crate::observe::{NodeOutcome, NoopObserver, Observer};
+use crate::origin::Origin;
 use crate::state::{Config, Kind, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key, NodeId};
@@ -151,4 +152,30 @@ pub(crate) fn input(body: &str) -> UserInput {
         vec![UserBlock::text(Text::new(body).unwrap())],
     )
     .unwrap()
+}
+
+/// An observer of the node finished event: each node, as `occurrence|node`,
+/// with how it ended.
+#[derive(Default)]
+pub(crate) struct Finishes(Mutex<Vec<(String, NodeOutcome)>>);
+
+impl Finishes {
+    pub(crate) fn seen(&self) -> Vec<(String, NodeOutcome)> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl Observer for Finishes {
+    fn node_finished(&self, origin: &Origin, node: &NodeId, outcome: NodeOutcome) {
+        let line = format!("{}|{node}", origin.occurrence);
+        self.0.lock().unwrap().push((line, outcome));
+    }
+}
+
+/// The node finished events `events` names, as `Finishes` sees them.
+pub(crate) fn finished(events: &[(&str, NodeOutcome)]) -> Vec<(String, NodeOutcome)> {
+    events
+        .iter()
+        .map(|(line, outcome)| ((*line).to_owned(), *outcome))
+        .collect()
 }

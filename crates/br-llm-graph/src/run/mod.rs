@@ -31,6 +31,10 @@ mod declared_target_tests;
 #[cfg(test)]
 mod failure_tests;
 #[cfg(test)]
+mod finished_event_tests;
+#[cfg(test)]
+mod finished_nested_tests;
+#[cfg(test)]
 mod gates;
 #[cfg(test)]
 mod item_failure_tests;

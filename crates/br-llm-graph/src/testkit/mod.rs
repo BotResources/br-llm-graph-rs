@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use br_llm_messages::TurnId;
 
 use crate::graph::{Context, IdRequest, IdSource};
-use crate::observe::Observer;
+use crate::observe::{NodeOutcome, Observer};
 use crate::origin::Origin;
 use crate::run::Cursor;
 use crate::state::State;
@@ -90,8 +90,8 @@ impl Observer for Recorder {
         self.push(format!("started {node}"));
     }
 
-    fn node_finished(&self, _origin: &Origin, node: &NodeId) {
-        self.push(format!("finished {node}"));
+    fn node_finished(&self, _origin: &Origin, node: &NodeId, outcome: NodeOutcome) {
+        self.push(format!("finished {node} {outcome:?}"));
     }
 
     fn applied(&self, _origin: &Origin, update: &Update) {

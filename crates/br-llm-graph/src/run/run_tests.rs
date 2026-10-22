@@ -249,7 +249,10 @@ async fn given_observer_when_run_then_started_before_finished_before_checkpoint(
         .unwrap();
     let lines = recorder.lines();
     let started = lines.iter().position(|l| l == "started a").unwrap();
-    let finished = lines.iter().position(|l| l == "finished a").unwrap();
+    let finished = lines
+        .iter()
+        .position(|l| l == "finished a Updates")
+        .unwrap();
     let applied = lines.iter().position(|l| l.starts_with("applied")).unwrap();
     let checkpoint = lines
         .iter()

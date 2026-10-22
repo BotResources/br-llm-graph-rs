@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use br_llm_messages::{Conversation, StreamEvent};
 
-use crate::observe::Observer;
+use crate::observe::{NodeOutcome, Observer};
 use crate::origin::Origin;
 use crate::run::{Cursor, PendingEntry};
 use crate::state::{Kind, Schema, State, Value};
@@ -45,8 +45,8 @@ impl Observer for Transcript {
         self.inner.node_started(origin, node);
     }
 
-    fn node_finished(&self, origin: &Origin, node: &NodeId) {
-        self.inner.node_finished(origin, node);
+    fn node_finished(&self, origin: &Origin, node: &NodeId, outcome: NodeOutcome) {
+        self.inner.node_finished(origin, node, outcome);
     }
 
     fn stream(&self, origin: &Origin, key: &Key, event: &StreamEvent) {

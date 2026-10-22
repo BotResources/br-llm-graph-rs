@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::graph::{Context, FnNode, Graph, GraphBuilder, Node, NodeFuture};
-use crate::observe::{NoopObserver, Observer};
+use crate::observe::{NodeOutcome, NoopObserver, Observer};
 use crate::origin::{OccurrenceKey, Origin, RunId, Segment};
 use crate::run::Cursor;
 use crate::run::control::control;
@@ -39,7 +39,7 @@ impl Observer for Origins {
     fn node_started(&self, origin: &Origin, node: &NodeId) {
         self.push(format!("started {node}"), origin);
     }
-    fn node_finished(&self, origin: &Origin, node: &NodeId) {
+    fn node_finished(&self, origin: &Origin, node: &NodeId, _outcome: NodeOutcome) {
         self.push(format!("finished {node}"), origin);
     }
     fn applied(&self, origin: &Origin, update: &Update) {

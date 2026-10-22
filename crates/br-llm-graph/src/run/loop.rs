@@ -10,7 +10,7 @@ use crate::run::control::{Command, Control};
 use crate::run::cursor::Cursor;
 use crate::run::outcome::{Outcome, RunFailure};
 use crate::run::settle::settle;
-use crate::run::superstep::{StepResult, drive_superstep};
+use crate::run::superstep::{StepResult, drive_superstep, node_outcome};
 use crate::state::{Config, State};
 use crate::update::Update;
 use crate::value::NodeId;
@@ -116,8 +116,9 @@ pub(crate) async fn run_nested(
             }
             StepResult::Done(results) => results,
         };
-        for id in &active {
-            ctx.observer.node_finished(ctx.origin(), id);
+        for (id, result) in &results {
+            let outcome = node_outcome(result);
+            ctx.observer.node_finished(ctx.origin(), id, outcome);
         }
 
         if drain_after_step(control, &mut held_inputs, &mut pause) {

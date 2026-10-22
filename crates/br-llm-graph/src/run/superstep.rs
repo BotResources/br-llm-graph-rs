@@ -7,6 +7,7 @@ use futures_util::{FutureExt, StreamExt};
 
 use crate::error::NodeFault;
 use crate::graph::{Context, Graph, Node, NodeError};
+use crate::observe::NodeOutcome;
 use crate::run::control::{Command, Control};
 use crate::state::{Config, State};
 use crate::update::Update;
@@ -126,6 +127,16 @@ fn pair(
             (id, result)
         })
         .collect()
+}
+
+/// How a node of the superstep ended, from its result. Its updates are
+/// refused only once the superstep is settled: such a node returned them.
+pub(crate) fn node_outcome(result: &Result<Vec<Update>, NodeFault>) -> NodeOutcome {
+    match result {
+        Ok(_) | Err(NodeFault::Refused(_)) => NodeOutcome::Updates,
+        Err(NodeFault::Returned(_)) => NodeOutcome::Error,
+        Err(NodeFault::Panic(_)) => NodeOutcome::Panic,
+    }
 }
 
 fn panic_message(payload: Box<dyn Any + Send>) -> String {

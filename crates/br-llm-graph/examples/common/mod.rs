@@ -12,8 +12,8 @@ use br_llm_clients_core::{
 };
 use br_llm_clients_mock::{Capabilities, CapabilitiesSpec, MockClient, Reply};
 use br_llm_graph::{
-    ConfigKey, Context, Cursor, EndLabel, IdRequest, IdSource, Key, NoopObserver, Observer, Origin,
-    Schema, State, StateKey, ThreadId, Update, ValueType,
+    ConfigKey, Context, Cursor, EndLabel, IdRequest, IdSource, Key, NodeOutcome, NoopObserver,
+    Observer, Origin, Schema, State, StateKey, ThreadId, Update, ValueType,
 };
 use br_llm_messages::{
     AssistantBlock, Conversation, InputId, ModelId, Step, StopReason, StreamEvent, Text, ToolCall,
@@ -26,6 +26,14 @@ pub struct PrintObserver;
 impl Observer for PrintObserver {
     fn node_started(&self, _origin: &Origin, node: &br_llm_graph::NodeId) {
         println!("  node started: {node}");
+    }
+    fn node_finished(&self, _origin: &Origin, node: &br_llm_graph::NodeId, outcome: NodeOutcome) {
+        let how = match outcome {
+            NodeOutcome::Updates => "with its updates",
+            NodeOutcome::Error => "with an error",
+            NodeOutcome::Panic => "with a panic",
+        };
+        println!("  node finished: {node}, {how}");
     }
     fn applied(&self, _origin: &Origin, update: &Update) {
         println!("  applied: {update}");

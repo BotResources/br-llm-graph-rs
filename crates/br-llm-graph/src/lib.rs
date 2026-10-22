@@ -203,7 +203,7 @@ pub use graph::{
     GraphBuilder, IdRequest, IdSource, Input, ItemFailure, Limit, Map, Node, NodeError, NodeFuture,
     OnFailure, Output, Signature, SubGraph, Target,
 };
-pub use observe::{NoopObserver, Observer};
+pub use observe::{NodeOutcome, NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
     AgentNode, Budgeted, CriticHistory, CriticSeat, GeneratorCritic, GeneratorCriticNode,
