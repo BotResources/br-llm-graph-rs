@@ -6,9 +6,9 @@
 //! origin of the node that makes the call and its arguments, and, for a
 //! tool, the id of the tool call), so a resumed run, which keeps its run id,
 //! gives the keys it gave before and the port finds the calls it had
-//! started. Everything else
-//! is the port's: the child's thread and job, the wait and its deadline,
-//! reading the answer back, finishing or cancelling the job.
+//! started. Everything else is the port's: the child's thread and job, the
+//! wait and its deadline, reading the answer back, finishing or cancelling
+//! the job.
 //!
 //! A call is built from its target (`RunnerTarget`, a runner type that is
 //! not blank), its arguments (`RunnerArguments`, a JSON object, fixed or a

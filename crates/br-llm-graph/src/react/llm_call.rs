@@ -170,7 +170,8 @@ impl Node for LlmCall {
         self.output.check(schema, site)
     }
 
-    /// `llm_call`: how its subjects are given, its request and its output.
+    /// `llm_call`: how its subjects are given, its request, its output, its
+    /// reply retries and how its reminder is given.
     fn describe(&self) -> crate::describe::NodeDescription {
         self.description()
     }

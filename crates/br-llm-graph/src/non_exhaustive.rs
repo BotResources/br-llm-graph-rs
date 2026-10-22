@@ -2,9 +2,9 @@
 //! node, `Judgment`, `LlmRequest`, `TextOutput`, `Ruling` and
 //! `CriticHistory`, the verdict reader's `Reading`, and those a runner port
 //! builds, `RunnerReply` and `AnswerBlock`, may gain variants in a later
-//! version. A host builds their variants as before, and a `match` outside the crate needs a wildcard arm:
-//! one without it does not compile (E0004; rustdoc checks the code itself
-//! only on nightly).
+//! version. A host builds their variants as before, and a `match` outside
+//! the crate needs a wildcard arm: one without it does not compile (E0004;
+//! rustdoc checks the code itself only on nightly).
 //!
 //! ```
 //! use br_llm_graph::{History, Judgment, LlmRequest, Prompt, Schema};

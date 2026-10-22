@@ -59,10 +59,13 @@ A tool is called with what names its call (`ToolContext`: the id and the name of
 A runner call asks another runner for an answer and waits for it, as a node (`RunnerCall`) or as a tool of an agent (`RunnerTool`), through the host's `RunnerPort`. The library owns the node, the tool and the call key (`CallKey`: the origin of the node that makes the call and its arguments, and, for a tool, the id of the tool call), so a resumed run, which keeps its run id, gives the keys it gave before and the port finds the calls it had started, and a node a loop runs again with the same arguments gets the same answer; the child's thread and job, the wait and its deadline, the read-back and the end of the child's job are the port's. An expected failure of the child fails the node with `RunnerFailed`, which the `Capture` of a call or of a map turns into data, and is an error result for a tool; a cancel drops the call under way, whose child the port cancels.
 
 ```rust
+use serde_json::{Map as Object, Value as Json};       // `Map` is also the graph's map
+
+let asked = document.clone();                         // `document` stays the map's item key
 let ask = RunnerCall {
     target: RunnerTarget::new("ask_a_document")?,     // the runner type it calls
     arguments: RunnerArguments::from_fn(move |state, _config| {
-        Ok(Map::from_iter([("document".to_owned(), Json::from(state.get(&document)?))]))
+        Ok(Object::from_iter([("document".to_owned(), Json::from(state.get(&asked)?))]))
     }),
     port: port.clone(),                               // the host's Arc<dyn RunnerPort>
     output: TextOutput::Append(answers.clone()),      // the answer's text, in item order
@@ -76,10 +79,11 @@ let select = RunnerTool { spec, target: RunnerTarget::new("documentalist")?, por
 A built graph describes itself as data, without running anything: its entry, its signature, its schema and its nodes in registration order, each with its kind, its realizes labels, the targets its edge declares and the fields of its kind, nested graphs included (the child of a call, the body of a map, an agent's own graph). A host or a CI job compares it with the graph it meant to build, such as a Runner's intent graph; the library compares and draws nothing. An edge built from a function declares its targets with `FnEdge::targets` (an `Always` declares its own): the build refuses a declared node the graph does not hold (`EdgeToUnknownNode`) and the run refuses a target the edge did not declare (`UndeclaredTarget`), so the description cannot be false. A description writes no state value, default, prompt, client, author name or secret: a subject a runner gives, and the arguments of a runner call, are written as how they are given (`fixed`, `ready_made`, `function`), a fixed value mapped into a call and a state key's default as their kinds, an author by its id and never its name, and no tool argument is written. It does write the graph's fixed bounds: fixed limits and counts, and the generator-critic's `final_generation`.
 
 ```rust
+let declared = [ask.clone(), skipped.clone()];      // the targets it may give
 let route = FnEdge::new(move |state: &State, _: &Config| {
     Ok(vec![if state.get(&notes)?.is_empty() { skipped.clone() } else { ask.clone() }])
 })
-.targets([ask.clone(), skipped.clone()]);           // the targets it may give
+.targets(declared);
 
 let graph = GraphBuilder::new(schema)
     .entry(plan_id.clone())
