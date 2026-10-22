@@ -17,7 +17,7 @@ use crate::react::react_agent::ReactAgent;
 use crate::react::test_support::{
     TURN_RANK, author, calls_step, config, first_turn, key, mock, schema, spec, text_step,
 };
-use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+use crate::react::tool::{Tool, ToolContext, ToolFuture, ToolOutput};
 use crate::react::tool_gate::SharedGates;
 use crate::react::tool_node::ToolNode;
 use crate::run::{Outcome, control, run};
@@ -53,6 +53,7 @@ impl Tool for GaugeTool {
     }
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,
@@ -114,6 +115,7 @@ async fn given_a_tool_node_limit_when_several_calls_are_pending_then_at_most_tha
         max_concurrency: Some(Limit::Fixed(NonZeroUsize::new(2).unwrap())),
         enabled: None,
         gates: Arc::new(SharedGates::default()),
+        declared: None,
         durable: None,
     };
     let graph = GraphBuilder::new(schema())

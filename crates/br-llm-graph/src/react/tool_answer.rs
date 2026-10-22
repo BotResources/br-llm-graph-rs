@@ -1,16 +1,20 @@
-//! How a tool node answers one call it owns: judged by the tool's hook,
-//! then run, or answered with an error result.
+//! How a tool node answers one call: judged by the tool's hook, then run,
+//! or answered with an error result (a tool the `enabled` key does not hold,
+//! a tool no tool node runs, a refusal).
 
-use br_llm_messages::{Text, ToolCall, ToolResult, ToolResultBlock};
+use br_llm_messages::{Text, ToolCall, ToolName, ToolResult, ToolResultBlock};
 
+use crate::origin::Origin;
 use crate::react::hook::{HookError, Judgment};
-use crate::react::tool::{Tool, ToolError, ToolOutput};
+use crate::react::tool::{Tool, ToolContext, ToolError, ToolOutput};
 use crate::state::{Config, State};
 
-/// How one owned call is answered.
+/// How one call of a tool node is answered.
 pub(crate) enum Answer {
     /// The call names a tool the `enabled` key does not hold.
     NotEnabled,
+    /// The call names a tool no tool node of the loop runs.
+    Unavailable,
     /// A hook of another call failed before this one started: it was not
     /// started.
     NotStarted,
@@ -23,10 +27,11 @@ pub(crate) enum Answer {
 }
 
 /// Judges `call` by the tool's hook, when there is one, then runs it when it
-/// is accepted.
+/// is accepted, as a call of the tool node at `origin`.
 pub(crate) async fn judge_and_run(
     tool: &dyn Tool,
     call: &ToolCall,
+    origin: &Origin,
     state: &State,
     config: &Config,
 ) -> Answer {
@@ -37,7 +42,11 @@ pub(crate) async fn judge_and_run(
             Err(error) => return Answer::HookFailed(error),
         }
     }
-    Answer::Ran(tool.call(call.arguments.clone(), state, config).await)
+    let context = ToolContext::new(call.id.clone(), call.name.clone(), origin.clone());
+    Answer::Ran(
+        tool.call(&context, call.arguments.clone(), state, config)
+            .await,
+    )
 }
 
 /// One text block holding `text`; none when it is blank.
@@ -58,4 +67,20 @@ pub(crate) fn text_or(text: &str, fallback: &str) -> Vec<ToolResultBlock> {
 /// The error result of `call`, holding `content`.
 pub(crate) fn error_result(call: &ToolCall, content: Vec<ToolResultBlock>) -> ToolResult {
     ToolResult::new(call.id.clone(), call.name.clone(), content, true)
+}
+
+/// The text answering a call of `name`, a tool of the node the `enabled` key
+/// does not hold.
+pub(crate) fn not_enabled(name: &ToolName) -> String {
+    format!("Tool {name} is not enabled for this run: this call was not executed.")
+}
+
+/// The text answering a call of `name`, a tool no tool node of the loop
+/// runs: it names the tools `offered` to the call, in the order declared.
+pub(crate) fn unavailable(name: &ToolName, offered: &[&ToolName]) -> String {
+    let offered: Vec<&str> = offered.iter().map(|name| name.as_str()).collect();
+    format!(
+        "Tool {name} is not available: this call was not executed. The tools available are: {}.",
+        offered.join(", ")
+    )
 }

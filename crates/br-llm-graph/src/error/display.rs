@@ -100,9 +100,6 @@ impl std::fmt::Display for GraphError {
                     "tool node runs tool {name} the llm node does not declare"
                 )
             }
-            GraphError::PendingToolUnsatisfiable { name } => {
-                write!(f, "pending tool call {name} names a tool no tool node runs")
-            }
             GraphError::EnabledKeyMismatch { key } => {
                 write!(f, "enabled key {key} is not a list of strings state key")
             }

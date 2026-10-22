@@ -1,27 +1,21 @@
+//! The split of the tools between the tool nodes of a ReAct loop: each
+//! declared tool run by exactly one tool node, and no tool node running a
+//! tool the model call does not declare.
+
 use std::sync::Arc;
 
-use serde_json::json;
-
-use crate::graph::{Context, GraphBuilder, Target};
-use crate::observe::NoopObserver;
+use crate::graph::{GraphBuilder, Target};
 use crate::react::given::Model;
 use crate::react::llm_node::LlmNode;
 use crate::react::react_agent::ReactAgent;
 use crate::react::react_loop::ReactLoop;
 use crate::react::test_support::*;
 use crate::react::tool::Tool;
-use crate::run::control;
-use crate::run::run;
-use crate::testkit::SeqIds;
 use crate::value::{EndLabel, NodeId};
 use br_llm_clients_core::OutputMode;
 
 fn nid(name: &str) -> NodeId {
     NodeId::new(name).unwrap()
-}
-
-fn ctx() -> Context {
-    Context::new(Arc::new(NoopObserver), Arc::new(SeqIds::new()))
 }
 
 fn llm_node(
@@ -112,39 +106,6 @@ fn given_tool_node_tool_not_declared_when_react_loop_added_then_refused() {
     assert!(matches!(
         result.err(),
         Some(crate::error::GraphError::ToolNotDeclared { .. })
-    ));
-}
-
-#[tokio::test]
-async fn given_model_calls_unowned_tool_when_run_then_pending_unsatisfiable() {
-    let client = Arc::new(mock(vec![tool_call_step("c1", "ghost", json!({}))]));
-    let llm = llm_node(client, vec![Arc::new(EchoTool)]);
-    let react = ReactLoop {
-        llm: nid("llm"),
-        tool_nodes: vec![(nid("tools"), vec![Arc::new(EchoTool)])],
-        after: Target::End(EndLabel::new("done").unwrap()),
-        thread: None,
-    };
-    let graph = react
-        .add(GraphBuilder::new(schema()).entry(nid("llm")), llm)
-        .unwrap()
-        .build()
-        .unwrap();
-    let (_sender, mut channel) = control();
-    let failure = run(
-        &graph,
-        &config(),
-        seeded_state(),
-        None,
-        &ctx(),
-        &mut channel,
-    )
-    .await
-    .err()
-    .unwrap();
-    assert!(matches!(
-        failure.error,
-        crate::error::GraphError::PendingToolUnsatisfiable { .. }
     ));
 }
 

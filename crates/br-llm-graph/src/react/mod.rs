@@ -217,9 +217,13 @@ mod react_round_limit_tests;
 #[cfg(test)]
 mod react_tool_concurrency_tests;
 #[cfg(test)]
+mod react_tool_context_tests;
+#[cfg(test)]
 mod react_tool_result_tests;
 #[cfg(test)]
 mod react_turn_client_tests;
+#[cfg(test)]
+mod react_unavailable_tool_tests;
 #[cfg(test)]
 mod test_call;
 #[cfg(test)]
@@ -256,5 +260,5 @@ pub use sink::complete;
 pub use thread_store::{
     MessageStatus, ThreadError, ThreadFuture, ThreadMessage, ThreadStore, ThreadView, TurnEnd,
 };
-pub use tool::{Tool, ToolError, ToolFuture, ToolOutput};
+pub use tool::{Tool, ToolContext, ToolError, ToolFuture, ToolOutput};
 pub use verdict::{Verdict, VerdictOverride, VerdictReader};

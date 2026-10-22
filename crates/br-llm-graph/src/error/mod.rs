@@ -24,9 +24,9 @@ pub use fault::NodeFault;
 /// A build refusal of a node reaches the caller inside `InvalidNode`; a node
 /// failure inside `NodeFailed`; a failure of a called graph inside
 /// `SubGraphFailed`, inside the `NodeFailed` of the calling node. An edge
-/// refusal (`UndeclaredTarget`, `PendingToolUnsatisfiable`, `ToolLimitReached`,
-/// a refused `Count`) is the run's error itself, and so is a refusal before the first
-/// superstep (`StateSchemaMismatch`, `ConfigSchemaMismatch`, `UnknownNode`,
+/// refusal (`UndeclaredTarget`, `ToolLimitReached`, a refused `Count`) is the
+/// run's error itself, and so is a refusal before the first superstep
+/// (`StateSchemaMismatch`, `ConfigSchemaMismatch`, `UnknownNode`,
 /// `EmptyCursor`). The source (`std::error::Error::source`) of `NodeFailed`
 /// is its fault, of `Message` the br-llm-messages error, of `Model` the
 /// `ClientError`, of `Request` the `BuildError`, of `SubGraphFailed` the
@@ -184,11 +184,6 @@ pub enum GraphError {
     /// A tool of a tool node the agent does not declare.
     ToolNotDeclared {
         /// The tool.
-        name: ToolName,
-    },
-    /// A pending call naming a tool no tool node runs.
-    PendingToolUnsatisfiable {
-        /// The tool the call names.
         name: ToolName,
     },
     /// An enabled key that is not a list-of-strings state key.

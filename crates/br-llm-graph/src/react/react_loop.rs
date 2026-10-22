@@ -8,7 +8,7 @@ use crate::error::GraphError;
 use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Target};
 use crate::react::agent_call::ThreadBinding;
 use crate::react::given::LoopNode;
-use crate::react::helpers::{last_turn_state, pending_calls};
+use crate::react::helpers::last_turn_state;
 use crate::react::llm_node::LlmNode;
 use crate::react::round_limit::{RoundLimit, completed_rounds};
 use crate::react::round_writer::RoundWriters;
@@ -25,6 +25,11 @@ use crate::value::{Key, NodeId};
 /// (`LlmNode::tool_concurrency`, `LlmNode::round_limit`), their one source:
 /// the tool nodes share that limit, at most that many calls at once across
 /// all of them.
+///
+/// The first of `tool_nodes` also answers the pending calls that name a tool
+/// no tool node runs, so a reply that calls one goes to the tool nodes like
+/// any other and the turn goes on: the agents always give the loop one tool
+/// node at least (`tools` without a split, even without a tool).
 pub(crate) struct ReactLoop {
     pub(crate) llm: NodeId,
     pub(crate) tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
@@ -54,6 +59,12 @@ impl ReactLoop {
         let key = llm_node.key.clone();
         let author = llm_node.author.clone();
         let enabled = llm_node.enabled.clone();
+        // The first tool node answers the calls that name none of them.
+        let declared: Vec<ToolName> = llm_node
+            .tools
+            .iter()
+            .map(|tool| tool.spec().name().clone())
+            .collect();
         let mut builder = builder.join(self.llm.clone(), llm_node);
         // One gate per superstep for all the tool nodes: the limit bounds
         // their calls together.
@@ -72,6 +83,7 @@ impl ReactLoop {
                     max_concurrency: tool_concurrency.clone(),
                     enabled: enabled.clone(),
                     gates: gates.clone(),
+                    declared: (node == 0).then(|| declared.clone()),
                     durable: self.thread.clone().map(|thread| DurableTools {
                         thread,
                         rounds: rounds.clone(),
@@ -150,7 +162,10 @@ impl ReactLoop {
 
     /// The edge after the model call: to the tool nodes while the reply
     /// calls tools, to the round-limit node past the last allowed round,
-    /// else where the loop ends (`after`). It declares all of them.
+    /// else where the loop ends (`after`). It declares all of them. A reply
+    /// that calls a tool no tool node runs goes to the tool nodes too: the
+    /// first answers that call; past the last allowed round, the limit
+    /// handles it first.
     fn llm_edge(
         &self,
         key: Key,
@@ -161,11 +176,6 @@ impl ReactLoop {
             .tool_nodes
             .iter()
             .map(|(id, _)| Target::Node(id.clone()))
-            .collect();
-        let covered: HashSet<ToolName> = self
-            .tool_nodes
-            .iter()
-            .flat_map(|(_, tools)| tools.iter().map(|tool| tool.spec().name().clone()))
             .collect();
         let after = self.after.clone();
         let llm = self.llm.clone();
@@ -189,13 +199,6 @@ impl ReactLoop {
                         let max = round_limit.max_rounds.resolve(config)?.get();
                         if completed_rounds(conversation, &author) >= max {
                             return round_limit.reached(&llm, conversation, &author, max);
-                        }
-                    }
-                    for call in pending_calls(state, &key, &author)? {
-                        if !covered.contains(&call.name) {
-                            return Err(GraphError::PendingToolUnsatisfiable {
-                                name: call.name.clone(),
-                            });
                         }
                     }
                     Ok(tool_targets.clone())

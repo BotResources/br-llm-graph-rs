@@ -47,6 +47,7 @@ pub(crate) fn tool_node(
         max_concurrency,
         enabled,
         gates: Arc::new(SharedGates::default()),
+        declared: None,
         durable: None,
     }
 }

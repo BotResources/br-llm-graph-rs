@@ -177,36 +177,16 @@ pub(crate) fn declare_count(schema: SchemaBuilder, count: &Count) -> SchemaBuild
     }
 }
 
-/// Without a split, `tools` is a node of the graph, whether tools are
-/// declared or not: the refusal of a round-limit node of that id
-/// (`DuplicateNode`), to return where the graph's build would refuse a
-/// round-limit node named like its other own nodes, after the rules of the
-/// ReAct loop.
-pub(crate) fn tools_node_clash(
-    tool_nodes: &[(NodeId, Vec<Arc<dyn Tool>>)],
-    round_limit: Option<&RoundLimit>,
-    tools: &NodeId,
-) -> Option<GraphError> {
-    let limit_node = round_limit.and_then(|limit| match &limit.on_limit {
-        OnLimit::Continue { node, .. } | OnLimit::End { node, .. } => Some(node),
-        OnLimit::Error => None,
-    });
-    match limit_node {
-        Some(node) if tool_nodes.is_empty() && node == tools => {
-            Some(GraphError::DuplicateNode { id: node.clone() })
-        }
-        Some(_) | None => None,
-    }
-}
-
 /// The split of `tools` between tool nodes: `tool_nodes`, or without a
-/// split one node, `tools`, that runs them all (none without a tool).
+/// split one node, `id`, that runs them all. Without a tool too, so a reply
+/// that calls a tool the agent does not have is answered there, and a
+/// round-limit node of that id collides with it (`DuplicateNode`).
 pub(crate) fn split_tools(
     tool_nodes: Vec<(NodeId, Vec<Arc<dyn Tool>>)>,
     tools: &[Arc<dyn Tool>],
     id: &NodeId,
 ) -> Vec<(NodeId, Vec<Arc<dyn Tool>>)> {
-    if tool_nodes.is_empty() && !tools.is_empty() {
+    if tool_nodes.is_empty() {
         vec![(id.clone(), tools.to_vec())]
     } else {
         tool_nodes

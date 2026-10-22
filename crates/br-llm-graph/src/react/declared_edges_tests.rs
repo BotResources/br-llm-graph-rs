@@ -58,7 +58,8 @@ fn given_a_react_agent_when_built_then_every_edge_declares_its_targets() {
 }
 
 #[test]
-fn given_a_react_agent_without_tools_when_built_then_the_model_call_declares_the_answer_alone() {
+fn given_a_react_agent_without_tools_when_built_then_its_tools_node_is_declared_to_answer_a_call_it_lacks()
+ {
     let mut agent = agent(&mock(Vec::new()));
     agent.tools = Vec::new();
     let graph = agent.graph().unwrap();
@@ -66,7 +67,8 @@ fn given_a_react_agent_without_tools_when_built_then_the_model_call_declares_the
         declared(&graph),
         named(vec![
             ("enter", vec![to("llm"), to("answer")]),
-            ("llm", vec![to("answer")]),
+            ("llm", vec![to("tools"), to("answer")]),
+            ("tools", vec![to("llm")]),
             ("answer", vec![end("done")]),
         ])
     );
@@ -143,7 +145,8 @@ fn given_a_generator_critic_when_built_then_every_edge_declares_its_targets() {
     assert_eq!(
         declared(&graph),
         named(vec![
-            ("generate", vec![to("check")]),
+            ("generate", vec![to("tools"), to("check")]),
+            ("tools", vec![to("generate")]),
             (
                 "route",
                 vec![to("generate"), to("check"), to("critique"), to("finish")]

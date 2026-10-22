@@ -38,7 +38,6 @@ impl std::error::Error for GraphError {
             | GraphError::ToolNotCovered { .. }
             | GraphError::ToolCoveredTwice { .. }
             | GraphError::ToolNotDeclared { .. }
-            | GraphError::PendingToolUnsatisfiable { .. }
             | GraphError::EnabledKeyMismatch { .. }
             | GraphError::Structured { .. }
             | GraphError::LimitKeyMismatch { .. }

@@ -20,7 +20,7 @@ use crate::react::react_round_limit_support::{
     run_graph, state_with,
 };
 use crate::react::test_support::{author, calls_step, key, mock, spec, text_step, tool_call_step};
-use crate::react::tool::{Tool, ToolFuture};
+use crate::react::tool::{Tool, ToolContext, ToolFuture};
 use crate::state::{Config, State};
 
 /// The refusal of a limit of `max`, as the limit node writes it.
@@ -191,6 +191,7 @@ impl Tool for Spoofing {
 
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,

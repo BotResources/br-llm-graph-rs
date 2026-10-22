@@ -18,7 +18,7 @@ use crate::react::react_agent::ReactAgent;
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::test_support::{key, mock};
 use crate::react::test_tools::spec;
-use crate::react::tool::{Tool, ToolFuture};
+use crate::react::tool::{Tool, ToolContext, ToolFuture};
 use crate::state::{Config, Schema, State, StateKey};
 use crate::value::{EndLabel, NodeId};
 
@@ -32,6 +32,7 @@ impl Tool for Named {
 
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,

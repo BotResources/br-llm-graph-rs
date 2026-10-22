@@ -36,6 +36,7 @@ fn given_a_generator_critic_when_described_then_its_nodes_hold_its_seats_and_cou
         .collect();
     let expected = [
         ("generate", "model_call"),
+        ("tools", "tools"),
         ("route", "node"),
         ("check", "node"),
         ("critique", "model_call"),

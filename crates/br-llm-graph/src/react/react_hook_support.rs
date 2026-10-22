@@ -12,7 +12,7 @@ use serde_json::{Value as Json, json};
 use crate::react::hook::{Hook, HookFuture, Judgment};
 pub(crate) use crate::react::react_hook_node_support::*;
 use crate::react::test_support::*;
-use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+use crate::react::tool::{Tool, ToolContext, ToolFuture, ToolOutput};
 use crate::state::{Config, State};
 
 /// How many hooks and tools of the test run at once, and the most at once.
@@ -209,6 +209,7 @@ impl Tool for GuardedTool {
 
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         arguments: Json,
         _state: &'a State,
         _config: &'a Config,

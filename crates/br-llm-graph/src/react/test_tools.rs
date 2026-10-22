@@ -10,7 +10,7 @@ use br_llm_messages::{Text, ToolName, ToolResultBlock};
 use serde_json::Value as Json;
 
 use crate::react::test_support::key;
-use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+use crate::react::tool::{Tool, ToolContext, ToolFuture, ToolOutput};
 use crate::state::{Config, State, Value};
 use crate::update::Update;
 
@@ -33,6 +33,7 @@ impl Tool for EchoTool {
     }
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,
@@ -54,6 +55,7 @@ impl Tool for TallyTool {
     }
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,
@@ -80,6 +82,7 @@ impl Tool for ScopeTool {
     }
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         state: &'a State,
         _config: &'a Config,
@@ -106,6 +109,7 @@ impl Tool for WriteFileTool {
     }
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,
@@ -128,6 +132,7 @@ impl Tool for StrictTool {
     }
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         arguments: Json,
         _state: &'a State,
         _config: &'a Config,
@@ -159,6 +164,7 @@ impl Tool for YieldingEcho {
     }
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         _arguments: Json,
         _state: &'a State,
         _config: &'a Config,

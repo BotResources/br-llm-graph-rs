@@ -15,7 +15,7 @@ use serde_json::{Value as Json, json};
 
 use super::Gate;
 use crate::react::test_support::{EchoTool, spec};
-use crate::react::tool::{Tool, ToolFuture, ToolOutput};
+use crate::react::tool::{Tool, ToolContext, ToolFuture, ToolOutput};
 use crate::state::{Config, State};
 
 /// A waker that counts its wakes; its strong count tells the live clones.
@@ -251,6 +251,7 @@ impl Tool for BusyTool {
 
     fn call<'a>(
         &'a self,
+        _call: &'a ToolContext,
         arguments: Json,
         _state: &'a State,
         _config: &'a Config,

@@ -210,8 +210,8 @@ pub use react::{
     GeneratorSeat, Given, History, Hook, HookError, HookFuture, Judgment, LlmCall, LlmOutput,
     LlmRequest, LoopNode, MessageStatus, Model, ModelNode, OnLimit, Prompt, ReactAgent, Reads,
     RequestContext, RoundLimit, RuleCheck, Ruling, Scheduled, ThreadError, ThreadFuture,
-    ThreadMessage, ThreadStore, ThreadView, Tool, ToolError, ToolFuture, ToolOutput, TurnEnd,
-    Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
+    ThreadMessage, ThreadStore, ThreadView, Tool, ToolContext, ToolError, ToolFuture, ToolOutput,
+    TurnEnd, Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
 };
 pub use run::{
     Checkpoint, Control, ControlSender, Cursor, Outcome, PendingEntry, PendingWrites, RunFailure,

@@ -7,7 +7,7 @@ use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
 use crate::graph::{Always, FnEdge, Graph, GraphBuilder, Target};
 use crate::react::agent_build::{
-    AgentKeys, declare_count, declare_limit, round_limit_flag, split_tools, tools_node_clash,
+    AgentKeys, declare_count, declare_limit, round_limit_flag, split_tools,
 };
 use crate::react::bounds::Bounds;
 use crate::react::check::{CheckNode, EMPTY_ANSWER_CRITIQUE};
@@ -180,11 +180,6 @@ impl GeneratorCritic {
             flag.as_ref(),
         );
 
-        let clash = tools_node_clash(
-            &generator.tool_nodes,
-            generator.round_limit.as_ref(),
-            &names.tools,
-        );
         let tool_nodes = split_tools(generator.tool_nodes, &generator.tools, &names.tools);
         let flag_limit = flag.zip(generator.round_limit.clone());
         let react = ReactLoop {
@@ -208,9 +203,6 @@ impl GeneratorCritic {
             seat: Some(duo.clone()),
         };
         let mut builder = react.add(builder, llm)?;
-        if let Some(clash) = clash {
-            return Err(clash);
-        }
         if let Some(prepare) = self.prepare {
             builder = builder.node(names.prepare.clone(), Prepare(prepare)).edge(
                 names.prepare.clone(),

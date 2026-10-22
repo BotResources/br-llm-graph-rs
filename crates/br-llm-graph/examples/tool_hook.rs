@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering;
 use br_llm_clients_core::{OutputMode, ToolSpec};
 use br_llm_graph::{
     Config, Hook, HookFuture, Judgment, Model, Outcome, Prompt, ReactAgent, State, StateKey, Tool,
-    ToolFuture, control, run,
+    ToolContext, ToolFuture, control, run,
 };
 use br_llm_messages::{Author, Conversation, ToolCallId};
 use serde_json::{Value as Json, json};
@@ -61,8 +61,14 @@ impl Tool for GuardedWrite {
         Some(&self.hook)
     }
 
-    fn call<'a>(&'a self, arguments: Json, state: &'a State, config: &'a Config) -> ToolFuture<'a> {
-        self.tool.call(arguments, state, config)
+    fn call<'a>(
+        &'a self,
+        call: &'a ToolContext,
+        arguments: Json,
+        state: &'a State,
+        config: &'a Config,
+    ) -> ToolFuture<'a> {
+        self.tool.call(call, arguments, state, config)
     }
 }
 

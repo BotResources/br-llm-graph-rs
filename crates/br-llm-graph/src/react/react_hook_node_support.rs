@@ -68,6 +68,7 @@ pub(crate) fn tool_graph(tools: Vec<Arc<dyn Tool>>, width: Option<usize>, enable
         max_concurrency: width.map(|width| Limit::Fixed(NonZeroUsize::new(width).unwrap())),
         enabled: enabled.then(|| key("enabled")),
         gates: Arc::new(SharedGates::default()),
+        declared: None,
         durable: None,
     };
     GraphBuilder::new(schema())
