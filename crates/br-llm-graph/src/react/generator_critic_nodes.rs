@@ -43,10 +43,10 @@ impl Node for Prepare {
 /// is the thread as it stands, `thread` the id of the thread, and the call's
 /// turns are those the thread holds under the ids of the call, rank after
 /// rank, a turn found open failed and repaired first; the call goes on in
-/// the turn of the next rank. A turn of the generator the thread holds
-/// failed or cancelled is no generation: it stays in `conversation` but is
-/// not one of the call's turns, so it is neither judged nor counted, and the
-/// generator answers again. Where the run goes is the edge's (see
+/// the turn of the next rank. A completed turn of the generator is one of
+/// the call's turns; a failed or cancelled one is left out: it stays in
+/// `conversation`, is neither judged nor counted, and the call is routed on
+/// the turn before it. Where the run goes is the edge's (see
 /// `Router::entry`).
 pub(crate) struct RouteNode {
     pub(crate) duo: Duo,
@@ -99,9 +99,9 @@ impl Node for RouteNode {
 }
 
 impl RouteNode {
-    /// Whether `turn`, which the thread holds at `status`, is a generation
-    /// cut before it ended: a turn of the generator failed (by a crash, or
-    /// under a reply asked for again) or cancelled, which is no generation.
+    /// Whether `turn`, which the thread holds at `status`, is a turn of the
+    /// generator left out of the call's turns: one failed (by a crash, under
+    /// a reply asked for again, or by the host) or cancelled.
     fn cut_generation(&self, turn: &Turn, status: MessageStatus) -> bool {
         turn.author() == Some(&self.duo.generator)
             && matches!(status, MessageStatus::Failed | MessageStatus::Cancelled)

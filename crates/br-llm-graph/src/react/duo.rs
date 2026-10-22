@@ -155,10 +155,10 @@ impl Duo {
     }
 
     /// The kind of `turn`: a turn of the generator is a generation (the entry
-    /// of a durable call does not list one the thread holds failed or
-    /// cancelled, which is none, see `RouteNode`); a turn of the critic is
-    /// told by the stop reason of its final step, exactly
-    /// one of the three a message of the critic is written with
+    /// of a durable call lists only its completed ones: a failed or
+    /// cancelled one is left out, see `RouteNode`); a turn of the critic is
+    /// told by the stop reason of its final step, exactly one of the three a
+    /// message of the critic is written with
     /// (`end_turn`, `other(rule_check)`, `other(accepted)`). Any other turn
     /// is not one of the call's: another author's, and a message of the
     /// critic with no final step or another stop reason, such as one cut

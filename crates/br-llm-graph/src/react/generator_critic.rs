@@ -80,17 +80,20 @@ use crate::value::Key;
 /// starts `conversation` from `opening` (from the thread when durable) and
 /// routes on the last turn of this call: in memory, the last turn of the
 /// generator or the critic since the trigger; durable, the turns the thread
-/// holds under the ids of this call. A generation goes to the check; a
-/// critique or a revision is routed as after it; an acceptance finishes
-/// `validated` without calling a model; nothing goes to the generator.
+/// holds under the ids of this call. A completed turn of the generator goes
+/// to the check; a failed or cancelled one is left out, and the call is
+/// routed on the turn before it. A critique or a revision is routed as
+/// after it; an acceptance finishes `validated` without calling a model;
+/// nothing goes to the generator.
 ///
 /// Durable, a turn found open on entry is failed and repaired by the store
 /// (see `ThreadStore`), then routed by its kind. A turn of the generator the
-/// thread holds failed or cancelled (cut by a crash, or failed under a reply
-/// asked for again) is no generation: it stays in the conversation, is
-/// neither judged nor counted, and the generator answers again in the turn
-/// of the next rank; a reply asked for again after its turn was failed is
-/// made there, inside the same generation. A message of the critic is a
+/// thread holds failed or cancelled (cut by a crash, failed under a reply
+/// asked for again, or ended so by the host) is left out: it stays in the
+/// conversation, is neither judged nor counted, and the call is routed on
+/// the turn before it, so the generator answers again in the turn of the
+/// next rank; a reply asked for again after its turn was failed is made
+/// there, inside the same generation. A message of the critic is a
 /// judgment only with one of the three stop reasons above: a repaired one
 /// (cut while it was written, with another stop reason or no step) is not
 /// one of the call's turns, so the critic judges the same answer again,

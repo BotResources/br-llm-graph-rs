@@ -20,6 +20,7 @@ use crate::react::generator_critic_support::*;
 use crate::react::react_durable_support::{Host, nth_thread, opening, said};
 use crate::react::seats::GeneratorSeat;
 use crate::react::test_support::*;
+use crate::react::thread_store::{ThreadStore, TurnEnd};
 use crate::testkit::{Op, TestStore};
 
 /// A generator reply cut after two events, refused as malformed.
@@ -235,4 +236,62 @@ async fn given_a_call_whose_generation_was_retried_in_the_next_rank_when_it_runs
         "as the run that retried it counted"
     );
     assert_eq!(generator_client.calls(), 2, "no model is called again");
+}
+
+#[tokio::test]
+async fn given_a_generator_turn_the_host_cancelled_when_the_call_resumes_then_it_is_left_out_and_the_call_is_routed_on_the_turn_before_it()
+ {
+    let store = Arc::new(TestStore::new());
+    let generator_client = mock(vec![text_step("a")]);
+    cut(&generator_client, "a dra");
+    let critic_client = mock(vec![verdict(false, "fix it"), verdict(true, "Good.")]);
+    let graph = durable_duo(&generator_client, &critic_client, &store)
+        .graph()
+        .unwrap();
+    let host = Host::new();
+    failed_in(
+        call_on(&host, &graph, opening(&[said("i1", "explain")]), "", "r1").await,
+        "generate",
+    );
+    let thread = nth_thread(1);
+    store
+        .end_turn(&thread, &turn("t4"), TurnEnd::Cancelled)
+        .await
+        .unwrap();
+
+    push(&generator_client, text_step("b"));
+    let done = ended(
+        call_on(
+            &host,
+            &graph,
+            opening(&[said("i1", "explain")]),
+            thread.as_str(),
+            "r1",
+        )
+        .await,
+        "validated",
+    );
+
+    assert_eq!(done.str(&key("answer")).unwrap(), "b");
+    assert_eq!(
+        done.int(&key("nb_generations")).unwrap(),
+        2,
+        "the cancelled turn is not counted"
+    );
+    assert_eq!(
+        shape(done.transcript()),
+        [
+            "user",
+            "writer:a",
+            "reviewer:fix it",
+            "writer:a dra",
+            "writer:b",
+            "reviewer:Good."
+        ],
+        "routed on the critique before it, the generator answers again"
+    );
+    assert_eq!(critic_client.calls(), 2, "the cancelled turn is not judged");
+    let view = store.view(&thread).unwrap();
+    assert_eq!(view.message("t4").unwrap().status, MessageStatus::Cancelled);
+    assert_eq!(view.message("t5").unwrap().status, MessageStatus::Completed);
 }
