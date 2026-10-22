@@ -9,6 +9,135 @@ form to decide whether a version ships.
 
 ## Unreleased
 
+## 0.7.0 - 2026-10-22
+
+Breaking: a runner calls another runner, as a node or as a tool of an agent,
+through a runner port the host implements; a tool call gets its id, its name
+and the origin of its tool node; a call to a tool no tool node runs is
+answered, never a run failure; a structured reply is checked against its
+shape, and a reply that cannot be used is asked for again within the node's
+reply retries; the node finished event says how the node ended; the thread
+store is given each finished step, with its model and its usage.
+
+### Added
+
+- The runner call (module `runner`, re-exported at the root). `RunnerPort`,
+  the host's port, takes one call (`RunnerRequest`: its `CallKey`, its
+  `RunnerTarget`, its arguments, a JSON object) and gives
+  `RunnerReply::Answered(RunnerAnswer)` (the child's blocks in order,
+  `AnswerBlock::Text` / `Structured`, and its thread),
+  `RunnerReply::Failed { reason }`, or a `RunnerError`. The library owns no
+  task, timer or transport: a deadline on the answer is the port's, and a
+  cancel drops the call, whose child the port cancels once.
+- `CallKey` names one runner call across attempts: the origin of the node
+  that makes it, its arguments as canonical JSON text (no whitespace, object
+  names sorted by their UTF-8 bytes, strings and numbers as serde_json writes
+  them, so `1` and `1.0` are two keys) and, for a tool, the tool call id. A
+  resumed run gives the keys it gave; a loop that runs a node again with the
+  same arguments names the same call. A port hashes the key before deriving
+  ids from it.
+- `RunnerTarget`, a runner type, refused when blank (`RunnerTargetBlank`).
+- `RunnerCall`, a node: its arguments fixed or a function of the state and
+  the configuration (`RunnerArguments`); the answer's text (the JSON text of
+  its structured block when it has one, else its text blocks joined
+  verbatim), and optionally the child's thread, through a `RunnerOutput`
+  (`Set`, `Append`). An expected failure of the child fails it with
+  `RunnerFailed { target, reason }`, whose message is the child's reason
+  verbatim (`runner call failed` when blank), so a `Capture` turns it into
+  data; an error of the port fails it with `Runner`, carrying it. Its outputs
+  are checked at build, two `Set` of one key included (`SetConflict`); as a
+  map body, `Append` only (`MapBodySet`). Described as `runner_call`: its
+  target, how its arguments are given (never their value) and its outputs.
+- `RunnerTool`, a tool: its spec the runner's, an optional hook, its
+  arguments the tool call's, its key the tool node's origin and the tool call
+  id; its result the answer's blocks, a structured value as its JSON text; a
+  child's failure is an error result holding the reason, a port error a tool
+  error. Described by its name, as any tool.
+- `ToolContext`, what a tool call is called with: the call's id and name and
+  the origin of the tool node that runs it.
+- `NodeOutcome`, how a node of a superstep ended: `Updates` (it returned its
+  updates, or reused those it had recorded; applying the superstep may still
+  refuse them), `Error` or `Panic`. It follows what the node itself did: a
+  call whose child fails returns an error, or its capture updates under
+  `OnFailure::Capture`; a panic in a map's body is the map's. Exhaustive, as
+  `TurnEnd`.
+- A structured value fits its shape when it is an object that holds every
+  required parameter and no name the shape does not declare, each value of
+  its parameter's kind (a string, a number, a JSON integer, a boolean, a
+  string among an enum's values, an array whose items fit, an object that
+  fits its parameters); a `null` member holds nothing. The reason names the
+  place, never the value found.
+- Replies that cannot be used: one the client refuses (`ReplyUnusable`,
+  `MalformedResponse`), or, with a structured output mode, a final reply (one
+  that calls no tool) whose structured block is missing or does not fit. The
+  LLM call, the ReAct agent and the generator seat ask for it again within
+  `reply_retries` (`Count`, 0 by default): the request built again for the
+  next attempt, then a user message holding `reminder` (a `Prompt`, each
+  `{reason}` replaced; one more text of a trailing relay; a blank reminder
+  sends the request alone), the attempt one higher. A retry never becomes
+  part of the conversation and counts against no budget and no round limit;
+  the generator's is no generation, no revision and no critique. With no
+  retry left the node fails with `Model` or `Structured`. The round limit's
+  `End` closing step is not checked.
+- The reply retries keys (int) of the ReAct agent and of the generator; the
+  agents' entry refuses a negative one before any model call
+  (`CountNegative`).
+- `RequestContext::attempt` on every context, counted by the reply retries,
+  and for the critic by its verdict retries.
+- `Reading`: a verdict reader gives `Reading::Verdict`, or
+  `Reading::Unreadable { reason }`, an unreadable verdict asked for again
+  with that reason; its error still fails the run as returned.
+- `ThreadStore::finish_step`, a provided method that does nothing by
+  default: once the stream of a step a client returned has ended, the store
+  is given the step, with the model that answered and its usage.
+- The description writes `reply_retries` and `reminder` on `llm_call` and on
+  the ReAct agent's and the generator's `model_call`.
+- The example `runner_call`, with an in-memory runner port a host can copy
+  (`examples/common/runners.rs`).
+
+### Changed
+
+- **Breaking:** `Tool::call` takes `&ToolContext` before its arguments.
+- **Breaking:** a pending call that names a tool no tool node runs is not
+  executed: the first tool node answers it with `Tool {name} is not
+  available: this call was not executed. The tools available are: {names}.`
+  (the declared tools the enabled key holds, in declaration order), or
+  `… No tool is available.` when none is offered, and the turn goes on. Past
+  the last allowed round the round limit still answers first.
+- **Breaking:** without a split, a ReAct agent or a generator seat always has
+  its node `tools`, even without a tool; its description holds it and the
+  model call's edge declares it.
+- **Breaking:** `Observer::node_finished` takes the node's `NodeOutcome`.
+- **Breaking:** `LlmCall`, `ReactAgent` and `GeneratorSeat` gain
+  `reply_retries` and `reminder`.
+- **Breaking:** `VerdictReader` returns `Result<Reading, GraphError>`.
+- **Breaking:** a structured reply that does not fit its shape, or has no
+  structured block, fails with `Structured` (the LLM call wrote its text
+  blocks in 0.6).
+- **Breaking:** a critic reply the client refuses as unusable or malformed
+  is an unreadable verdict, asked for again within the verdict retries, then
+  `Structured` (it failed with `Model` in 0.6).
+- **Breaking:** a reply asked for again asks the model again, the attempt
+  one higher, and the client it gives runs the rest of the turn (0.6 ran a
+  turn on one client).
+- **Breaking:** a durable generator-critic's turn of the generator that the
+  thread holds failed or cancelled is no generation: it stays in the
+  conversation, is neither judged nor counted, and the call is routed on the
+  turn before it (0.6 judged a generation a crash cut, on its partial text).
+- A durable agent with a structured output mode pushes a step's events to
+  its thread once the step is checked: it no longer streams into its thread
+  live. In the plain mode, a reply refused after some of its events reached
+  the thread, with a retry left, fails the turn (`TurnEnd::Failed`), and the
+  agent reads its thread again and asks in the turn of the next rank.
+  `ThreadStore` documents the ends the library sends.
+- **Breaking:** `GraphError` gains `RunnerFailed`, `Runner` and
+  `RunnerTargetBlank`; `runner_call` is a library kind, so
+  `NodeDescription::labelled("runner_call")` is refused.
+
+### Removed
+
+- **Breaking:** `GraphError::PendingToolUnsatisfiable`.
+
 ## 0.6.0 - 2026-10-16
 
 Breaking: a built graph describes itself as data (`Graph::describe`), so a
