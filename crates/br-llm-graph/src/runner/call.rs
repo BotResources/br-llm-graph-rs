@@ -73,9 +73,10 @@ impl RunnerOutput {
 /// someone else, or did not answer in time) fails the node with
 /// `RunnerFailed`, naming the target and carrying the reason: the `Capture`
 /// of a call or of a map holding the node turns it into data, as for any
-/// failure of a node. Its message is the child's reason as it gave it, so a
-/// map's capture of the reason records it verbatim (a call's records the
-/// failure of its graph, which names the node). An error of the port
+/// failure of a node. Its message is the child's reason as it gave it
+/// (`runner call failed` when it is blank), so a map's capture of the reason
+/// records it verbatim (a call's records the failure of its graph, which
+/// names the node). An error of the port
 /// fails the node with `Runner`, carrying it; an error of an arguments
 /// function fails it as returned. A cancel of the run drops the call under
 /// way, whose child the port cancels.

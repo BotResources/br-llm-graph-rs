@@ -10,7 +10,7 @@ use serde_json::Value;
 use crate::react::{Hook, Tool, ToolContext, ToolError, ToolFuture, ToolOutput, text_or};
 use crate::runner::answer::{AnswerBlock, RunnerAnswer};
 use crate::runner::key::CallKey;
-use crate::runner::port::{RunnerPort, RunnerReply, RunnerRequest};
+use crate::runner::port::{RUNNER_CALL_FAILED, RunnerPort, RunnerReply, RunnerRequest};
 use crate::runner::target::RunnerTarget;
 use crate::state::{Config, State};
 
@@ -88,7 +88,7 @@ impl Tool for RunnerTool {
             match self.port.call(&request).await? {
                 RunnerReply::Answered(answer) => Ok(ToolOutput::text(result_blocks(&answer)?)),
                 RunnerReply::Failed { reason } => Ok(ToolOutput {
-                    content: text_or(&reason, "runner call failed"),
+                    content: text_or(&reason, RUNNER_CALL_FAILED),
                     is_error: true,
                     updates: Vec::new(),
                 }),

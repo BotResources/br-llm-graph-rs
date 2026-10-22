@@ -155,4 +155,5 @@ async fn given_a_node_its_port_failed_when_the_run_is_resumed_from_its_checkpoin
             call_key("run-1", "ask", None, &in_french())
         ]
     );
+    assert_eq!(port.made(), 1, "the port's error made no child");
 }

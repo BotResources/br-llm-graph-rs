@@ -12,9 +12,12 @@ use crate::origin::Origin;
 /// - `origin`: the run id and the occurrence of the node that makes the
 ///   call: the runner call node (an item of a map as `m[3]`, a node of a
 ///   called graph as `call/x`), or the tool node that runs a runner tool.
-/// - `arguments`: the call's arguments as their canonical JSON text: no
-///   whitespace, the names of every object in sorted order, so equal
-///   arguments give one text whatever the order they were built in.
+/// - `arguments`: the call's arguments as their canonical JSON text, so
+///   equal arguments give one text whatever the order they were built in.
+///   Canonical here means: no whitespace; the names of every object sorted
+///   by their UTF-8 bytes; strings escaped and numbers written as serde_json
+///   writes them, so `1` and `1.0` are two keys. It is not RFC 8785 (JCS),
+///   which sorts by UTF-16 code units and writes numbers otherwise.
 /// - `tool_call`: the id of the tool call a runner tool answers; `None` for
 ///   a runner call node.
 ///
@@ -24,9 +27,11 @@ use crate::origin::Origin;
 /// that a loop of its graph runs again with the same arguments names the
 /// same call and gets the same answer; with other arguments, it makes
 /// another call. The port derives from the key whatever it creates (the
-/// child's thread, its job, the id of its answer). A host that wants a new
-/// attempt of its job to find the calls of the earlier one gives that
-/// attempt the same run id.
+/// child's thread, its job, the id of its answer): `arguments` can be large
+/// and hold sensitive values (a passport, a secret), so a port hashes it,
+/// with the rest of the key, before it derives an id, rather than writing it
+/// into one. A host that wants a new attempt of its job to find the calls
+/// of the earlier one gives that attempt the same run id.
 ///
 /// Its fields are read by the host's port and built with `new`: it may gain
 /// fields in a later version.

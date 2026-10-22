@@ -47,6 +47,10 @@ impl RunnerRequest {
     }
 }
 
+/// What stands for a blank reason of a child's failure: the message of
+/// `RunnerFailed` and the result of a runner tool.
+pub(crate) const RUNNER_CALL_FAILED: &str = "runner call failed";
+
 /// What a runner port gives for one call: the answer of the child, or its
 /// expected failure. An error of the port itself is the call's `Err`. More
 /// replies may come in a later version: a `match` on it outside the crate

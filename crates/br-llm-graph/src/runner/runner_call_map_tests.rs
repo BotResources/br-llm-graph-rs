@@ -129,3 +129,23 @@ fn given_a_set_output_or_a_set_thread_as_a_map_body_when_built_then_map_body_set
         );
     }
 }
+
+#[tokio::test]
+async fn given_a_child_failing_with_a_blank_reason_and_a_capture_when_run_then_runner_call_failed_is_recorded()
+ {
+    let port = Arc::new(TestRunners::new());
+    port.fail("documentalist", " \n");
+    let graph = mapped(
+        ask_about_document(&port),
+        None,
+        ItemFailure::Capture(vec![CaptureUpdate::append_reason(&skey("failures"))]),
+    );
+    let state = finished(run_in(&graph, state_with("", &["a"]), &ctx("run-1")).await);
+
+    assert_eq!(texts(&state, "failures"), ["runner call failed"]);
+    let refused = GraphError::RunnerFailed {
+        target: target("documentalist"),
+        reason: String::new(),
+    };
+    assert_eq!(refused.to_string(), "runner call failed");
+}

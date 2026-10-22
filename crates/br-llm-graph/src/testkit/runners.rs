@@ -197,20 +197,19 @@ impl TestRunners {
     }
 
     /// The reply of `request`: the end of the call its key names when the
-    /// port settled one, else what its target's script says, a child made.
-    /// An error of the port settles nothing.
+    /// port settled one, else what its target's script says. A child that
+    /// answers or fails is made and its end settled; an error of the port
+    /// makes no child and settles nothing.
     pub(crate) fn reply(&self, request: &RunnerRequest) -> Result<RunnerReply, RunnerError> {
         let scripted = {
-            let mut inner = self.lock();
+            let inner = self.lock();
             if let Some(ended) = inner.ended.get(&request.key) {
                 return Ok(ended.clone());
             }
             let Some(script) = inner.scripts.get(request.target.as_str()) else {
                 return Err(PortError(format!("no script for runner {}", request.target)).into());
             };
-            let scripted = script(request);
-            inner.made += 1;
-            scripted
+            script(request)
         };
         let reply = match scripted {
             Scripted::Answer(blocks) => {
@@ -219,11 +218,14 @@ impl TestRunners {
             Scripted::Fail(reason) => RunnerReply::Failed { reason },
             Scripted::Break(text) => return Err(PortError(text).into()),
         };
-        self.lock().ended.insert(request.key.clone(), reply.clone());
+        let mut inner = self.lock();
+        inner.made += 1;
+        inner.ended.insert(request.key.clone(), reply.clone());
         Ok(reply)
     }
 
-    /// The children the port made: a call found under its key makes none.
+    /// The children the port made, each answering or failing: a call found
+    /// under its key, or met by an error of the port, makes none.
     pub fn made(&self) -> usize {
         self.lock().made
     }

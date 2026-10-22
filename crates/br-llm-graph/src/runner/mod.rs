@@ -51,6 +51,7 @@ pub use answer::{AnswerBlock, RunnerAnswer};
 pub use arguments::RunnerArguments;
 pub use call::{RunnerCall, RunnerOutput};
 pub use key::CallKey;
+pub(crate) use port::RUNNER_CALL_FAILED;
 pub use port::{RunnerError, RunnerFuture, RunnerPort, RunnerReply, RunnerRequest};
 pub use target::RunnerTarget;
 pub use tool::RunnerTool;
