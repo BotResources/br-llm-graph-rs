@@ -41,6 +41,8 @@ fn call(request: LlmRequest, output: LlmOutput) -> LlmCall {
         request,
         output_mode: OutputMode::Plain,
         output,
+        reply_retries: None,
+        reminder: None,
     }
 }
 
@@ -56,7 +58,8 @@ fn given_a_text_request_when_described_then_its_subjects_request_and_output_are_
             "edge": {"targets": [{"end": "done"}]},
             "model": "fixed", "system": "ready_made",
             "request": {"text": "function"},
-            "output": {"set": "note"}
+            "output": {"set": "note"},
+            "reply_retries": {"fixed": 0}, "reminder": "ready_made"
         }),
     );
 }
@@ -94,6 +97,8 @@ fn given_functions_that_panic_when_described_then_none_is_called() {
         })),
         output_mode: OutputMode::Plain,
         output: LlmOutput::Set(skey("note")),
+        reply_retries: None,
+        reminder: None,
     };
     let node = described(call);
     assert_eq!(
@@ -107,5 +112,20 @@ fn given_functions_that_panic_when_described_then_none_is_called() {
             json!("function"),
             json!({"history": "function"})
         )
+    );
+}
+
+#[test]
+fn given_reply_retries_and_a_reminder_when_described_then_the_count_and_how_the_reminder_is_given()
+{
+    let request = LlmRequest::Text(Prompt::text("Summarize."));
+    let node = described(LlmCall {
+        reply_retries: Some(crate::graph::Count::Fixed(3)),
+        reminder: Some(Prompt::from_state(&skey("topic"))),
+        ..call(request, LlmOutput::Set(skey("note")))
+    });
+    assert_eq!(
+        (node["reply_retries"].clone(), node["reminder"].clone()),
+        (json!({"fixed": 3}), json!("ready_made"))
     );
 }

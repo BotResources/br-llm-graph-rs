@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
-use crate::graph::{Always, FnEdge, Graph, GraphBuilder, Target};
+use crate::graph::{Always, Count, FnEdge, Graph, GraphBuilder, Target};
 use crate::react::agent_build::{AgentKeys, declare_count, declare_limit, round_limit_flag};
 use crate::react::bounds::Bounds;
 use crate::react::check::{CheckNode, EMPTY_ANSWER_CRITIQUE};
@@ -59,10 +59,12 @@ impl GeneratorCritic {
         if let Some(thread) = &keys.thread {
             schema = schema.state_by_name(thread.clone(), Kind::Str);
         }
+        let reply_retries = generator.reply_retries.clone().unwrap_or(Count::Fixed(0));
         for count in [
             &self.max_critiques,
             &self.revision_limit,
             &self.verdict_retries,
+            &reply_retries,
         ] {
             schema = declare_count(schema, count);
         }
@@ -107,6 +109,7 @@ impl GeneratorCritic {
         ]
         .into_iter()
         .chain(generator.history.as_ref().map(History::reads))
+        .chain(generator.reminder.as_ref().map(Prompt::reads))
         .chain(critic_history_reads.as_ref())
         .chain(verdict.reads())
         .chain(self.rule_check.as_ref().map(|check| check.reads()));
@@ -125,6 +128,7 @@ impl GeneratorCritic {
             &self.max_critiques,
             &self.revision_limit,
             &self.verdict_retries,
+            &reply_retries,
         ] {
             count.check(&schema)?;
         }
@@ -146,7 +150,12 @@ impl GeneratorCritic {
             limit_ends,
         };
         let bounds = Bounds::new(
-            [&duo.budget, &duo.revision_limit, &self.verdict_retries],
+            [
+                &duo.budget,
+                &duo.revision_limit,
+                &self.verdict_retries,
+                &reply_retries,
+            ],
             [
                 generator.tool_concurrency.as_ref(),
                 generator
@@ -197,6 +206,8 @@ impl GeneratorCritic {
             output_mode: generator.output_mode,
             tool_concurrency: generator.tool_concurrency,
             round_limit: generator.round_limit,
+            reply_retries,
+            reminder: generator.reminder,
             call,
             seat: Some(duo.clone()),
         };

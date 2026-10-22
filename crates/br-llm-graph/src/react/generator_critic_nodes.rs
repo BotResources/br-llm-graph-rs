@@ -2,7 +2,7 @@
 //! `prepare` node, the routing node that starts `conversation`, and the
 //! outputs written on finishing, with the end label they give.
 
-use br_llm_messages::{Conversation, Entry};
+use br_llm_messages::{Conversation, Entry, Turn};
 
 use crate::error::GraphError;
 use crate::graph::{CheckSite, Context, Edge, FnEdge, Node, NodeFuture, Target};
@@ -11,6 +11,7 @@ use crate::react::duo::{Duo, TurnKind};
 use crate::react::helpers::{answer_text, final_step};
 use crate::react::rehydrate::{enter_thread, opening_inputs};
 use crate::react::round_limit::RoundLimit;
+use crate::react::thread_store::MessageStatus;
 use crate::state::{Config, Schema, State, Value};
 use crate::update::Update;
 use crate::value::{EndLabel, Key};
@@ -42,7 +43,10 @@ impl Node for Prepare {
 /// is the thread as it stands, `thread` the id of the thread, and the call's
 /// turns are those the thread holds under the ids of the call, rank after
 /// rank, a turn found open failed and repaired first; the call goes on in
-/// the turn of the next rank. Where the run goes is the edge's (see
+/// the turn of the next rank. A completed turn of the generator is one of
+/// the call's turns; a failed or cancelled one is left out: it stays in
+/// `conversation`, is neither judged nor counted, and the call is routed on
+/// the turn before it. Where the run goes is the edge's (see
 /// `Router::entry`).
 pub(crate) struct RouteNode {
     pub(crate) duo: Duo,
@@ -72,7 +76,10 @@ impl Node for RouteNode {
             let ids = entered
                 .turns
                 .iter()
-                .filter(|(_, id, _)| entered.conversation.turn(id).is_some())
+                .filter(|(_, id, status)| match entered.conversation.turn(id) {
+                    Some(turn) => !self.cut_generation(turn, *status),
+                    None => false,
+                })
                 .map(|(_, id, _)| id.as_str().to_owned())
                 .collect();
             let position = entered.last().map_or(Position::Writing(1), |(rank, _)| {
@@ -92,6 +99,14 @@ impl Node for RouteNode {
 }
 
 impl RouteNode {
+    /// Whether `turn`, which the thread holds at `status`, is a turn of the
+    /// generator left out of the call's turns: one failed (by a crash, under
+    /// a reply asked for again, or by the host) or cancelled.
+    fn cut_generation(&self, turn: &Turn, status: MessageStatus) -> bool {
+        turn.author() == Some(&self.duo.generator)
+            && matches!(status, MessageStatus::Failed | MessageStatus::Cancelled)
+    }
+
     fn start(&self, conversation: Conversation) -> Update {
         Update::Set {
             key: self.duo.conversation.clone(),

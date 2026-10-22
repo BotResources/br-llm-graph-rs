@@ -95,6 +95,8 @@ pub(crate) fn graph(client: &MockClient, max_rounds: Limit, on_limit: OnLimit) -
             on_limit,
         }),
         call: in_memory_call(),
+        reply_retries: crate::graph::Count::Fixed(0),
+        reminder: None,
         seat: None,
     };
     let react = ReactLoop {

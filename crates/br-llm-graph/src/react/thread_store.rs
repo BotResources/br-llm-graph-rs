@@ -4,7 +4,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use br_llm_messages::{Author, Conversation, StreamEvent, ToolResult, TurnId, UserInput};
+use br_llm_messages::{Author, Conversation, Step, StreamEvent, ToolResult, TurnId, UserInput};
 
 use crate::origin::Origin;
 use crate::value::ThreadId;
@@ -142,6 +142,9 @@ impl ThreadView {
 /// - `open_turn` opens a turn under its id for an AI author;
 /// - `push_event` pushes a stream event of a step into an open turn: the
 ///   store folds the events of each step and adds the step at its finish;
+/// - `finish_step` gives it, once the stream of a step has ended, the step
+///   the client returned, with the model that answered and its usage, which
+///   the events do not carry; by default it does nothing;
 /// - `push_results` pushes a tool results item into an open turn, whole,
 ///   under its index among the turn's items;
 /// - `end_turn` completes, fails or cancels an open turn. After a turn is
@@ -163,14 +166,26 @@ impl ThreadView {
 /// events are never pushed twice. An error of the store fails the agent's
 /// node with `GraphError::Thread`, carrying it.
 ///
-/// The ends the library sends: `TurnEnd::Completed` when a turn ends, and
-/// `TurnEnd::Failed` only for a turn of the call it finds open on entry; it
-/// never sends `TurnEnd::Cancelled`. A turn left by a model error, a store
-/// error or a cancel stays open (`MessageStatus::Streaming`) until the next
-/// entry of the call fails it. A host may end such a turn itself (fail it
-/// when it sees the run fail, cancel it when it cancels the run): the agent
-/// that enters later finds it failed or cancelled, and repaired, and goes on
-/// in the turn of the next rank.
+/// How the events of a step reach the store: as they come, except with a
+/// structured output mode, where they are pushed once the step is checked
+/// against its shape, so a step asked for again is never stored (such an
+/// agent does not stream into its thread live). A reply the client refuses
+/// (`ReplyUnusable`, `MalformedResponse`) after some of its events reached
+/// the store, when a reply retry is left, fails the turn: the store repairs
+/// it, and the reply is asked for again in the turn of the next rank, as a
+/// resumed run would.
+///
+/// The ends the library sends: `TurnEnd::Completed` when a turn ends;
+/// `TurnEnd::Failed` for a turn of the call it finds open on entry, and for
+/// a turn whose reply the client refused after some of its events reached
+/// the store, when that reply is asked for again; it never sends
+/// `TurnEnd::Cancelled`. A turn left by a model error (a refused reply with
+/// no retry left included), a store error or a cancel stays open
+/// (`MessageStatus::Streaming`) until the next entry of the call fails it.
+/// A host may end such a turn itself (fail it when it sees the run fail,
+/// cancel it when it cancels the run): the agent that enters later finds it
+/// failed or cancelled, and repaired, and goes on in the turn of the next
+/// rank.
 pub trait ThreadStore: Send + Sync {
     /// The thread `thread`, or `None` when it is absent.
     fn read<'a>(&'a self, thread: &'a ThreadId) -> ThreadFuture<'a, Option<ThreadView>>;
@@ -201,6 +216,27 @@ pub trait ThreadStore: Send + Sync {
         turn: &'a TurnId,
         event: &'a StreamEvent,
     ) -> ThreadFuture<'a, ()>;
+
+    /// Gives `step`, the step of the open turn whose stream has just ended,
+    /// as the client returned it: with the model that answered
+    /// (`Step::model`) and its usage (`Step::usage`), which the stream events
+    /// do not carry. Called once per step a client returned, after its last
+    /// event and before the turn ends; a step the library writes itself (a
+    /// message of the critic, the closing step of a round limit) is not
+    /// given, and neither is a reply the client refused. An error fails the
+    /// agent's node with `GraphError::Thread`.
+    ///
+    /// By default it does nothing: a store that keeps the model and the
+    /// usage of each step implements it.
+    fn finish_step<'a>(
+        &'a self,
+        thread: &'a ThreadId,
+        turn: &'a TurnId,
+        step: &'a Step,
+    ) -> ThreadFuture<'a, ()> {
+        let _ = (thread, turn, step);
+        Box::pin(async { Ok(()) })
+    }
 
     /// Pushes `results`, one tool results item, into the open turn at
     /// `index` among its items.

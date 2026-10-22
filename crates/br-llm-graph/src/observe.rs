@@ -26,7 +26,10 @@ pub trait Observer: Send + Sync {
     }
     /// A model stream event, with the conversation key of the calling node,
     /// or the output key of an `LlmCall` whose request is not a conversation
-    /// key.
+    /// key. A reply asked for again (see `LlmCall::reply_retries`) streams
+    /// too: the events of every attempt come one after the other, with no
+    /// event between two attempts, a refused one possibly without its
+    /// `Finish`, the next one starting again at block 0.
     fn stream(&self, origin: &Origin, key: &Key, event: &StreamEvent) {
         let _ = (origin, key, event);
     }

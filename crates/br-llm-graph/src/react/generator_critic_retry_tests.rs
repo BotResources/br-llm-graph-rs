@@ -17,7 +17,7 @@ use crate::react::generator_critic_verdict_tests::critic_at;
 use crate::react::given::{Model, Reads};
 use crate::react::seats::CriticSeat;
 use crate::react::test_support::*;
-use crate::react::verdict::{Verdict, VerdictOverride};
+use crate::react::verdict::{Reading, VerdictOverride};
 use crate::state::{Kind, Value};
 
 /// The message that asks the critic again after `reason`.
@@ -225,7 +225,7 @@ async fn given_a_reader_error_when_retries_are_left_then_the_run_fails_with_it_w
         CriticSeat {
             verdict: Some(VerdictOverride {
                 shape,
-                reader: Some(Arc::new(|_| -> Result<Verdict, GraphError> {
+                reader: Some(Arc::new(|_| -> Result<Reading, GraphError> {
                     Err(GraphError::Structured {
                         message: "no scale".to_owned(),
                     })

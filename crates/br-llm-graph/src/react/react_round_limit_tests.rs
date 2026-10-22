@@ -225,6 +225,8 @@ fn given_a_flag_or_limit_key_of_the_wrong_kind_when_added_then_refused() {
                 },
             }),
             call: in_memory_call(),
+            reply_retries: crate::graph::Count::Fixed(0),
+            reminder: None,
             seat: None,
         };
         ReactLoop {

@@ -5,14 +5,17 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use br_llm_clients_core::{ClientRequest, OutputMode};
+use br_llm_clients_core::{
+    ClientRequest, OutputMode, Parameter, ParameterKind, Parameters, StructuredShape,
+};
 use br_llm_clients_mock::{MockClient, Reply, ReplySource};
 use br_llm_messages::{
     Author, Conversation, InputId, Text, Turn, TurnId, UserBlock, UserInput, UserSource,
     WireMessage, WireUserBlock,
 };
 
-use crate::graph::{Always, Context, Graph, GraphBuilder, Limit, Map, Node, Target};
+use crate::error::GraphError;
+use crate::graph::{Always, Context, Count, Graph, GraphBuilder, Limit, Map, Node, Target};
 use crate::observe::NoopObserver;
 use crate::react::given::{Model, Prompt};
 use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
@@ -88,6 +91,8 @@ pub(crate) fn summarize(client: &MockClient, output: LlmOutput) -> LlmCall {
         request: LlmRequest::Text(Prompt::from_state(&skey("doc"))),
         output_mode: OutputMode::Plain,
         output,
+        reply_retries: None,
+        reminder: None,
     }
 }
 
@@ -181,4 +186,45 @@ pub(crate) fn echoing() -> ReplySource {
     ReplySource::function(|call| {
         Reply::success(text_step(&format!("summary of {}", asked(call.request())))).build()
     })
+}
+
+/// The shape `facts`: `subject` (string) and `count` (integer), both
+/// required.
+pub(crate) fn facts_mode() -> OutputMode {
+    let parameters = Parameters::new(vec![
+        Parameter::new("subject", "", true, ParameterKind::String).unwrap(),
+        Parameter::new("count", "", true, ParameterKind::Integer).unwrap(),
+    ])
+    .unwrap();
+    OutputMode::Structured(StructuredShape::new("facts", None, parameters).unwrap())
+}
+
+/// The summarizing call on `client`, asking for `facts`, with `retries`.
+pub(crate) fn asking_facts(client: &MockClient, retries: Option<Count>) -> LlmCall {
+    LlmCall {
+        output_mode: facts_mode(),
+        reply_retries: retries,
+        ..summarize(client, set_summary())
+    }
+}
+
+/// The reminder the call sends by default after a reply refused for
+/// `reason`.
+pub(crate) fn reminded_of(reason: &str) -> br_llm_messages::WireMessage {
+    user_text(&format!(
+        "Your reply could not be used: {reason}. Reply again."
+    ))
+}
+
+/// The summary a finished run wrote.
+pub(crate) async fn summary_of(call: LlmCall) -> Result<String, GraphError> {
+    run_in(&single(call), state_with("doc", &[]), &ctx())
+        .await
+        .map(|outcome| {
+            finished(Ok(outcome))
+                .str(&key("summary"))
+                .unwrap()
+                .to_owned()
+        })
+        .map_err(|failure| failure.error)
 }

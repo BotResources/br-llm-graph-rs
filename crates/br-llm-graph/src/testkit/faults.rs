@@ -15,6 +15,7 @@ pub enum Op {
     StoreInput,
     OpenTurn,
     PushEvent,
+    FinishStep,
     PushResults,
     EndTurn,
 }

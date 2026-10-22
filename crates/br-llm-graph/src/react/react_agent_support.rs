@@ -5,11 +5,14 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use br_llm_clients_core::OutputMode;
+use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
 use br_llm_clients_mock::MockClient;
-use br_llm_messages::{Conversation, Entry, InputId, Text, Turn, UserBlock, UserInput, UserSource};
+use br_llm_messages::{
+    Conversation, Entry, InputId, Step, Text, Turn, TurnItem, UserBlock, UserInput, UserSource,
+};
+use serde_json::Value as Json;
 
-use crate::graph::{Context, Graph, Limit};
+use crate::graph::{Context, Count, Graph, Limit};
 use crate::observe::NoopObserver;
 use crate::react::given::Model;
 use crate::react::react_agent::ReactAgent;
@@ -51,6 +54,8 @@ pub(crate) fn agent(client: &MockClient) -> ReactAgent {
         tool_concurrency: None,
         round_limit: None,
         enabled: None,
+        reply_retries: None,
+        reminder: None,
         inputs: Vec::new(),
         thread_store: None,
     }
@@ -188,4 +193,50 @@ pub(crate) fn last_turn(done: &Done) -> Turn {
         Some(Entry::Turn(turn)) => turn.clone(),
         Some(Entry::UserInput(_)) | None => panic!("expected the agent's turn last"),
     }
+}
+
+/// The shape `found`: `answer` (string), required.
+pub(crate) fn found_shape() -> OutputMode {
+    let parameters = Parameters::new(vec![
+        Parameter::new("answer", "", true, ParameterKind::String).unwrap(),
+    ])
+    .unwrap();
+    OutputMode::Structured(StructuredShape::new("found", None, parameters).unwrap())
+}
+
+/// The agent on `client`, asking for `found`, with `retries`.
+pub(crate) fn asking_found(client: &MockClient, retries: Option<Count>) -> ReactAgent {
+    ReactAgent {
+        output_mode: found_shape(),
+        reply_retries: retries,
+        ..agent(client)
+    }
+}
+
+/// The steps of the agent's last turn, tool results left out.
+pub(crate) fn last_steps(done: &Done) -> Vec<Step> {
+    last_turn(done)
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            TurnItem::Step(step) => Some(step.clone()),
+            TurnItem::ToolResults(_) => None,
+        })
+        .collect()
+}
+
+/// The structured blocks of `steps`, in order.
+pub(crate) fn blocks_of(steps: &[Step]) -> Vec<Json> {
+    steps
+        .iter()
+        .flat_map(|step| step.structured().cloned())
+        .collect()
+}
+
+/// The reminder the agent sends by default after a reply refused for
+/// `reason`.
+pub(crate) fn reminder_of(reason: &str) -> br_llm_messages::WireMessage {
+    crate::react::generator_critic_view_support::user_message(&format!(
+        "Your reply could not be used: {reason}. Reply again."
+    ))
 }

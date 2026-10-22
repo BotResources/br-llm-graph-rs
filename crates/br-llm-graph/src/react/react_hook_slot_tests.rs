@@ -94,6 +94,8 @@ async fn given_an_agent_whose_hook_refuses_a_call_when_it_runs_then_the_model_re
         tool_concurrency: None,
         round_limit: None,
         enabled: None,
+        reply_retries: None,
+        reminder: None,
         // The hook reads it through the state it receives.
         inputs: vec![(key("log"), Kind::list(Kind::Str))],
         thread_store: None,

@@ -5,9 +5,9 @@ use br_llm_messages::Author;
 
 use crate::describe::shape::AgentKind;
 use crate::error::GraphError;
-use crate::graph::{Always, Graph, GraphBuilder, Limit, Target};
+use crate::graph::{Always, Count, Graph, GraphBuilder, Limit, Target};
 use crate::react::agent_answer::AnswerNode;
-use crate::react::agent_build::{AgentKeys, declare_limit, round_limit_flag};
+use crate::react::agent_build::{AgentKeys, declare_count, declare_limit, round_limit_flag};
 use crate::react::bounds::Bounds;
 use crate::react::declarations::Declarations;
 use crate::react::enter::{EnterNode, enter_edge};
@@ -70,8 +70,9 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   strings, when set. Each key of `inputs` is an input of its kind, for the
 ///   tools to read through the state they receive.
 /// - Outputs: `answer` (string, the final step of the agent's last turn: the
-///   JSON text of its structured block when it has one, else its text blocks
-///   joined verbatim; empty when there is no final step); when the round
+///   JSON text of its structured block when it has one, which fits the shape
+///   when the output mode is structured, else its text blocks joined
+///   verbatim; empty when there is no final step); when the round
 ///   limit's `OnLimit` is `Continue` or `End`, its `flag` (bool, true when the
 ///   limit was reached), with `End` the final step may be the limit's closing
 ///   step; durable, `thread` (string), the id of the agent's thread.
@@ -79,10 +80,11 @@ use crate::value::{EndLabel, Key, NodeId};
 ///   of a checkpoint of the agent's graph, so a run of that graph resumed
 ///   from a checkpoint enters again through `enter`.
 /// - Configuration: each configuration key the functions declare, of its
-///   kind, the tool concurrency and the round limit when they read a
-///   configuration key. The edge of `enter` resolves both limits before
-///   anything is routed: a refused one (`LimitNotPositive`) is the run's
-///   error itself, and the model is not called.
+///   kind, the tool concurrency, the round limit and the reply retries when
+///   they read a configuration key. The edge of `enter` resolves the reply
+///   retries, then both limits, before anything is routed: a refused one
+///   (`CountNegative`, `LimitNotPositive`) is the run's error itself, and
+///   the model is not called.
 ///
 /// With `enabled`, only the tools the key names are offered to the model, and
 /// a call naming another tool is answered with an error result, never
@@ -99,9 +101,26 @@ use crate::value::{EndLabel, Key, NodeId};
 ///
 /// `output_mode` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
-/// JSON text in `answer`. The settings of a client, its level of reasoning
-/// included, are the host's: an agent that needs another model or another
-/// level is given another client.
+/// JSON text in `answer`. The final reply of a turn, the one that calls no
+/// tool, is then checked against its shape (see `LlmCall`); a reply that
+/// calls tools is not, and neither is the closing step of the round limit
+/// `End`, which no model wrote. The settings of a client, its level of
+/// reasoning included, are the host's: an agent that needs another model or
+/// another level is given another client.
+///
+/// A reply that cannot be used (refused by the client as unusable or
+/// malformed, or a final reply that does not fit) is asked for again while
+/// `reply_retries` are left, as an `LlmCall` asks: the model is asked again
+/// for the next attempt, and the client it gives is kept for the turn's
+/// other rounds. A reply asked for again never becomes part of the
+/// conversation and counts against no round limit, though the observer
+/// hears its stream events (see `Observer::stream`); when no retry is left,
+/// the run fails (`Model` or `Structured`). Durable, with a structured
+/// output mode, the events of a step reach the thread once it is checked,
+/// so a reply asked for again is never stored (the agent does not stream
+/// into its thread live); in the plain mode, a reply the client refuses
+/// after some of its events reached the thread fails the open turn, and is
+/// asked for again in the turn of the next rank (see `ThreadStore`).
 ///
 /// Two of `tools` with one name are refused first, as a request no client
 /// accepts (`InvalidNode` naming `llm`, its reason `Request` carrying
@@ -146,6 +165,14 @@ pub struct ReactAgent {
     pub round_limit: Option<RoundLimit>,
     /// A state key holding the names of the tools offered on this run.
     pub enabled: Option<Key>,
+    /// The times a reply that cannot be used is asked for again. `None`: 0,
+    /// the run fails on the first.
+    pub reply_retries: Option<Count>,
+    /// The text sent after the request when a reply is asked for again, each
+    /// `{reason}` in it replaced by why the reply could not be used; one
+    /// that resolves blank sends the request alone. `None`: `Your reply
+    /// could not be used: {reason}. Reply again.`
+    pub reminder: Option<Prompt<ReactAgent>>,
     /// Extra state keys the caller maps per run, read by the tools.
     pub inputs: Vec<(Key, Kind)>,
     /// The store of the agent's threads. `None`: the agent works in memory.
@@ -167,6 +194,8 @@ impl ReactAgent {
         if let Some(thread) = &keys.thread {
             schema = schema.state_by_name(thread.clone(), Kind::Str);
         }
+        let reply_retries = self.reply_retries.unwrap_or(Count::Fixed(0));
+        schema = declare_count(schema, &reply_retries);
         schema = declare_limit(schema, self.tool_concurrency.as_ref());
         let flag = self.round_limit.as_ref().and_then(round_limit_flag);
         if let Some(round_limit) = &self.round_limit {
@@ -182,7 +211,8 @@ impl ReactAgent {
         let mut declarations = Declarations::new(schema, keys.reserved(flag.as_ref()));
         let reads = [self.model.reads(), self.system.reads()]
             .into_iter()
-            .chain(self.history.as_ref().map(History::reads));
+            .chain(self.history.as_ref().map(History::reads))
+            .chain(self.reminder.as_ref().map(Prompt::reads));
         for reads in reads {
             declarations.reads(reads)?;
         }
@@ -199,10 +229,11 @@ impl ReactAgent {
         }
         let (mut schema, declared) = declarations.finish();
         keys.release(&mut schema);
+        reply_retries.check(&schema)?;
 
         let call = keys.call(self.thread_store);
         let bounds = Bounds::new(
-            [],
+            [&reply_retries],
             [
                 self.tool_concurrency.as_ref(),
                 self.round_limit.as_ref().map(|limit| &limit.max_rounds),
@@ -228,6 +259,8 @@ impl ReactAgent {
             output_mode: self.output_mode,
             tool_concurrency: self.tool_concurrency,
             round_limit: self.round_limit,
+            reply_retries,
+            reminder: self.reminder,
             call: call.clone(),
             seat: None,
         };

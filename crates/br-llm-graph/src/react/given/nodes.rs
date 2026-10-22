@@ -8,62 +8,9 @@ use crate::react::llm_call::LlmCall;
 use crate::react::react_agent::ReactAgent;
 use crate::react::seats::{CriticSeat, GeneratorSeat};
 
-/// What a context holds beyond the state and the configuration. Its types
-/// are public for the traits' sake, never reachable by name.
-pub(crate) mod facts {
-    use br_llm_messages::{Conversation, Step};
-
-    /// What a ReAct agent's context adds: its conversation and the round;
-    /// and, for its schedule, the 0-based index of its turn in the call.
-    #[derive(Clone, Copy)]
-    pub struct AgentFacts<'a> {
-        pub(crate) conversation: &'a Conversation,
-        pub(crate) round: usize,
-        pub(crate) turn: usize,
-    }
-
-    /// Where a generator-critic's call stands: the generation, the budget,
-    /// the critiques recorded and whether a final generation follows the
-    /// last one.
-    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-    pub struct SeatCount {
-        pub(crate) generation: usize,
-        pub(crate) budget: usize,
-        pub(crate) critiques: usize,
-        pub(crate) final_generation: bool,
-    }
-
-    /// What the generator's context adds: its conversation, the round and
-    /// where the call stands.
-    #[derive(Clone, Copy)]
-    pub struct GeneratorFacts<'a> {
-        pub(crate) conversation: &'a Conversation,
-        pub(crate) round: usize,
-        pub(crate) count: SeatCount,
-    }
-
-    /// What the critic's context adds: the conversation, where the call
-    /// stands, the answer judged and the attempt.
-    #[derive(Clone, Copy)]
-    pub struct CriticFacts<'a> {
-        pub(crate) conversation: &'a Conversation,
-        pub(crate) count: SeatCount,
-        pub(crate) answer: &'a str,
-        pub(crate) attempt: usize,
-    }
-
-    /// What the generator-critic's own context adds (its rule check, its
-    /// empty-answer critique): the conversation, where the call stands and
-    /// the final step judged.
-    #[derive(Clone, Copy)]
-    pub struct CheckFacts<'a> {
-        pub(crate) conversation: &'a Conversation,
-        pub(crate) count: SeatCount,
-        pub(crate) answer: &'a Step,
-    }
-}
-
-pub(crate) use facts::{AgentFacts, CheckFacts, CriticFacts, GeneratorFacts, SeatCount};
+pub(crate) use crate::react::given::facts::{
+    AgentFacts, CallFacts, CheckFacts, CriticFacts, GeneratorFacts, SeatCount,
+};
 
 mod sealed {
     pub trait Sealed {}
@@ -84,6 +31,9 @@ pub trait ModelNode: sealed::Sealed + 'static {
     /// What the node's context holds beyond the state and the configuration.
     #[doc(hidden)]
     type Facts<'a>: Copy + Send + Sync;
+
+    #[doc(hidden)]
+    fn attempt<'a>(facts: Self::Facts<'a>) -> usize;
 }
 
 /// A node of an agent: its context adds the agent's conversation
@@ -105,6 +55,7 @@ pub trait LoopNode: AgentNode {
         round: usize,
         turn: usize,
         count: SeatCount,
+        attempt: usize,
     ) -> Self::Facts<'a>;
 }
 
@@ -140,11 +91,19 @@ pub trait Budgeted: Scheduled {
 }
 
 impl ModelNode for LlmCall {
-    type Facts<'a> = ();
+    type Facts<'a> = CallFacts;
+
+    fn attempt<'a>(facts: Self::Facts<'a>) -> usize {
+        facts.attempt
+    }
 }
 
 impl ModelNode for ReactAgent {
     type Facts<'a> = AgentFacts<'a>;
+
+    fn attempt<'a>(facts: Self::Facts<'a>) -> usize {
+        facts.attempt
+    }
 }
 
 impl AgentNode for ReactAgent {
@@ -163,11 +122,13 @@ impl LoopNode for ReactAgent {
         round: usize,
         turn: usize,
         _count: SeatCount,
+        attempt: usize,
     ) -> Self::Facts<'a> {
         AgentFacts {
             conversation,
             round,
             turn,
+            attempt,
         }
     }
 }
@@ -180,6 +141,10 @@ impl Scheduled for ReactAgent {
 
 impl ModelNode for GeneratorSeat {
     type Facts<'a> = GeneratorFacts<'a>;
+
+    fn attempt<'a>(facts: Self::Facts<'a>) -> usize {
+        facts.attempt
+    }
 }
 
 impl AgentNode for GeneratorSeat {
@@ -198,11 +163,13 @@ impl LoopNode for GeneratorSeat {
         round: usize,
         _turn: usize,
         count: SeatCount,
+        attempt: usize,
     ) -> Self::Facts<'a> {
         GeneratorFacts {
             conversation,
             round,
             count,
+            attempt,
         }
     }
 }
@@ -237,6 +204,10 @@ impl Budgeted for GeneratorSeat {
 
 impl ModelNode for CriticSeat {
     type Facts<'a> = CriticFacts<'a>;
+
+    fn attempt<'a>(facts: Self::Facts<'a>) -> usize {
+        facts.attempt
+    }
 }
 
 impl AgentNode for CriticSeat {
@@ -265,6 +236,11 @@ impl Budgeted for CriticSeat {
 
 impl ModelNode for GeneratorCritic {
     type Facts<'a> = CheckFacts<'a>;
+
+    /// Its functions judge a generation, never a reply asked for again.
+    fn attempt<'a>(_facts: Self::Facts<'a>) -> usize {
+        1
+    }
 }
 
 impl AgentNode for GeneratorCritic {

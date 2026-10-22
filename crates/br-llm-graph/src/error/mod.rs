@@ -193,12 +193,16 @@ pub enum GraphError {
         /// The key.
         key: Key,
     },
-    /// The client refused or failed the call.
+    /// The client refused or failed the call; a reply it refused as
+    /// unusable (`ReplyUnusable`) or malformed (`MalformedResponse`), after
+    /// the last reply retry.
     Model(ClientError),
     /// The request of a model call could not be built.
     Request(BuildError),
     /// A step without a structured block, or with one that does not read as
-    /// the type asked for; an unreadable verdict after the last retry.
+    /// the type asked for (`structured`); after the last retry, a structured
+    /// reply whose block is missing or does not fit its shape, or an
+    /// unreadable verdict.
     Structured {
         /// Why it could not be read.
         message: String,

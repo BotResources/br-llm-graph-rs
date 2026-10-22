@@ -6,8 +6,9 @@ use crate::graph::{Count, Limit};
 use crate::state::Config;
 
 /// The counts and limits an agent reads from its configuration: the
-/// generator-critic's budget, revision limit and verdict retries, and the
-/// tool concurrency and round limit of the ReAct loop.
+/// generator-critic's budget, revision limit and verdict retries, the reply
+/// retries of the model call, and the tool concurrency and round limit of
+/// the ReAct loop.
 ///
 /// The edge of the agent's entry node checks them all, in that order, so a
 /// refused one (`CountNegative`, `LimitNotPositive`, or the `UnknownKey` or
