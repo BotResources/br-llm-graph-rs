@@ -186,3 +186,22 @@ fn given_a_function_that_reads_the_key_of_a_limit_with_its_kind_when_built_then_
         BTreeMap::from([(key("width"), Kind::Int)])
     );
 }
+
+#[test]
+fn given_an_input_named_failed_turns_when_the_agent_is_built_then_it_collides_only_when_durable() {
+    let built = |durable: bool| {
+        ReactAgent {
+            inputs: vec![(key("failed_turns"), Kind::list(Kind::Str))],
+            thread_store: durable.then(|| {
+                Arc::new(crate::testkit::TestStore::new()) as Arc<dyn crate::react::ThreadStore>
+            }),
+            ..agent(&mock(Vec::new()))
+        }
+        .graph()
+    };
+    assert!(matches!(
+        built(true),
+        Err(GraphError::KeyCollision { key: ref found }) if *found == key("failed_turns")
+    ));
+    assert!(built(false).is_ok(), "in memory, no turn fails");
+}

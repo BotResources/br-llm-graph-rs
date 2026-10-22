@@ -14,6 +14,7 @@ pub(crate) fn in_memory_call() -> AgentCall {
     AgentCall {
         opening: key("chat"),
         position: key(TURN_RANK),
+        failed: key("failed_turns"),
         thread: None,
         turns: None,
     }

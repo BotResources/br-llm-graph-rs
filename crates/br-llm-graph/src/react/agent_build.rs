@@ -15,13 +15,15 @@ use crate::value::Key;
 /// The keys every agent has: its inputs `opening` and, durable, `thread`
 /// (also an output), its output `answer`, and its private keys
 /// `conversation`, `turn_rank` (where the call stands among its turns, see
-/// `Position`) and, for the generator-critic, `call_turns` (the ids of the
-/// call's turns).
+/// `Position`), durable, `failed_turns` (the ids of the call's turns the
+/// thread holds failed or cancelled, for the round limit) and, for the
+/// generator-critic, `call_turns` (the ids of the call's turns).
 pub(crate) struct AgentKeys {
     pub(crate) opening: Key,
     pub(crate) answer: Key,
     pub(crate) conversation: Key,
     pub(crate) position: Key,
+    pub(crate) failed: Key,
     /// `call_turns`, a private key of the generator-critic only.
     pub(crate) turns: Key,
     /// Whether the agent keeps the ids of its call's turns in `turns`.
@@ -41,6 +43,7 @@ impl AgentKeys {
             answer: Key::new("answer")?,
             conversation: Key::new("conversation")?,
             position: Key::new("turn_rank")?,
+            failed: Key::new("failed_turns")?,
             turns: Key::new("call_turns")?,
             keeps_turns: false,
             thread: durable.then(|| thread_name.clone()),
@@ -61,6 +64,9 @@ impl AgentKeys {
             (&self.conversation, Kind::Conversation),
             (&self.position, Kind::Int),
         ];
+        if self.thread.is_some() {
+            private.push((&self.failed, Kind::list(Kind::Str)));
+        }
         if self.keeps_turns {
             private.push((&self.turns, Kind::list(Kind::Str)));
         }
@@ -110,6 +116,7 @@ impl AgentKeys {
         AgentCall {
             opening: self.opening.clone(),
             position: self.position.clone(),
+            failed: self.failed.clone(),
             thread: match (&self.thread, store) {
                 (Some(key), Some(store)) => Some(ThreadBinding {
                     store,

@@ -1,12 +1,13 @@
 use br_llm_messages::{
     AssistantBlock, Author, Conversation, Step, StopReason, Text, ToolResult, ToolResultBlock,
-    Turn, TurnItem, TurnState,
+    Turn, TurnState,
 };
 
 use crate::error::GraphError;
 use crate::graph::{Always, Context, GraphBuilder, Limit, Node, NodeFuture, Target};
 use crate::react::agent_call::ThreadBinding;
 use crate::react::helpers::{last_turn_by_author, pending_calls};
+use crate::react::round_count::{continued, rounds};
 use crate::react::round_limit_marks::{LIMIT_REACHED, closing, reached_in, refusal};
 use crate::react::thread_store::TurnEnd;
 use crate::react::turn_writer::TurnWriter;
@@ -16,8 +17,11 @@ use crate::value::{Key, NodeId};
 
 /// Bounds the tool rounds of one agent turn. A round is one reply that calls
 /// tools plus the execution of all its calls; the count starts again with
-/// each new turn of the agent. `on_limit` says what happens when a reply asks
-/// for tools after the last allowed round.
+/// each new turn of the agent, except a turn of the same call that follows
+/// one the thread holds failed or cancelled (under a reply the client
+/// refused after it streamed, by a crash, by the host): it continues that
+/// turn's count, so a failure never resets the limit. `on_limit` says what
+/// happens when a reply asks for tools after the last allowed round.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoundLimit {
     /// The rounds an agent turn may answer.
@@ -40,7 +44,8 @@ pub enum OnLimit {
     /// a reply that still calls tools once the node has answered in this turn
     /// fails the run with `ToolLimitReached`.
     ///
-    /// The node has answered in this turn when a round of the open turn at
+    /// The node has answered in this turn when a round of the open turn, its
+    /// rounds counted after those of the failed turns it continues, at
     /// 0-based index `max_rounds` or more holds only its refusals (error
     /// results whose one text is the refusal, whatever limit it names): tool
     /// nodes never run past the limit, so no other node answers those rounds,
@@ -90,18 +95,22 @@ impl RoundLimit {
 
     /// Where a reply of `author`'s open turn that asks for tools after the
     /// last allowed round goes: `End` always to its node; `Continue` to its
-    /// node until that node has answered in this turn, then the run fails, as
-    /// `Error` does.
+    /// node until that node has answered in this turn (or in a turn it
+    /// continues, which `failed` names), then the run fails, as `Error`
+    /// does.
     pub(crate) fn reached(
         &self,
         llm: &NodeId,
         conversation: &Conversation,
         author: &Author,
+        failed: &[&str],
         max: usize,
     ) -> Result<Vec<Target>, GraphError> {
         match &self.on_limit {
             OnLimit::End { node, .. } => Ok(vec![Target::Node(node.clone())]),
-            OnLimit::Continue { node, .. } if !answered_by_limit(conversation, author, max) => {
+            OnLimit::Continue { node, .. }
+                if !answered_by_limit(conversation, author, failed, max) =>
+            {
                 Ok(vec![Target::Node(node.clone())])
             }
             OnLimit::Error | OnLimit::Continue { .. } => Err(GraphError::ToolLimitReached {
@@ -111,13 +120,18 @@ impl RoundLimit {
         }
     }
 
-    /// Whether this limit was reached in `turn`, its limit read from
-    /// `config`: never for `Error`, which fails the run instead.
-    pub(crate) fn reached_in_turn(&self, turn: &Turn, config: &Config) -> Result<bool, GraphError> {
+    /// Whether this limit was reached in a turn, given with the turns it
+    /// continues (`turns`), its limit read from `config`: never for `Error`,
+    /// which fails the run instead.
+    pub(crate) fn reached_in_turn(
+        &self,
+        turns: &[&Turn],
+        config: &Config,
+    ) -> Result<bool, GraphError> {
         match &self.on_limit {
             OnLimit::Error => Ok(false),
             OnLimit::Continue { .. } | OnLimit::End { .. } => {
-                Ok(reached_in(turn, self.max_rounds.resolve(config)?.get()))
+                Ok(reached_in(turns, self.max_rounds.resolve(config)?.get()))
             }
         }
     }
@@ -153,21 +167,30 @@ impl RoundLimit {
     }
 }
 
-/// The rounds answered in `author`'s open turn: none when the last turn of
-/// `author` is finished, or when there is none.
-pub(crate) fn completed_rounds(conversation: &Conversation, author: &Author) -> usize {
+/// The rounds `author`'s open turn counts against the limit: those it
+/// answered, after those of the turns it continues, which `failed` names
+/// (see `round_count::continued`); none when the last turn of `author` is
+/// finished, or when there is none.
+pub(crate) fn completed_rounds(
+    conversation: &Conversation,
+    author: &Author,
+    failed: &[&str],
+) -> usize {
     open_turn(conversation, author).map_or(0, |turn| {
-        turn.items()
-            .iter()
-            .filter(|item| matches!(item, TurnItem::ToolResults(_)))
-            .count()
+        rounds(&continued(conversation, turn, failed)).count()
     })
 }
 
-/// Whether the limit node has answered calls in `author`'s open turn under a
-/// limit of `max` (see `reached_in`).
-fn answered_by_limit(conversation: &Conversation, author: &Author, max: usize) -> bool {
-    open_turn(conversation, author).is_some_and(|turn| reached_in(turn, max))
+/// Whether the limit node has answered calls in `author`'s open turn, or in
+/// a turn it continues, under a limit of `max` (see `reached_in`).
+fn answered_by_limit(
+    conversation: &Conversation,
+    author: &Author,
+    failed: &[&str],
+    max: usize,
+) -> bool {
+    open_turn(conversation, author)
+        .is_some_and(|turn| reached_in(&continued(conversation, turn, failed), max))
 }
 
 fn open_turn<'a>(conversation: &'a Conversation, author: &Author) -> Option<&'a Turn> {

@@ -6,6 +6,7 @@ use br_llm_messages::Author;
 use crate::graph::{Context, Node, NodeFuture};
 use crate::react::agent_call::{AgentCall, Position};
 use crate::react::helpers::{answer_text, final_step, last_turn_by_author};
+use crate::react::round_count::continued;
 use crate::react::round_limit::RoundLimit;
 use crate::state::{Config, State, Value};
 use crate::update::Update;
@@ -47,7 +48,10 @@ impl Node for AnswerNode {
                 value: Value::str(answer),
             }];
             if let (Some((flag, limit)), Some(turn), Some(_)) = (&self.flag, turn, &answered)
-                && limit.reached_in_turn(turn, config)?
+                && limit.reached_in_turn(
+                    &continued(conversation, turn, &self.call.failed_turns(state)?),
+                    config,
+                )?
             {
                 updates.push(Update::Set {
                     key: flag.clone(),

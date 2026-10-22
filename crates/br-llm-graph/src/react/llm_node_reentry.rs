@@ -16,7 +16,9 @@ use crate::update::Update;
 impl<N: LoopNode> LlmNode<N> {
     /// Fails the turn `writer` writes, of rank `rank`, so the store repairs
     /// it, and gives the state a resumed run would find: `conversation` is
-    /// the thread read again, and the call writes the turn of the next rank.
+    /// the thread read again, the call writes the turn of the next rank, and
+    /// `failed_turns` lists the failed turn, whose round count that turn
+    /// continues.
     /// For the generator-critic, the failed turn is not one of the call's
     /// turns: a reply asked for again is no generation, and the entry of a
     /// later run leaves the failed turn out too (see `RouteNode`).
@@ -28,9 +30,17 @@ impl<N: LoopNode> LlmNode<N> {
     ) -> Result<State, GraphError> {
         writer.end(TurnEnd::Failed).await?;
         let view = read(writer.store, &writer.thread).await?;
+        let mut failed: Vec<Value> = self
+            .call
+            .failed_turns(state)?
+            .into_iter()
+            .map(Value::str)
+            .collect();
+        failed.push(Value::str(writer.turn.as_str()));
         let mut next = state
             .derive(&self.key, Value::conversation(view.conversation))?
-            .derive(&self.call.position, Position::Writing(rank + 1).value())?;
+            .derive(&self.call.position, Position::Writing(rank + 1).value())?
+            .derive(&self.call.failed, Value::list(failed))?;
         if let Some(turns) = &self.call.turns {
             let kept = next
                 .list(turns)?
@@ -45,8 +55,8 @@ impl<N: LoopNode> LlmNode<N> {
 
     /// The updates of a reply used on the state `reentered` gives, when its
     /// turn was failed before it: that state's `conversation`, where its
-    /// call stands and, for the generator-critic, the call's turns, then
-    /// `updates`. Without it, `updates` as they are.
+    /// call stands, its failed turns and, for the generator-critic, the
+    /// call's turns, then `updates`. Without it, `updates` as they are.
     pub(crate) fn reentered(
         &self,
         reentered: Option<&State>,
@@ -67,6 +77,10 @@ impl<N: LoopNode> LlmNode<N> {
             set(
                 &self.call.position,
                 Value::int(state.int(&self.call.position)?),
+            ),
+            set(
+                &self.call.failed,
+                Value::list(state.list(&self.call.failed)?.to_vec()),
             ),
         ];
         if let Some(turns) = &self.call.turns {

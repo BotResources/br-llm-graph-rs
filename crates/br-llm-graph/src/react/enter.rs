@@ -21,9 +21,10 @@ use crate::value::{Key, NodeId};
 /// `conversation` is the thread as it stands, `thread` the id of the thread,
 /// and the call goes on from the last of its turns the thread holds: none,
 /// or one failed or cancelled (a turn found open is failed first), and it
-/// writes the turn of the next rank; one completed, and the call is
-/// answered: the agent gives its outputs from the thread without calling the
-/// model.
+/// writes the turn of the next rank, which continues the round count of the
+/// failed ones before it (`failed_turns` lists them); one completed, and the
+/// call is answered: the agent gives its outputs from the thread without
+/// calling the model.
 pub(crate) struct EnterNode {
     pub(crate) conversation: Key,
     pub(crate) call: AgentCall,
@@ -52,9 +53,11 @@ impl Node for EnterNode {
                 Some((rank, MessageStatus::Completed)) => Position::Answered(rank),
                 Some((rank, _)) => Position::Writing(rank + 1),
             };
+            let failed = self.call.list_failed(entered.failed());
             Ok(vec![
                 self.start(entered.conversation),
                 self.call.move_to(position),
+                failed,
                 Update::Set {
                     key: binding.key.clone(),
                     value: Value::str(entered.thread.as_str()),

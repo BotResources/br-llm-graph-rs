@@ -4,6 +4,8 @@
 
 use br_llm_messages::{AssistantBlock, StopReason, ToolResult, ToolResultBlock, Turn, TurnItem};
 
+use crate::react::round_count::rounds;
+
 /// The stop reason of the step that closes a turn cut by `OnLimit::End`.
 pub(crate) const LIMIT_REACHED: &str = "tool_round_limit";
 
@@ -56,18 +58,13 @@ fn refusals_only(results: &[ToolResult]) -> bool {
     !results.is_empty() && results.iter().all(is_refusal)
 }
 
-/// Whether the round limit was reached in `turn` under a limit of `max`: a
-/// round at 0-based index `max` or more holds only its refusals. Tool nodes
-/// never run past the limit, so only the limit node answers those rounds.
-pub(crate) fn reached_in(turn: &Turn, max: usize) -> bool {
-    turn.items()
-        .iter()
-        .filter_map(|item| match item {
-            TurnItem::ToolResults(results) => Some(results.results()),
-            TurnItem::Step(_) => None,
-        })
-        .skip(max)
-        .any(refusals_only)
+/// Whether the round limit was reached in a turn under a limit of `max`,
+/// the turn given with the turns it continues (`turns`, see
+/// `round_count::continued`): a round at 0-based index `max` or more of
+/// their rounds, counted together, holds only its refusals. Tool nodes never
+/// run past the limit, so only the limit node answers those rounds.
+pub(crate) fn reached_in(turns: &[&Turn], max: usize) -> bool {
+    rounds(turns).skip(max).any(refusals_only)
 }
 
 /// The first and last parts of the error result the limit node answers a

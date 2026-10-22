@@ -27,21 +27,20 @@ use crate::value::{EndLabel, Key, NodeId};
 /// tool nodes that run the calls and the model call again; when a reply
 /// calls no tool, a node reads the answer and the graph ends with `done`.
 ///
-/// Built with a `thread_store`, the agent is durable: it works in a thread
-/// and resumes from it (see `ThreadStore`). `enter` rehydrates
-/// `conversation` from the thread; a call whose turn the thread holds
-/// completed goes to the answer without calling the model. Every step, tool
-/// results item and turn end is written to the thread first, then applied to
-/// `conversation`; the turn stays open across its rounds. Without one, the
-/// agent works in memory: `conversation` starts as `opening` and lives for
-/// the current call. Both run the same loop, read the same functions and
-/// give the same outputs and errors; they differ in the turn a reply goes
-/// on in. In memory, the rule of the ReAct loop is literal: a reply is added
-/// as a new step of the author's last turn when that turn awaits a step, so
-/// an own turn the opening ends with, awaiting a step, is continued. Durable,
-/// a reply goes on in the turn of the call's rank only: a turn of the thread
-/// that is not the call's, or one repaired on entry, is never continued, and
-/// the call opens its turn of the next rank.
+/// Built with a `thread_store`, the agent is durable: it works in a thread and
+/// resumes from it (see `ThreadStore`). `enter` rehydrates `conversation` from
+/// the thread; a call whose turn the thread holds completed goes to the answer
+/// without calling the model. Every step, tool results item and turn end is
+/// written to the thread first, then applied to `conversation`; the turn stays
+/// open across its rounds. Without one, the agent works in memory:
+/// `conversation` starts as `opening` and lives for the current call. Both run
+/// the same loop, read the same functions and give the same outputs and errors;
+/// they differ in the turn a reply goes on in. In memory, the rule of the ReAct
+/// loop is literal: a reply is added as a new step of the author's last turn
+/// when that turn awaits a step, so an own turn the opening ends with, awaiting
+/// a step, is continued. Durable, a reply goes on in the turn of the call's
+/// rank only: a turn of the thread that is not the call's, or one repaired on
+/// entry, is never continued, and the call opens its turn of the next rank.
 ///
 /// The model call is built from what the runner gives it (see `Given`), each
 /// subject a value or a function of the agent's context, which holds the
@@ -54,10 +53,9 @@ use crate::value::{EndLabel, Key, NodeId};
 /// advances per turn of the call, so a turn opened after a repaired one gets
 /// the next client. `system` gives the system text, asked at each round
 /// (one that resolves blank gives none), `history` the messages, also asked
-/// at each round, by default the conversation rendered
-/// for `author`. A function shapes the request only: the reply is added to
-/// the conversation whatever the history sent. A change of client never
-/// changes the author.
+/// at each round, by default the conversation rendered for `author`. A
+/// function shapes the request only: the reply is added to the conversation
+/// whatever the history sent. A change of client never changes the author.
 ///
 /// - Inputs: `opening` (conversation), what the caller adds before the agent
 ///   answers; durable, user inputs ending with the trigger, the user input
@@ -95,9 +93,10 @@ use crate::value::{EndLabel, Key, NodeId};
 /// kind than the graph already has is refused (`KeyCollision`), and so is a
 /// key the graph keeps for itself, whatever its kind: `opening`, `answer`,
 /// `conversation`, `turn_rank` (the private key where the call stands among
-/// its turns), `thread` when durable and the round limit's flag. A flag that
-/// names `answer`, `opening`, `thread` or `conversation` is refused
-/// (`FlagKeyMismatch`), before the rules of the ReAct loop below.
+/// its turns), `thread` and `failed_turns` (the call's failed turns) when
+/// durable, and the round limit's flag. A flag that names `answer`,
+/// `opening`, `thread` or `conversation` is refused (`FlagKeyMismatch`),
+/// before the rules of the ReAct loop below.
 ///
 /// `output_mode` is sent on every model call; with `OutputMode::Structured`, the
 /// final step carries the structured block and reaches the caller as the
@@ -133,12 +132,13 @@ use crate::value::{EndLabel, Key, NodeId};
 /// available are: {names}.`, `names` the tools offered to the call (those of
 /// `enabled`, when set) in the order of `tools`, or `Tool {name} is not
 /// available: this call was not executed. No tool is available.` when none
-/// is offered, and the turn goes on. The
-/// graph's own nodes are `enter`, `llm`, `answer` and, without a split,
-/// `tools`, even without a tool: a tool node or a round-limit node of one of
-/// these ids collides with it (`DuplicateNode`).
+/// is offered, and the turn goes on. The graph's own nodes are `enter`,
+/// `llm`, `answer` and, without a split, `tools`, even without a tool: a
+/// tool node or a round-limit node of one of these ids collides with it
+/// (`DuplicateNode`).
 ///
-/// The round limit counts the rounds of the agent's turn (see `RoundLimit`).
+/// The round limit counts the rounds of the agent's turn, a turn after a
+/// failed one of the call continuing its count (see `RoundLimit`).
 pub struct ReactAgent {
     /// Who answers: the author of the agent's turns.
     pub author: Author,

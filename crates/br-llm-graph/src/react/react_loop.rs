@@ -6,7 +6,7 @@ use br_llm_messages::{Author, ToolName, TurnState};
 
 use crate::error::GraphError;
 use crate::graph::{Always, Edge, FnEdge, GraphBuilder, Target};
-use crate::react::agent_call::ThreadBinding;
+use crate::react::agent_call::{AgentCall, ThreadBinding};
 use crate::react::given::LoopNode;
 use crate::react::helpers::last_turn_state;
 use crate::react::llm_node::LlmNode;
@@ -100,6 +100,7 @@ impl ReactLoop {
         let key = llm_node.key.clone();
         let author = llm_node.author.clone();
         let enabled = llm_node.enabled.clone();
+        let call = llm_node.call.clone();
         // The first tool node answers the calls that name none of them.
         let declared: Vec<ToolName> = llm_node
             .tools
@@ -139,7 +140,7 @@ impl ReactLoop {
             self.llm.clone(),
             llm_edge(
                 (&self.llm, &tool_nodes, &self.after),
-                key.clone(),
+                (key.clone(), call),
                 author.clone(),
                 round_limit.clone(),
             ),
@@ -218,10 +219,11 @@ fn check_partition<N: LoopNode>(
 /// where the loop ends (`after`). It declares all of them. A reply that
 /// calls a tool no tool node runs goes to the tool nodes too: the first
 /// answers that call; past the last allowed round, the limit handles it
-/// first.
+/// first. The rounds counted are those of the open turn, after those of the
+/// turns it continues, which `call` lists failed (see `round_count`).
 fn llm_edge(
     (llm, tool_nodes, after): (&NodeId, &ToolNodes, &Target),
-    key: Key,
+    (key, call): (Key, AgentCall),
     author: Author,
     round_limit: Option<RoundLimit>,
 ) -> impl Edge + 'static {
@@ -248,8 +250,9 @@ fn llm_edge(
             Some(TurnState::AwaitingToolResults { .. }) => {
                 if let Some(round_limit) = &round_limit {
                     let max = round_limit.max_rounds.resolve(config)?.get();
-                    if completed_rounds(conversation, &author) >= max {
-                        return round_limit.reached(&llm, conversation, &author, max);
+                    let failed = call.failed_turns(state)?;
+                    if completed_rounds(conversation, &author, &failed) >= max {
+                        return round_limit.reached(&llm, conversation, &author, &failed, max);
                     }
                 }
                 Ok(tool_targets.clone())

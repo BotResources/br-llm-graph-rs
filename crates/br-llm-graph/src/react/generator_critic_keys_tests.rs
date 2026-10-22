@@ -49,7 +49,7 @@ fn given_a_generator_critic_when_built_in_memory_and_durable_then_opening_and_th
         ])
     );
     for graph in [in_memory, durable] {
-        for private in ["conversation", "turn_rank", "call_turns"] {
+        for private in ["conversation", "turn_rank", "call_turns", "failed_turns"] {
             assert!(!graph.schema().state.contains_key(&key(private)));
         }
     }
@@ -93,14 +93,19 @@ fn given_a_key_the_graph_keeps_for_itself_when_given_as_an_input_then_key_collis
             "{name}"
         );
     }
-    assert!(matches!(
-        built("thread", true),
-        Err(GraphError::KeyCollision { .. })
-    ));
-    assert!(
-        built("thread", false).is_ok(),
-        "in memory, it has no thread"
-    );
+    for durable_only in ["thread", "failed_turns"] {
+        assert!(
+            matches!(
+                built(durable_only, true),
+                Err(GraphError::KeyCollision { .. })
+            ),
+            "{durable_only}"
+        );
+        assert!(
+            built(durable_only, false).is_ok(),
+            "in memory, it has no thread and no failed turn"
+        );
+    }
 }
 
 #[test]

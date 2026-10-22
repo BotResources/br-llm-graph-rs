@@ -71,7 +71,7 @@ fn given_a_durable_agent_when_described_then_its_thread_is_in_its_signature_and_
         json!({"type": "str"})
     );
     let state = json["schema"]["state"].as_object().unwrap();
-    for private in ["conversation", "turn_rank", "call_turns"] {
+    for private in ["conversation", "turn_rank", "call_turns", "failed_turns"] {
         assert!(!state.contains_key(private), "{private}");
     }
 }

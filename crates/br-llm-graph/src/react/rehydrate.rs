@@ -29,6 +29,17 @@ impl Entered {
     pub(crate) fn last(&self) -> Option<(usize, MessageStatus)> {
         self.turns.last().map(|(rank, _, status)| (*rank, *status))
     }
+
+    /// The ids of the turns of this call the thread holds failed or
+    /// cancelled, in rank order.
+    pub(crate) fn failed(&self) -> impl Iterator<Item = &str> {
+        self.turns
+            .iter()
+            .filter(|(_, _, status)| {
+                matches!(status, MessageStatus::Failed | MessageStatus::Cancelled)
+            })
+            .map(|(_, id, _)| id.as_str())
+    }
 }
 
 /// The user inputs of a durable agent's `opening`, ending with its trigger:

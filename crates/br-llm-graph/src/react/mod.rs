@@ -55,6 +55,7 @@ mod react_agent;
 mod react_loop;
 mod rehydrate;
 mod replies;
+mod round_count;
 mod round_limit;
 mod round_limit_marks;
 mod round_writer;
@@ -125,6 +126,8 @@ mod generator_critic_resume_tests;
 mod generator_critic_retry_tests;
 #[cfg(test)]
 mod generator_critic_revision_entry_tests;
+#[cfg(test)]
+mod generator_critic_round_limit_failure_tests;
 #[cfg(test)]
 mod generator_critic_rule_context_tests;
 #[cfg(test)]
@@ -239,6 +242,8 @@ mod react_node_tests;
 mod react_partition_tests;
 #[cfg(test)]
 mod react_reserved_tests;
+#[cfg(test)]
+mod react_round_limit_failure_tests;
 #[cfg(test)]
 mod react_round_limit_refusal_tests;
 #[cfg(test)]

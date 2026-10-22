@@ -51,7 +51,8 @@ use crate::value::Key;
 /// than the graph already has is refused (`KeyCollision`), and so is a key
 /// the graph keeps for itself: `opening`, `answer`, `is_validated`,
 /// `nb_generations`, `conversation`, its private keys `turn_rank` and
-/// `call_turns`, `thread` when durable and the round limit's flag. A
+/// `call_turns`, `thread` and the private key `failed_turns` when durable,
+/// and the round limit's flag. A
 /// generator round-limit flag that names `is_validated`, `opening`, `thread`
 /// or `conversation` is refused (`KeyCollision`) first.
 ///
@@ -103,7 +104,9 @@ use crate::value::Key;
 /// the budget.
 ///
 /// A generation is the ReAct loop of the generator on `conversation`; each
-/// opens a new generator turn, so the round limit counts per generation.
+/// opens a new generator turn, so the round limit counts per generation: a
+/// failed generator turn is no generation, so the generation's next turn
+/// continues its count (see `RoundLimit`).
 /// With a structured output mode, the generator's final reply is checked
 /// against its shape, as a ReAct agent's is, before the check below. A
 /// reply that cannot be used (see `GeneratorSeat`) is asked for again

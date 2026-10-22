@@ -36,6 +36,10 @@ pub(crate) struct AgentCall {
     pub(crate) opening: Key,
     /// The private key holding where the call stands (`Position`).
     pub(crate) position: Key,
+    /// The private key listing the ids of the call's turns the thread holds
+    /// failed or cancelled, declared when the agent is durable: a turn right
+    /// after one of them continues its round count (see `round_count`).
+    pub(crate) failed: Key,
     /// The agent's thread, when it is durable.
     pub(crate) thread: Option<ThreadBinding>,
     /// The private key listing the ids of the call's turns, for an agent

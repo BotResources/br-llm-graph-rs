@@ -54,7 +54,9 @@ pub struct GeneratorSeat {
     /// At most that many tool calls run at once, across all the tool nodes
     /// together. `None`: every call at once.
     pub tool_concurrency: Option<Limit>,
-    /// The bound on the tool rounds of one generation. `None`: no bound.
+    /// The bound on the tool rounds of one generation. A failed generator
+    /// turn is no generation: the generation's next turn continues its
+    /// count. `None`: no bound.
     pub round_limit: Option<RoundLimit>,
     /// A state key holding the names of the tools offered on this run: an
     /// input of the graph, a list of strings. A call naming another tool is

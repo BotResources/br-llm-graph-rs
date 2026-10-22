@@ -10,6 +10,7 @@ use crate::react::agent_call::Position;
 use crate::react::duo::{Duo, TurnKind};
 use crate::react::helpers::{answer_text, final_step};
 use crate::react::rehydrate::{enter_thread, opening_inputs};
+use crate::react::round_count::continued;
 use crate::react::round_limit::RoundLimit;
 use crate::react::thread_store::MessageStatus;
 use crate::state::{Config, Schema, State, Value};
@@ -85,10 +86,12 @@ impl Node for RouteNode {
             let position = entered.last().map_or(Position::Writing(1), |(rank, _)| {
                 Position::Writing(rank + 1)
             });
+            let failed = call.list_failed(entered.failed());
             Ok(vec![
                 self.start(entered.conversation),
                 self.listed(ids),
                 call.move_to(position),
+                failed,
                 Update::Set {
                     key: binding.key.clone(),
                     value: Value::str(entered.thread.as_str()),
@@ -191,8 +194,11 @@ impl Node for FinishNode {
             ];
             if let Some((flag, limit)) = &self.flag {
                 let mut reached = state.bool(flag)?;
+                let conversation = state.conversation(&duo.conversation)?;
+                let failed = duo.call.failed_turns(state)?;
                 for turn in turns.generation_turns() {
-                    reached = reached || limit.reached_in_turn(turn, config)?;
+                    let generation = continued(conversation, turn, &failed);
+                    reached = reached || limit.reached_in_turn(&generation, config)?;
                 }
                 if reached {
                     updates.push(Update::Set {
