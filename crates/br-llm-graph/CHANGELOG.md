@@ -49,8 +49,9 @@ store is given each finished step, with its model and its usage.
   map body, `Append` only (`MapBodySet`). Described as `runner_call`: its
   target, how its arguments are given (never their value) and its outputs.
 - `RunnerTool`, a tool: its spec the runner's, an optional hook, its
-  arguments the tool call's, its key the tool node's origin and the tool call
-  id; its result the answer's blocks, a structured value as its JSON text; a
+  arguments the tool call's, its key the tool node's origin, the call's
+  arguments and the tool call id; its result the answer's blocks, a
+  structured value as its JSON text; a
   child's failure is an error result holding the reason, a port error a tool
   error. Described by its name, as any tool.
 - `ToolContext`, what a tool call is called with: the call's id and name and
@@ -74,7 +75,8 @@ store is given each finished step, with its model and its usage.
   `reply_retries` (`Count`, 0 by default): the request built again for the
   next attempt, then a user message holding `reminder` (a `Prompt`, each
   `{reason}` replaced; one more text of a trailing relay; a blank reminder
-  sends the request alone), the attempt one higher. A retry never becomes
+  sends the request alone), the attempt one higher: the model is asked again,
+  and the client it gives runs the rest of the turn. A retry never becomes
   part of the conversation and counts against no budget and no round limit;
   the generator's is no generation, no revision and no critique. With no
   retry left the node fails with `Model` or `Structured`. The round limit's
@@ -110,7 +112,9 @@ store is given each finished step, with its model and its usage.
 - **Breaking:** `Observer::node_finished` takes the node's `NodeOutcome`.
 - **Breaking:** `LlmCall`, `ReactAgent` and `GeneratorSeat` gain
   `reply_retries` and `reminder`.
-- **Breaking:** `LlmOutput` and `RunnerOutput` are one type, `TextOutput`.
+- **Breaking:** `react::LlmOutput` is replaced by `graph::TextOutput`
+  (re-exported at the root, `#[non_exhaustive]`), which the runner call also
+  writes through.
 - **Breaking:** `VerdictReader` returns `Result<Reading, GraphError>`.
 - **Breaking:** a structured reply that does not fit its shape, or has no
   structured block, fails with `Structured` (the LLM call wrote its text
@@ -118,19 +122,22 @@ store is given each finished step, with its model and its usage.
 - **Breaking:** a critic reply the client refuses as unusable or malformed
   is an unreadable verdict, asked for again within the verdict retries, then
   `Structured` (it failed with `Model` in 0.6).
-- **Breaking:** a reply asked for again asks the model again, the attempt
-  one higher, and the client it gives runs the rest of the turn (0.6 ran a
-  turn on one client).
 - **Breaking:** a durable generator-critic's turn of the generator that the
   thread holds failed or cancelled is no generation: it stays in the
   conversation, is neither judged nor counted, and the call is routed on the
   turn before it (0.6 judged a generation a crash cut, on its partial text).
-- A durable agent with a structured output mode pushes a step's events to
-  its thread once the step is checked: it no longer streams into its thread
-  live. In the plain mode, a reply refused after some of its events reached
-  the thread, with a retry left, fails the turn (`TurnEnd::Failed`), and the
-  agent reads its thread again and asks in the turn of the next rank.
-  `ThreadStore` documents the ends the library sends.
+- **Breaking:** a durable agent with a structured output mode pushes a
+  step's events to its thread once the step is checked: it no longer streams
+  into its thread live. In the plain mode, a reply refused after some of its
+  events reached the thread, with a retry left, fails the turn
+  (`TurnEnd::Failed`), and the agent reads its thread again and asks in the
+  turn of the next rank. `ThreadStore` documents the ends the library sends.
+- **Breaking:** a turn that follows a failed or cancelled turn of the same
+  call continues its round count: a failure, a crash included, never resets
+  the round limit (0.6 started a repaired call's next turn from zero).
+- **Breaking:** a durable agent keeps the ids of its call's failed or
+  cancelled turns in its private key `failed_turns`, which an input, the
+  enabled key or a key a function reads may not name (`KeyCollision`).
 - **Breaking:** `GraphError` gains `RunnerFailed`, `Runner` and
   `RunnerTargetBlank`; `runner_call` is a library kind, so
   `NodeDescription::labelled("runner_call")` is refused.
