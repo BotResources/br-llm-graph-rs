@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::GraphError;
-use crate::graph::subgraph::{Input, Output, SubGraph};
-use crate::graph::{Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Target};
+use crate::graph::subgraph::{Input, SubGraph};
+use crate::graph::{Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Output, Target};
 use crate::observe::{NoopObserver, Observer};
 use crate::run::{Outcome, RunFailure, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};

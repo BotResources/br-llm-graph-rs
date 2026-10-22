@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use crate::error::GraphError;
-use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, Output, SubGraph};
+use crate::graph::output::Output;
+use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, SubGraph};
 use crate::state::{Kind, Schema};
 use crate::value::Key;
 

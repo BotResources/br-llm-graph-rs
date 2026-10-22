@@ -9,9 +9,9 @@ use serde_json::{Map, Value as Json, json};
 use crate::describe::NodeDescription;
 use crate::describe::test_support::{json, node_json};
 use crate::error::GraphError;
-use crate::graph::ItemFailure;
+use crate::graph::{ItemFailure, TextOutput};
 use crate::runner::test_support::*;
-use crate::runner::{RunnerArguments, RunnerCall, RunnerOutput};
+use crate::runner::{RunnerArguments, RunnerCall};
 use crate::testkit::TestRunners;
 
 #[test]
@@ -23,7 +23,7 @@ fn given_a_runner_call_with_fixed_arguments_when_described_then_its_target_and_o
             "passport".to_owned(),
             Json::from("sk-secret-passport"),
         )])),
-        thread: Some(RunnerOutput::Set(skey("thread"))),
+        thread: Some(TextOutput::Set(skey("thread"))),
         ..ask(&port, set_answer())
     };
     let described = alone(node).describe();

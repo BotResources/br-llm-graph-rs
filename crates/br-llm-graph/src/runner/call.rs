@@ -6,51 +6,12 @@ use std::sync::Arc;
 use crate::describe::NodeDescription;
 use crate::describe::shape::{RunnerCallShape, Shape};
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Node, NodeFuture, Output};
-use crate::react::check_text_output;
+use crate::graph::{CheckSite, Context, Node, NodeFuture, TextOutput};
 use crate::runner::arguments::RunnerArguments;
 use crate::runner::key::CallKey;
 use crate::runner::port::{RunnerPort, RunnerReply, RunnerRequest, runner_failed};
 use crate::runner::target::RunnerTarget;
-use crate::state::{Config, Schema, State, StateKey, Value};
-use crate::update::Update;
-use crate::value::Key;
-
-/// Where a runner call writes a text it gives (its answer, its child's
-/// thread): a string state key it sets, or a list of strings it appends to.
-///
-/// More outputs may come in a later version: a `match` on it outside the
-/// crate needs a wildcard arm.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RunnerOutput {
-    /// Sets a string state key to the text.
-    Set(StateKey<String>),
-    /// Appends the text to a list of strings.
-    Append(StateKey<Vec<String>>),
-}
-
-impl RunnerOutput {
-    /// The key the text goes to.
-    pub fn key(&self) -> &Key {
-        match self {
-            RunnerOutput::Set(key) => key.key(),
-            RunnerOutput::Append(key) => key.key(),
-        }
-    }
-
-    /// Where it writes, by name, as a description writes it.
-    pub(crate) fn written(&self) -> Output {
-        match self {
-            RunnerOutput::Set(key) => Output::Set(key.key().clone()),
-            RunnerOutput::Append(key) => Output::Append(key.key().clone()),
-        }
-    }
-
-    fn update(&self, text: String) -> Update {
-        self.written().update(Value::str(text))
-    }
-}
+use crate::state::{Config, Schema, State};
 
 /// A node that asks another runner for an answer through the runner port,
 /// waits for it and gives it back as data.
@@ -102,9 +63,9 @@ pub struct RunnerCall {
     /// The port the call goes through, the host's.
     pub port: Arc<dyn RunnerPort>,
     /// Where the answer's text goes.
-    pub output: RunnerOutput,
+    pub output: TextOutput,
     /// Where the id of the child's thread goes. `None`: nowhere.
-    pub thread: Option<RunnerOutput>,
+    pub thread: Option<TextOutput>,
 }
 
 impl Node for RunnerCall {
@@ -136,15 +97,15 @@ impl Node for RunnerCall {
     }
 
     fn check(&self, schema: &Schema, site: CheckSite) -> Result<(), GraphError> {
-        check_text_output(schema, &self.output.written(), site)?;
+        self.output.check(schema, site)?;
         let Some(thread) = &self.thread else {
             return Ok(());
         };
-        check_text_output(schema, &thread.written(), site)?;
+        thread.check(schema, site)?;
         // Both in one batch: two `Set` of one key would be refused after the
         // child ran.
         match (&self.output, thread) {
-            (RunnerOutput::Set(answer), RunnerOutput::Set(thread)) if answer == thread => {
+            (TextOutput::Set(answer), TextOutput::Set(thread)) if answer == thread => {
                 Err(GraphError::SetConflict {
                     key: answer.key().clone(),
                 })
@@ -160,7 +121,7 @@ impl Node for RunnerCall {
             target: self.target.as_str().to_owned(),
             arguments: self.arguments.how_given(),
             output: self.output.written(),
-            thread: self.thread.as_ref().map(RunnerOutput::written),
+            thread: self.thread.as_ref().map(TextOutput::written),
         }))
     }
 }

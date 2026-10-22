@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use super::test_support::*;
 use crate::error::GraphError;
-use crate::graph::subgraph::{Input, Output, SubGraph};
-use crate::graph::{Always, Graph, GraphBuilder, Map};
+use crate::graph::subgraph::{Input, SubGraph};
+use crate::graph::{Always, Graph, GraphBuilder, Map, Output};
 use crate::observe::NoopObserver;
 use crate::run::Outcome;
 use crate::state::Value;

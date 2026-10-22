@@ -11,12 +11,12 @@ use br_llm_messages::{AssistantBlock, Step, StopReason, ToolCall, ToolCallId, To
 use serde_json::{Map, Value as Json};
 
 use crate::graph::{
-    Always, Context, Graph, GraphBuilder, ItemFailure, Limit, Map as Each, Node, Target,
+    Always, Context, Graph, GraphBuilder, ItemFailure, Limit, Map as Each, Node, Target, TextOutput,
 };
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::{OccurrenceKey, Origin, RunId};
 use crate::run::{Control, Outcome, RunFailure, control, run};
-use crate::runner::{CallKey, RunnerArguments, RunnerCall, RunnerOutput, RunnerTarget, RunnerTool};
+use crate::runner::{CallKey, RunnerArguments, RunnerCall, RunnerTarget, RunnerTool};
 use crate::state::{Config, Kind, Schema, State, StateKey, Value};
 use crate::testkit::{SeqIds, TestRunners};
 use crate::value::{EndLabel, Key, NodeId};
@@ -82,17 +82,17 @@ pub(crate) fn in_french() -> Map<String, Json> {
     Map::from_iter([("lang".to_owned(), Json::from("fr"))])
 }
 
-pub(crate) fn set_answer() -> RunnerOutput {
-    RunnerOutput::Set(skey("answer"))
+pub(crate) fn set_answer() -> TextOutput {
+    TextOutput::Set(skey("answer"))
 }
 
-pub(crate) fn append_answers() -> RunnerOutput {
-    RunnerOutput::Append(skey("answers"))
+pub(crate) fn append_answers() -> TextOutput {
+    TextOutput::Append(skey("answers"))
 }
 
 /// The call of `documentalist` on `port` with `{"lang": "fr"}`, its answer
 /// written through `output`, no thread written.
-pub(crate) fn ask(port: &Arc<TestRunners>, output: RunnerOutput) -> RunnerCall {
+pub(crate) fn ask(port: &Arc<TestRunners>, output: TextOutput) -> RunnerCall {
     RunnerCall {
         target: target("documentalist"),
         arguments: RunnerArguments::value(in_french()),

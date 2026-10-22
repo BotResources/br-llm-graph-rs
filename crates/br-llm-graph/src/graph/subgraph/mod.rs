@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::error::GraphError;
 use crate::graph::graph::Graph;
+use crate::graph::output::Output;
 use crate::state::{State, Value};
 use crate::update::Update;
 use crate::value::Key;
@@ -26,39 +27,6 @@ pub enum Input {
     Config(Key),
     /// A fixed value.
     Const(Value),
-}
-
-/// Where a value a node gives goes in the state of the graph it runs in: an
-/// output of a called graph (`SubGraph`), the answer of an `LlmCall`, or the
-/// answer or the thread of a `RunnerCall`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Output {
-    /// Sets a key of the value's kind.
-    Set(Key),
-    /// Appends to a list of the value's kind.
-    Append(Key),
-}
-
-impl Output {
-    /// The key written.
-    pub fn key(&self) -> &Key {
-        match self {
-            Output::Set(key) | Output::Append(key) => key,
-        }
-    }
-
-    pub(crate) fn update(&self, value: Value) -> Update {
-        match self {
-            Output::Set(key) => Update::Set {
-                key: key.clone(),
-                value,
-            },
-            Output::Append(key) => Update::Append {
-                key: key.clone(),
-                value,
-            },
-        }
-    }
 }
 
 /// What a call does when the nested run fails.

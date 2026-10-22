@@ -2,14 +2,13 @@ use br_llm_clients_core::{ClientRequest, OutputMode};
 use br_llm_messages::{Author, Conversation, Text, WireMessage, WireUserBlock};
 
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Context, Count, Node, NodeError, NodeFuture, Output};
+use crate::graph::{CheckSite, Context, Count, Node, NodeError, NodeFuture, TextOutput};
 use crate::react::given::{CallFacts, History, Model, Prompt};
 use crate::react::helpers::{answer_text, system_text, wire};
-use crate::react::llm_call_check::{check_conversation, check_output};
+use crate::react::llm_call_check::check_conversation;
 use crate::react::replies::{Unusable, judged, reminded, reminder};
 use crate::react::sink::complete;
-use crate::state::{Config, Schema, State, StateKey, Value};
-use crate::update::Update;
+use crate::state::{Config, Schema, State, StateKey};
 use crate::value::Key;
 
 /// What an `LlmCall` sends as its request. More kinds of request may come in
@@ -37,51 +36,6 @@ pub enum LlmRequest {
     /// function of the call's context. An empty one fails the node
     /// (`Request`, carrying `NoMessage`).
     History(History<LlmCall>),
-}
-
-/// Where the answer of an `LlmCall` goes: a string state key it sets, or a
-/// list of strings it appends to.
-///
-/// More outputs may come in a later version: a `match` on it outside the crate
-/// needs a wildcard arm.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum LlmOutput {
-    /// Sets a string state key to the answer.
-    Set(StateKey<String>),
-    /// Appends the answer to a list of strings.
-    Append(StateKey<Vec<String>>),
-}
-
-impl LlmOutput {
-    /// The key the answer goes to.
-    pub fn key(&self) -> &Key {
-        match self {
-            LlmOutput::Set(key) => key.key(),
-            LlmOutput::Append(key) => key.key(),
-        }
-    }
-
-    /// Where it writes, by name, as a description writes it.
-    pub(crate) fn written(&self) -> Output {
-        match self {
-            LlmOutput::Set(key) => Output::Set(key.key().clone()),
-            LlmOutput::Append(key) => Output::Append(key.key().clone()),
-        }
-    }
-
-    fn update(&self, answer: String) -> Update {
-        match self {
-            LlmOutput::Set(key) => Update::Set {
-                key: key.key().clone(),
-                value: Value::str(answer),
-            },
-            LlmOutput::Append(key) => Update::Append {
-                key: key.key().clone(),
-                value: Value::str(answer),
-            },
-        }
-    }
 }
 
 /// A node that makes one model call and gives back its answer as data.
@@ -145,7 +99,7 @@ pub struct LlmCall {
     /// text of the reply's structured block.
     pub output_mode: OutputMode,
     /// Where the answer goes.
-    pub output: LlmOutput,
+    pub output: TextOutput,
     /// The times a reply that cannot be used is asked for again. `None`: 0,
     /// the node fails on the first.
     pub reply_retries: Option<Count>,
@@ -213,7 +167,7 @@ impl Node for LlmCall {
             LlmRequest::Conversation { key, .. } => check_conversation(schema, key.key())?,
             LlmRequest::History(history) => history.reads().check(schema)?,
         }
-        check_output(schema, &self.output, site)
+        self.output.check(schema, site)
     }
 
     /// `llm_call`: how its subjects are given, its request and its output.

@@ -217,15 +217,15 @@ pub use error::{GraphError, NodeFault};
 pub use graph::{
     Always, CaptureSource, CaptureUpdate, CheckSite, Context, Count, Edge, FnEdge, FnNode, Graph,
     GraphBuilder, IdRequest, IdSource, Input, ItemFailure, Limit, Map, Node, NodeError, NodeFuture,
-    OnFailure, Output, Signature, SubGraph, Target,
+    OnFailure, Output, Signature, SubGraph, Target, TextOutput,
 };
 pub use observe::{NodeOutcome, NoopObserver, Observer};
 pub use origin::{OccurrenceKey, Origin, RunId, Segment};
 pub use react::{
     AgentNode, Budgeted, CriticHistory, CriticSeat, GeneratorCritic, GeneratorCriticNode,
-    GeneratorSeat, Given, History, Hook, HookError, HookFuture, Judgment, LlmCall, LlmOutput,
-    LlmRequest, LoopNode, MessageStatus, Model, ModelNode, OnLimit, Prompt, ReactAgent, Reading,
-    Reads, RequestContext, RoundLimit, RuleCheck, Ruling, Scheduled, ThreadError, ThreadFuture,
+    GeneratorSeat, Given, History, Hook, HookError, HookFuture, Judgment, LlmCall, LlmRequest,
+    LoopNode, MessageStatus, Model, ModelNode, OnLimit, Prompt, ReactAgent, Reading, Reads,
+    RequestContext, RoundLimit, RuleCheck, Ruling, Scheduled, ThreadError, ThreadFuture,
     ThreadMessage, ThreadStore, ThreadView, Tool, ToolContext, ToolError, ToolFuture, ToolOutput,
     TurnEnd, Verdict, VerdictOverride, VerdictReader, complete, pending_calls, structured, wire,
 };
@@ -235,7 +235,7 @@ pub use run::{
 };
 pub use runner::{
     AnswerBlock, CallKey, RunnerAnswer, RunnerArguments, RunnerCall, RunnerError, RunnerFuture,
-    RunnerOutput, RunnerPort, RunnerReply, RunnerRequest, RunnerTarget, RunnerTool,
+    RunnerPort, RunnerReply, RunnerRequest, RunnerTarget, RunnerTool,
 };
 pub use session::{Ended, Session, Start};
 pub use state::{

@@ -6,7 +6,8 @@
 //! typed key of another schema is refused there as a key by name is.
 
 use crate::error::GraphError;
-use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, Output, SubGraph};
+use crate::graph::output::Output;
+use crate::graph::subgraph::{CaptureSource, CaptureUpdate, Input, SubGraph};
 use crate::state::{ConfigKey, StateKey, ValueType};
 
 impl SubGraph {

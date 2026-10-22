@@ -14,8 +14,8 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
     Always, Config, Context, EndLabel, FnEdge, FnNode, Graph, GraphBuilder, Input, ItemFailure,
-    Limit, LlmCall, LlmOutput, LlmRequest, Map, Model, Node, NodeFuture, NodeId, OnLimit, Output,
-    Prompt, ReactAgent, RoundLimit, Schema, State, StateKey, SubGraph, Target,
+    Limit, LlmCall, LlmRequest, Map, Model, Node, NodeFuture, NodeId, OnLimit, Output, Prompt,
+    ReactAgent, RoundLimit, Schema, State, StateKey, SubGraph, Target, TextOutput,
 };
 use br_llm_messages::{Author, Conversation};
 
@@ -40,7 +40,7 @@ fn summarize() -> Arc<Graph> {
         system: Prompt::text("Summarize the topic in one line."),
         request: LlmRequest::Text(Prompt::from_state(&topic)),
         output_mode: OutputMode::Plain,
-        output: LlmOutput::Set(note.clone()),
+        output: TextOutput::Set(note.clone()),
         reply_retries: None,
         reminder: None,
     };

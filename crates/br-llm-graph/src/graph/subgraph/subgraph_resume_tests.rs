@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use super::test_support::*;
-use crate::graph::subgraph::{Input, Output, SubGraph};
-use crate::graph::{Always, Context, FnNode, Graph, GraphBuilder, Map, NodeFuture, Target};
+use crate::graph::subgraph::{Input, SubGraph};
+use crate::graph::{Always, Context, FnNode, Graph, GraphBuilder, Map, NodeFuture, Output, Target};
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
 use crate::run::counted::{Counted, CountedBody};

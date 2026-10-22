@@ -19,8 +19,8 @@ use std::sync::Arc;
 use br_llm_clients_core::OutputMode;
 use br_llm_graph::{
     Always, AnswerBlock, CaptureUpdate, Config, EndLabel, GraphBuilder, ItemFailure, Limit, Map,
-    Model, NodeId, Outcome, Prompt, ReactAgent, RunnerArguments, RunnerCall, RunnerOutput,
-    RunnerTarget, RunnerTool, Schema, StateKey, Target, control, run,
+    Model, NodeId, Outcome, Prompt, ReactAgent, RunnerArguments, RunnerCall, RunnerTarget,
+    RunnerTool, Schema, StateKey, Target, TextOutput, control, run,
 };
 use br_llm_messages::{Author, Conversation, Text};
 use serde_json::{Map as Object, Value as Json, json};
@@ -74,8 +74,8 @@ async fn main() {
             )]))
         }),
         port: port.clone(),
-        output: RunnerOutput::Append(answers.clone()),
-        thread: Some(RunnerOutput::Append(threads.clone())),
+        output: TextOutput::Append(answers.clone()),
+        thread: Some(TextOutput::Append(threads.clone())),
     };
     let each = Map::new(&documents, &document, ask)
         .max_concurrency(Limit::Fixed(NonZeroUsize::new(2).expect("two")))

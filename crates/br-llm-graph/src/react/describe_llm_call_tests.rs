@@ -7,9 +7,9 @@ use br_llm_clients_core::OutputMode;
 use serde_json::json;
 
 use crate::describe::test_support::{assert_written, node_json};
-use crate::graph::{Always, GraphBuilder, Target};
+use crate::graph::{Always, GraphBuilder, Target, TextOutput};
 use crate::react::given::{History, Model, Prompt, Reads};
-use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
+use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::test_support::{author, mock, skey};
 use crate::state::{Kind, Schema};
 use crate::value::{EndLabel, NodeId};
@@ -34,7 +34,7 @@ fn described(call: LlmCall) -> serde_json::Value {
     node_json(&graph.describe(), "summarize")
 }
 
-fn call(request: LlmRequest, output: LlmOutput) -> LlmCall {
+fn call(request: LlmRequest, output: TextOutput) -> LlmCall {
     LlmCall {
         model: Model::client(Arc::new(mock(Vec::new()))),
         system: Prompt::from_state(&skey("topic")),
@@ -52,7 +52,7 @@ fn given_a_text_request_when_described_then_its_subjects_request_and_output_are_
         Ok("Summarize.".to_owned())
     }));
     assert_written(
-        &described(call(request, LlmOutput::Set(skey("note")))),
+        &described(call(request, TextOutput::Set(skey("note")))),
         &json!({
             "id": "summarize", "kind": "llm_call",
             "edge": {"targets": [{"end": "done"}]},
@@ -70,7 +70,7 @@ fn given_a_conversation_request_when_described_then_its_key_and_author_are_writt
         key: skey("chat"),
         author: author(),
     };
-    let node = described(call(request, LlmOutput::Append(skey("notes"))));
+    let node = described(call(request, TextOutput::Append(skey("notes"))));
     assert_written(
         &node["request"],
         &json!({"conversation": "chat", "author": {"id": "agent"}}),
@@ -82,7 +82,7 @@ fn given_a_conversation_request_when_described_then_its_key_and_author_are_writt
 fn given_a_history_request_when_described_then_how_it_is_given() {
     let request = LlmRequest::History(History::value(Vec::new()));
     assert_eq!(
-        described(call(request, LlmOutput::Set(skey("note"))))["request"],
+        described(call(request, TextOutput::Set(skey("note"))))["request"],
         json!({"history": "fixed"})
     );
 }
@@ -96,7 +96,7 @@ fn given_functions_that_panic_when_described_then_none_is_called() {
             panic!("a description builds no request")
         })),
         output_mode: OutputMode::Plain,
-        output: LlmOutput::Set(skey("note")),
+        output: TextOutput::Set(skey("note")),
         reply_retries: None,
         reminder: None,
     };
@@ -122,7 +122,7 @@ fn given_reply_retries_and_a_reminder_when_described_then_the_count_and_how_the_
     let node = described(LlmCall {
         reply_retries: Some(crate::graph::Count::Fixed(3)),
         reminder: Some(Prompt::from_state(&skey("topic"))),
-        ..call(request, LlmOutput::Set(skey("note")))
+        ..call(request, TextOutput::Set(skey("note")))
     });
     assert_eq!(
         (node["reply_retries"].clone(), node["reminder"].clone()),

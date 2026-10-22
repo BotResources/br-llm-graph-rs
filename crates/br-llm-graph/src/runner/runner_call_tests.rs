@@ -8,10 +8,11 @@ use std::sync::Arc;
 use serde_json::{Map, Value as Json, json};
 
 use crate::error::{GraphError, NodeFault};
+use crate::graph::TextOutput;
 use crate::react::test_gate::beside;
 use crate::run::{Outcome, control};
 use crate::runner::test_support::*;
-use crate::runner::{AnswerBlock, RunnerArguments, RunnerCall, RunnerOutput};
+use crate::runner::{AnswerBlock, RunnerArguments, RunnerCall};
 use crate::testkit::{PortError, TestRunners, text_block};
 
 /// The error a failed run's node returned, read back as a `GraphError`.
@@ -58,7 +59,7 @@ async fn given_an_append_output_and_a_thread_output_when_run_then_the_answer_is_
     let port = Arc::new(TestRunners::new());
     port.answer("documentalist", vec![text_block("an answer")]);
     let node = RunnerCall {
-        thread: Some(RunnerOutput::Set(skey("thread"))),
+        thread: Some(TextOutput::Set(skey("thread"))),
         ..ask(&port, append_answers())
     };
     let state = finished(run_in(&alone(node), state_with("", &[]), &ctx("run-1")).await);

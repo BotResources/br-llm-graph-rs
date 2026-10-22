@@ -13,7 +13,7 @@ use std::num::NonZeroUsize;
 use br_llm_clients_core::{OutputMode, Parameter, ParameterKind, Parameters, StructuredShape};
 use br_llm_graph::{
     Always, Config, ConfigKey, Count, EndLabel, GraphBuilder, ItemFailure, Limit, LlmCall,
-    LlmOutput, LlmRequest, Map, Model, NodeId, Outcome, Prompt, Reads, Schema, StateKey, Target,
+    LlmRequest, Map, Model, NodeId, Outcome, Prompt, Reads, Schema, StateKey, Target, TextOutput,
     Value, control, run,
 };
 use serde_json::json;
@@ -53,7 +53,7 @@ async fn main() {
             Ok(format!("Summarize in one sentence:\n{}", ctx.get(&read)?))
         })),
         output_mode: OutputMode::Plain,
-        output: LlmOutput::Append(summaries.clone()),
+        output: TextOutput::Append(summaries.clone()),
         reply_retries: None,
         reminder: None,
     };
@@ -77,7 +77,7 @@ async fn main() {
         system: Prompt::from_config(&style),
         request: LlmRequest::Text(Prompt::from_state_list(&summaries)),
         output_mode: OutputMode::Structured(shape),
-        output: LlmOutput::Set(title.clone()),
+        output: TextOutput::Set(title.clone()),
         reply_retries: Some(Count::Fixed(1)),
         reminder: Some(Prompt::text(
             "Your title could not be used: {reason}. Give it again.",

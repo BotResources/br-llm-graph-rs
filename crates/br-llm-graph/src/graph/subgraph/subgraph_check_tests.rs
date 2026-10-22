@@ -1,7 +1,7 @@
 use super::test_support::*;
 use crate::error::GraphError;
-use crate::graph::subgraph::{Input, Output, SubGraph};
-use crate::graph::{Always, GraphBuilder};
+use crate::graph::subgraph::{Input, SubGraph};
+use crate::graph::{Always, GraphBuilder, Output};
 use crate::state::Value;
 use crate::value::Key;
 

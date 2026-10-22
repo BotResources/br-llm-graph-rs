@@ -5,9 +5,9 @@
 use std::sync::Arc;
 
 use crate::error::GraphError;
-use crate::graph::{CheckSite, GraphBuilder, Node, Target};
+use crate::graph::{CheckSite, GraphBuilder, Node, Target, TextOutput};
 use crate::runner::test_support::*;
-use crate::runner::{RunnerCall, RunnerOutput, RunnerTarget};
+use crate::runner::{RunnerCall, RunnerTarget};
 use crate::state::Kind;
 use crate::testkit::TestRunners;
 use crate::value::EndLabel;
@@ -35,7 +35,7 @@ fn given_a_blank_target_when_built_then_runner_target_blank() {
 #[test]
 fn given_outputs_that_cannot_take_a_string_when_built_then_the_error_writing_one_would_give() {
     let port = Arc::new(TestRunners::new());
-    let refusal = |output: RunnerOutput, thread: Option<RunnerOutput>| {
+    let refusal = |output: TextOutput, thread: Option<TextOutput>| {
         RunnerCall {
             thread,
             ..ask(&port, output)
@@ -45,25 +45,25 @@ fn given_outputs_that_cannot_take_a_string_when_built_then_the_error_writing_one
         .unwrap()
     };
     for thread in [false, true] {
-        let place = |output: RunnerOutput| match thread {
+        let place = |output: TextOutput| match thread {
             false => refusal(output, None),
             true => refusal(set_answer(), Some(output)),
         };
         assert!(matches!(
-            place(RunnerOutput::Set(skey("missing"))),
+            place(TextOutput::Set(skey("missing"))),
             GraphError::UnknownKey { key: found } if found == key("missing")
         ));
         assert!(matches!(
-            place(RunnerOutput::Set(skey("count"))),
+            place(TextOutput::Set(skey("count"))),
             GraphError::KindMismatch { key: found, expected: Kind::Int, found: "str" }
                 if found == key("count")
         ));
         assert!(matches!(
-            place(RunnerOutput::Append(skey("answer"))),
+            place(TextOutput::Append(skey("answer"))),
             GraphError::AppendNotList { key: found } if found == key("answer")
         ));
         assert!(matches!(
-            place(RunnerOutput::Append(skey("counts"))),
+            place(TextOutput::Append(skey("counts"))),
             GraphError::KindMismatch { key: found, expected: Kind::Int, found: "str" }
                 if found == key("counts")
         ));
@@ -74,7 +74,7 @@ fn given_outputs_that_cannot_take_a_string_when_built_then_the_error_writing_one
 fn given_outputs_that_take_a_string_when_the_graph_is_built_then_it_is() {
     let port = Arc::new(TestRunners::new());
     let node = RunnerCall {
-        thread: Some(RunnerOutput::Append(skey("threads"))),
+        thread: Some(TextOutput::Append(skey("threads"))),
         ..ask(&port, set_answer())
     };
     assert!(
@@ -95,7 +95,7 @@ fn given_a_refused_output_when_the_graph_is_built_then_invalid_node_naming_the_r
     let port = Arc::new(TestRunners::new());
     let built = GraphBuilder::new(schema())
         .entry(nid("ask"))
-        .node(nid("ask"), ask(&port, RunnerOutput::Set(skey("missing"))))
+        .node(nid("ask"), ask(&port, TextOutput::Set(skey("missing"))))
         .edge(
             nid("ask"),
             crate::graph::Always(Target::End(EndLabel::new("done").unwrap())),

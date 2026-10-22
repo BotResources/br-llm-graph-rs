@@ -40,7 +40,7 @@ store is given each finished step, with its model and its usage.
 - `RunnerCall`, a node: its arguments fixed or a function of the state and
   the configuration (`RunnerArguments`); the answer's text (the JSON text of
   its structured block when it has one, else its text blocks joined
-  verbatim), and optionally the child's thread, through a `RunnerOutput`
+  verbatim), and optionally the child's thread, through a `TextOutput`
   (`Set`, `Append`). An expected failure of the child fails it with
   `RunnerFailed { target, reason }`, whose message is the child's reason
   verbatim (`runner call failed` when blank), so a `Capture` turns it into
@@ -110,6 +110,7 @@ store is given each finished step, with its model and its usage.
 - **Breaking:** `Observer::node_finished` takes the node's `NodeOutcome`.
 - **Breaking:** `LlmCall`, `ReactAgent` and `GeneratorSeat` gain
   `reply_retries` and `reminder`.
+- **Breaking:** `LlmOutput` and `RunnerOutput` are one type, `TextOutput`.
 - **Breaking:** `VerdictReader` returns `Result<Reading, GraphError>`.
 - **Breaking:** a structured reply that does not fit its shape, or has no
   structured block, fails with `Structured` (the LLM call wrote its text

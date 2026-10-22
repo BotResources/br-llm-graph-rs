@@ -1,9 +1,8 @@
 //! Doctests only (`cfg(doctest)`): the enums a runner builds to configure a
-//! node, `Judgment`, `LlmRequest`, `LlmOutput`, `Ruling`, `CriticHistory`
-//! and `RunnerOutput`, the verdict reader's `Reading`, and those a runner
-//! port builds, `RunnerReply` and `AnswerBlock`, may gain variants in a later
-//! version. A host builds their
-//! variants as before, and a `match` outside the crate needs a wildcard arm:
+//! node, `Judgment`, `LlmRequest`, `TextOutput`, `Ruling` and
+//! `CriticHistory`, the verdict reader's `Reading`, and those a runner port
+//! builds, `RunnerReply` and `AnswerBlock`, may gain variants in a later
+//! version. A host builds their variants as before, and a `match` outside the crate needs a wildcard arm:
 //! one without it does not compile (E0004; rustdoc checks the code itself
 //! only on nightly).
 //!
@@ -64,28 +63,16 @@
 //! The enums of 0.5 a runner builds, matched with a wildcard arm.
 //!
 //! ```
-//! use br_llm_graph::{CriticHistory, LlmOutput, Ruling, Schema};
+//! use br_llm_graph::{CriticHistory, Ruling, Schema};
 //! use br_llm_messages::Text;
 //!
 //! let mut schema = Schema::builder();
-//! let outputs = [
-//!     LlmOutput::Set(schema.state("summary").unwrap()),
-//!     LlmOutput::Append(schema.state("summaries").unwrap()),
-//! ];
 //! let rulings = [Ruling::Pass, Ruling::Revise(Text::new("Longer.").unwrap())];
 //! let histories = [
 //!     CriticHistory::History,
 //!     CriticHistory::Latest,
 //!     CriticHistory::Brief(schema.state("brief").unwrap()),
 //! ];
-//! let sets = outputs
-//!     .iter()
-//!     .filter(|output| match output {
-//!         LlmOutput::Set(_) => true,
-//!         LlmOutput::Append(_) => false,
-//!         _ => false,
-//!     })
-//!     .count();
 //! let passes = rulings
 //!     .iter()
 //!     .filter(|ruling| match ruling {
@@ -102,16 +89,7 @@
 //!         _ => false,
 //!     })
 //!     .count();
-//! assert_eq!((sets, passes, briefs), (1, 1, 1));
-//! ```
-//!
-//! ```compile_fail,E0004
-//! fn set(output: &br_llm_graph::LlmOutput) -> bool {
-//!     match output {
-//!         br_llm_graph::LlmOutput::Set(_) => true,
-//!         br_llm_graph::LlmOutput::Append(_) => false,
-//!     }
-//! }
+//! assert_eq!((passes, briefs), (1, 1));
 //! ```
 //!
 //! ```compile_fail,E0004
@@ -137,13 +115,13 @@
 //! wildcard arm.
 //!
 //! ```
-//! use br_llm_graph::{AnswerBlock, RunnerAnswer, RunnerOutput, RunnerReply, Schema, ThreadId};
+//! use br_llm_graph::{AnswerBlock, RunnerAnswer, RunnerReply, Schema, TextOutput, ThreadId};
 //! use br_llm_messages::Text;
 //!
 //! let mut schema = Schema::builder();
 //! let outputs = [
-//!     RunnerOutput::Set(schema.state("answer").unwrap()),
-//!     RunnerOutput::Append(schema.state("answers").unwrap()),
+//!     TextOutput::Set(schema.state("answer").unwrap()),
+//!     TextOutput::Append(schema.state("answers").unwrap()),
 //! ];
 //! let blocks = vec![
 //!     AnswerBlock::Text(Text::new("Two documents answer.").unwrap()),
@@ -157,8 +135,8 @@
 //! let appends = outputs
 //!     .iter()
 //!     .filter(|output| match output {
-//!         RunnerOutput::Append(_) => true,
-//!         RunnerOutput::Set(_) => false,
+//!         TextOutput::Append(_) => true,
+//!         TextOutput::Set(_) => false,
 //!         _ => false,
 //!     })
 //!     .count();
@@ -200,10 +178,10 @@
 //! ```
 //!
 //! ```compile_fail,E0004
-//! fn appends(output: &br_llm_graph::RunnerOutput) -> bool {
+//! fn appends(output: &br_llm_graph::TextOutput) -> bool {
 //!     match output {
-//!         br_llm_graph::RunnerOutput::Append(_) => true,
-//!         br_llm_graph::RunnerOutput::Set(_) => false,
+//!         br_llm_graph::TextOutput::Append(_) => true,
+//!         br_llm_graph::TextOutput::Set(_) => false,
 //!     }
 //! }
 //! ```

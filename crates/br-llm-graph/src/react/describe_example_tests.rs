@@ -10,10 +10,10 @@ use serde_json::{Value as Json, json};
 use crate::describe::test_support::{assert_written, json};
 use crate::graph::{
     Always, Count, FnEdge, FnNode, Graph, GraphBuilder, Input, ItemFailure, Limit, Map, Node,
-    NodeFuture, Output, SubGraph, Target,
+    NodeFuture, Output, SubGraph, Target, TextOutput,
 };
 use crate::react::given::{Model, Prompt};
-use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
+use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::react_agent::ReactAgent;
 use crate::react::round_limit::{OnLimit, RoundLimit};
 use crate::react::test_support::{key, mock};
@@ -86,7 +86,7 @@ fn summarize() -> Arc<Graph> {
         system: Prompt::text("Summarize in one line."),
         request: LlmRequest::Text(Prompt::from_state(&topic)),
         output_mode: OutputMode::Plain,
-        output: LlmOutput::Set(note.clone()),
+        output: TextOutput::Set(note.clone()),
         reply_retries: Some(Count::Fixed(2)),
         reminder: Some(Prompt::text("{reason}: write the note again.")),
     };

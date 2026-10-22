@@ -9,10 +9,10 @@ use br_llm_clients_core::{
 use br_llm_messages::{Text, ToolName, ToolResultBlock};
 use serde_json::Value as Json;
 
-use crate::graph::{Always, GraphBuilder, Input, SubGraph, Target};
+use crate::graph::{Always, GraphBuilder, Input, SubGraph, Target, TextOutput};
 use crate::react::generator_critic_support::{duo, nid};
 use crate::react::given::{Model, Prompt, Reads};
-use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
+use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::react_agent_support::{agent, question};
 use crate::react::test_support::{key, mock, skey};
 use crate::react::tool::{Tool, ToolContext, ToolFuture, ToolOutput};
@@ -98,7 +98,7 @@ fn given_prompts_tools_clients_and_fixed_values_when_described_then_none_of_them
         system: Prompt::text("SECRET-SYSTEM"),
         request: LlmRequest::Text(Prompt::text("SECRET-REQUEST")),
         output_mode: OutputMode::Plain,
-        output: LlmOutput::Set(skey("note")),
+        output: TextOutput::Set(skey("note")),
         reply_retries: None,
         reminder: None,
     };
@@ -144,7 +144,7 @@ fn graph_with_secret_defaults_and_author() -> crate::graph::Graph {
         system: Prompt::from_state(&skey("persona")),
         request: LlmRequest::Text(Prompt::text("Summarize.")),
         output_mode: OutputMode::Plain,
-        output: LlmOutput::Set(skey("note")),
+        output: TextOutput::Set(skey("note")),
         reply_retries: None,
         reminder: None,
     };

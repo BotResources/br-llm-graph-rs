@@ -65,8 +65,8 @@ let ask = RunnerCall {
         Ok(Map::from_iter([("document".to_owned(), Json::from(state.get(&document)?))]))
     }),
     port: port.clone(),                               // the host's Arc<dyn RunnerPort>
-    output: RunnerOutput::Append(answers.clone()),    // the answer's text, in item order
-    thread: Some(RunnerOutput::Append(threads.clone())), // the child's thread
+    output: TextOutput::Append(answers.clone()),      // the answer's text, in item order
+    thread: Some(TextOutput::Append(threads.clone())), // the child's thread
 };
 let each = Map::new(&documents, &document, ask).max_concurrency(two); // one call per document
 

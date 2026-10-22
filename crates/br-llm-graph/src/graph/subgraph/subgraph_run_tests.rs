@@ -3,8 +3,10 @@ use std::sync::{Arc, Mutex};
 
 use super::test_support::*;
 use crate::error::{GraphError, NodeFault};
-use crate::graph::subgraph::{Input, Output, SubGraph};
-use crate::graph::{Always, Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Target};
+use crate::graph::subgraph::{Input, SubGraph};
+use crate::graph::{
+    Always, Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Output, Target,
+};
 use crate::observe::{NoopObserver, Observer};
 use crate::origin::Origin;
 use crate::state::{Config, Kind, Schema, State, Value};

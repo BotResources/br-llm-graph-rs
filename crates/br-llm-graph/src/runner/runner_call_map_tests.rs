@@ -6,10 +6,10 @@
 use std::sync::Arc;
 
 use crate::error::GraphError;
-use crate::graph::{CaptureUpdate, CheckSite, ItemFailure, Node};
+use crate::graph::{CaptureUpdate, CheckSite, ItemFailure, Node, TextOutput};
 use crate::react::test_gate::beside;
+use crate::runner::RunnerCall;
 use crate::runner::test_support::*;
-use crate::runner::{RunnerCall, RunnerOutput};
 use crate::testkit::{Scripted, TestRunners, text_block};
 
 /// A port whose `documentalist` answers with the analysis of the document
@@ -82,7 +82,7 @@ async fn given_a_child_failing_for_one_item_and_a_capture_when_run_then_its_reas
  {
     let port = analysing();
     let threads = RunnerCall {
-        thread: Some(RunnerOutput::Append(skey("threads"))),
+        thread: Some(TextOutput::Append(skey("threads"))),
         ..ask_about_document(&port)
     };
     let graph = mapped(
@@ -115,7 +115,7 @@ async fn given_a_child_failing_for_one_item_and_a_capture_when_run_then_its_reas
 fn given_a_set_output_or_a_set_thread_as_a_map_body_when_built_then_map_body_set() {
     let port = Arc::new(TestRunners::new());
     let set_thread = RunnerCall {
-        thread: Some(RunnerOutput::Set(skey("thread"))),
+        thread: Some(TextOutput::Set(skey("thread"))),
         ..ask(&port, append_answers())
     };
     for (body, set) in [(ask(&port, set_answer()), "answer"), (set_thread, "thread")] {

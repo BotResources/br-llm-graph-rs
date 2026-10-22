@@ -6,8 +6,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::test_support::*;
-use crate::graph::subgraph::{Output, SubGraph};
-use crate::graph::{Always, Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Target};
+use crate::graph::subgraph::SubGraph;
+use crate::graph::{
+    Always, Context, FnEdge, FnNode, Graph, GraphBuilder, NodeFuture, Output, Target,
+};
 use crate::observe::NoopObserver;
 use crate::run::{Outcome, PendingEntry, PendingWrites, control, run};
 use crate::state::{Config, Kind, Schema, State, Value};

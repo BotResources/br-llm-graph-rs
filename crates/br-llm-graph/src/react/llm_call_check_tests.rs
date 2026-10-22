@@ -3,9 +3,9 @@
 //! would give.
 
 use crate::error::GraphError;
-use crate::graph::{CheckSite, Node};
+use crate::graph::{CheckSite, Node, TextOutput};
 use crate::react::given::Prompt;
-use crate::react::llm_call::{LlmCall, LlmOutput, LlmRequest};
+use crate::react::llm_call::{LlmCall, LlmRequest};
 use crate::react::llm_call_support::*;
 use crate::react::test_support::{author, ckey, key, mock, skey};
 use crate::state::{Kind, Value};
@@ -106,26 +106,27 @@ fn given_a_conversation_key_that_is_not_a_conversation_when_built_then_the_key_o
 #[test]
 fn given_an_output_that_cannot_take_a_string_when_built_then_the_error_writing_it_would_give() {
     let client = mock(Vec::new());
-    let checked = |output: LlmOutput| summarize(&client, output).check(&schema(), CheckSite::Graph);
+    let checked =
+        |output: TextOutput| summarize(&client, output).check(&schema(), CheckSite::Graph);
     assert!(matches!(
-        checked(LlmOutput::Set(skey("missing"))),
+        checked(TextOutput::Set(skey("missing"))),
         Err(GraphError::UnknownKey { key: found }) if found == key("missing")
     ));
     assert!(matches!(
-        checked(LlmOutput::Set(skey("count"))),
+        checked(TextOutput::Set(skey("count"))),
         Err(GraphError::KindMismatch { key: named, expected: Kind::Int, found: "str" })
             if named == key("count")
     ));
     assert!(matches!(
-        checked(LlmOutput::Append(skey("missing"))),
+        checked(TextOutput::Append(skey("missing"))),
         Err(GraphError::UnknownKey { key: found }) if found == key("missing")
     ));
     assert!(matches!(
-        checked(LlmOutput::Append(skey("summary"))),
+        checked(TextOutput::Append(skey("summary"))),
         Err(GraphError::AppendNotList { key: found }) if found == key("summary")
     ));
     assert!(matches!(
-        checked(LlmOutput::Append(skey("counts"))),
+        checked(TextOutput::Append(skey("counts"))),
         Err(GraphError::KindMismatch { key: named, expected: Kind::Int, found: "str" })
             if named == key("counts")
     ));

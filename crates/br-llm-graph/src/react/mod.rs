@@ -286,8 +286,7 @@ pub use given::{
 };
 pub use helpers::{pending_calls, structured, wire};
 pub use hook::{Hook, HookError, HookFuture, Judgment};
-pub use llm_call::{LlmCall, LlmOutput, LlmRequest};
-pub(crate) use llm_call_check::check_text_output;
+pub use llm_call::{LlmCall, LlmRequest};
 pub use react_agent::ReactAgent;
 pub use round_limit::{OnLimit, RoundLimit};
 pub use rule_check::{RuleCheck, Ruling};

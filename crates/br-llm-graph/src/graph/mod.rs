@@ -1,7 +1,7 @@
 //! Graphs: nodes, edges and the builder that checks them; the nodes the library
-//! gives (a call of another graph, a map over a list); the bounds read at run
-//! time (`Limit`, `Count`); the context a node runs in and the host's id
-//! source.
+//! gives (a call of another graph, a map over a list); where a node writes
+//! what it gives (`Output`, `TextOutput`); the bounds read at run time
+//! (`Limit`, `Count`); the context a node runs in and the host's id source.
 
 mod builder;
 mod context;
@@ -13,6 +13,7 @@ mod ids;
 mod limit;
 mod map;
 mod node;
+mod output;
 mod private;
 mod run_local;
 mod signature;
@@ -27,5 +28,6 @@ pub use ids::{IdRequest, IdSource};
 pub use limit::Limit;
 pub use map::{ItemFailure, Map};
 pub use node::{CheckSite, FnNode, Node, NodeError, NodeFuture};
+pub use output::{Output, TextOutput};
 pub use signature::Signature;
-pub use subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, Output, SubGraph};
+pub use subgraph::{CaptureSource, CaptureUpdate, Input, OnFailure, SubGraph};
