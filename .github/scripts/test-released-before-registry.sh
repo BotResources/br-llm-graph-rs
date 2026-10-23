@@ -32,7 +32,7 @@ g mv Cargo.toml "crates/$CRATE/Cargo.toml"
 g mv CHANGELOG.md "crates/$CRATE/CHANGELOG.md"
 printf '[workspace]\nresolver = "3"\nmembers = ["crates/%s"]\n' "$CRATE" >"$DEV/Cargo.toml"
 cp "$REPO_ROOT/crates/$CRATE/registry.toml" "$DEV/crates/$CRATE/registry.toml"
-copy_scripts
+copy_scripts "$CRATE"
 (cd "$DEV" && cargo generate-lockfile --offline -q)
 MIGRATION_COMMIT="$(commit_all "workspace layout and release chain, version still 0.3.0")"
 

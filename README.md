@@ -74,9 +74,41 @@ let json = serde_json::to_string_pretty(&graph.describe())?;  // br-llm-graph-de
 
 The runnable examples are in `crates/br-llm-graph/examples` (`cargo run -p br-llm-graph --example react_agent`): durable agents over a thread store kept in memory, a generator-critic with a rule check, an `LlmCall` as the body of a map, a hook guarding a tool, a served session, resumption from checkpoints, the description of a graph (`--example describe`).
 
+## br-graph-contract
+
+The contract of the graph family, with no run logic: the state that holds the runner's fields, the node that creates instances, the instance with its separate input and event ends, the edge, the target `END`, the cancel token, and the graph validated as a whole with its description as data (`Structure`). It depends on no executor, no node library and no LLM crate, so an executor, a node library and a runner author each import only it. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+
+```toml
+[dependencies]
+br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
+```
+
+| Part | What the crate enforces |
+|---|---|
+| `State` | create, apply (all or nothing) and rebuild check the fields' own validity and a size limit on their JSON form; a refusal for size names the serialized size and the limit |
+| `Instance::channel` | `give` is ordered against the close: an input is accepted before it, or refused as `InputClosed`; at most one terminal `Event` (`finish` consumes the sender); a dropped end ends the instance; `EventSender::dropped` gives the owned future `Dropped` (`Send`, `'static`) |
+| `EventEnd::recv` | `Err(EventEndError::Finished)`: the terminal event was already delivered, or the executor dropped the instance; `Err(EventEndError::Vanished)`: the `EventSender` was dropped without `finish`, a node fault the executor must treat as a failure; a dropped `recv` future loses no event |
+| `GraphBuilder`, `Structure` | one set of build rules shared by the build and the rebuild of a structure; a `Graph` or a `Structure` that exists is valid; the JSON of a structure is accepted only as objects, a positional array is `StructureError::Malformed` |
+| `Graph::evaluate_edge` | targets declared by the edge, no `END` mixed with nodes, no repeats, in declaration order |
+| `CancelToken` | never un-triggered; a child is triggered by its parent and never the reverse; a child keeps its parent alive, so a trigger of any ancestor reaches every live descendant; `CancelView::triggered` gives the owned future `Triggered` |
+
+Behaviour to know:
+
+- The library guarantees at most one terminal `Event`, not exactly one: an instance that never calls `finish` stays silent, or ends with `EventEndError::Vanished` if its `EventSender` is dropped.
+- Dropping the `InputEnd` or the `EventEnd` drops the instance: the input queue is cleared, `give` is refused as `InputClosed`, `EventSender::is_dropped` is true, and an event sent afterwards is discarded. An event sent before stays receivable on a held `EventEnd` when only the `InputEnd` is dropped; dropping the `EventEnd` discards it.
+- Dropping the `EventSender` without `finish` ends the event end without an event and closes the input end. Dropping the `InputReader` closes the input end.
+- An accepted input stays readable until the instance finishes or is dropped; the unread accepted inputs are then discarded without a signal. The input queue is unbounded.
+- `Node::create` returns an instance that is not checked against the id it was asked for: the executor must check it.
+- `Graph::edge_of` returns the raw edge; only `Graph::evaluate_edge` is checked.
+- `Target::node`, `Target::from` and the JSON form turn `"END"` into `Target::End`; `Target::Node("END")` can only be built by naming the variant, and a build or a checked evaluation refuses it.
+- `CancelToken::trigger` returns after this call has propagated the trigger; a concurrent second call on the same token may return before the first call has finished propagating, but `is_triggered` on a token reports true as soon as the token or any ancestor is triggered, so a descendant never reads untriggered after an ancestor's `trigger` has returned.
+- The public API names `uuid::Uuid` (uuid 1.x) and the serde traits (`Fields` requires `Serialize` and `DeserializeOwned`; `Structure` and `Target` implement them).
+
+Not enforced, and left to the implementer as the sealed intent states: that applying the empty update to valid fields is accepted by the fields' own `apply` and leaves them equal (the library cannot tell the empty update from another), that serialize then rebuild gives equal fields (a `NaN` serializes as `null` and cannot be rebuilt, and `State::create` does not catch it), that a copy of the fields equals its original, that applying an update and validating are deterministic, that an update is a delta that stays correct on a later state, that an instance reads its accepted inputs before its terminal event and finishes its work before it, that an instance sends `Cancelled` when its token is triggered, that everything of one instance lives in the instance and not in the node, that dropping an instance stops its work, that a node with no more work sends its terminal event (a silent instance keeps the run alive for ever), that an edge is a pure function of the state, that an instance never changes the state it reads, and that the executor gives each instance a new id and evaluates edges only after a `Result`.
+
 ## Releases
 
-Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The pull request that bumps `crates/br-llm-graph/Cargo.toml` (with a plain `## X.Y.Z` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/br-llm-graph-<major>.<minor>` line) the release workflow asks the registry again, tags `br-llm-graph/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
+Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The crates `crates/br-llm-graph` and `crates/br-graph-contract` are tracked, each by its own tag `{crate}/v{version}`. The pull request that bumps a crate's `Cargo.toml` (with a `## X.Y.Z - date` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/{crate}-<major>.<minor>` line) the release workflow asks the registry again, tags `{crate}/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
 
 Coverage: every CI run measures the test coverage with `cargo-llvm-cov` and keeps it as the `coverage` artifact (a `coverage-summary.json` per crate and per file, the lcov file and the HTML report); on a pull request the run's summary compares it with the base branch and warns when line coverage drops. Each release attaches its `coverage-summary.json` to the GitHub release and compares it with the previous release that carries one.
 

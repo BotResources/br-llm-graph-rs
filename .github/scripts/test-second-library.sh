@@ -14,11 +14,11 @@ for crate in $(cd "$REPO_ROOT" && bash .github/scripts/workspace-crates.sh); do
     if [[ "$RC" -eq 0 ]]; then verdict yes "$crate: tracked, registry.toml well-formed"; else verdict no "$crate: tracked, registry.toml well-formed"; fi
 done
 run bash -c 'cd "$1" && source .github/scripts/tracked-libraries.sh && printf "%s\n" $TRACKED_LIBRARIES' _ "$REPO_ROOT"
-expect_equal "$OUT" "$(cd "$REPO_ROOT" && bash .github/scripts/workspace-crates.sh)" "the tracked list is exactly the workspace crates"
+expect_equal "$(sort <<<"$OUT")" "$(cd "$REPO_ROOT" && bash .github/scripts/workspace-crates.sh | sort)" "the tracked list is exactly the workspace crates"
 
 install_stubs
 init_repo
-copy_scripts
+copy_scripts "$FIRST"
 printf '[workspace]\nresolver = "3"\nmembers = ["crates/*"]\n' >"$DEV/Cargo.toml"
 printf 'target\n' >"$DEV/.gitignore"
 write_crate "$FIRST"
