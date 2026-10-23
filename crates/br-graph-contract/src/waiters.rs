@@ -1,5 +1,25 @@
+use std::any::Any;
 use std::collections::HashMap;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::task::Waker;
+
+pub(crate) type PanicPayload = Box<dyn Any + Send>;
+
+pub(crate) fn wake_all_isolated(wakers: impl IntoIterator<Item = Waker>) -> Option<PanicPayload> {
+    let mut first_panic = None;
+    for waker in wakers {
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| waker.wake())) {
+            first_panic.get_or_insert(payload);
+        }
+    }
+    first_panic
+}
+
+pub(crate) fn wake_all(wakers: impl IntoIterator<Item = Waker>) {
+    if let Some(payload) = wake_all_isolated(wakers) {
+        resume_unwind(payload);
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct Waiters {
@@ -8,20 +28,20 @@ pub(crate) struct Waiters {
 }
 
 impl Waiters {
-    #[must_use = "the displaced waker must be dropped after the lock is released"]
-    pub(crate) fn register(&mut self, key: &mut Option<u64>, waker: &Waker) -> Option<Waker> {
+    #[must_use = "the waker handed back must be dropped after the lock is released"]
+    pub(crate) fn register(&mut self, key: &mut Option<u64>, waker: Waker) -> Option<Waker> {
         let Some(existing) = *key else {
             let fresh = self.next_key;
             self.next_key = self.next_key.wrapping_add(1);
-            self.slots.insert(fresh, waker.clone());
+            self.slots.insert(fresh, waker);
             *key = Some(fresh);
             return None;
         };
         match self.slots.get_mut(&existing) {
-            Some(slot) if slot.will_wake(waker) => None,
-            Some(slot) => Some(std::mem::replace(slot, waker.clone())),
+            Some(slot) if slot.will_wake(&waker) => Some(waker),
+            Some(slot) => Some(std::mem::replace(slot, waker)),
             None => {
-                self.slots.insert(existing, waker.clone());
+                self.slots.insert(existing, waker);
                 None
             }
         }
@@ -80,9 +100,9 @@ mod tests {
         let second = Waker::from(Arc::new(Noop));
         let mut waiters = Waiters::default();
         let mut key = None;
-        assert!(waiters.register(&mut key, &first).is_none());
+        assert!(waiters.register(&mut key, first.clone()).is_none());
         drop(first);
-        let displaced = waiters.register(&mut key, &second);
+        let displaced = waiters.register(&mut key, second.clone());
         assert_eq!(drops.load(Ordering::SeqCst), 0);
         assert!(displaced.is_some());
         drop(displaced);
@@ -91,12 +111,12 @@ mod tests {
     }
 
     #[test]
-    fn given_the_same_waker_when_registered_again_then_nothing_is_displaced() {
+    fn given_the_same_waker_when_registered_again_then_the_redundant_clone_is_handed_back() {
         let waker = Waker::from(Arc::new(Noop));
         let mut waiters = Waiters::default();
         let mut key = None;
-        assert!(waiters.register(&mut key, &waker).is_none());
-        assert!(waiters.register(&mut key, &waker).is_none());
+        assert!(waiters.register(&mut key, waker.clone()).is_none());
+        assert!(waiters.register(&mut key, waker.clone()).is_some());
         assert_eq!(waiters.len(), 1);
     }
 
@@ -106,7 +126,7 @@ mod tests {
         let waker = Waker::from(Arc::new(CountedDrop(Arc::clone(&drops))));
         let mut waiters = Waiters::default();
         let mut key = None;
-        assert!(waiters.register(&mut key, &waker).is_none());
+        assert!(waiters.register(&mut key, waker.clone()).is_none());
         drop(waker);
         let Some(registered) = key else {
             return;

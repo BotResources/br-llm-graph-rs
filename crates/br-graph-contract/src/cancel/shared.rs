@@ -1,10 +1,8 @@
-use std::any::Any;
-use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::task::Waker;
 
-use crate::waiters::Waiters;
+use crate::waiters::{Waiters, wake_all};
 
 const PRUNE_SLACK: usize = 16;
 
@@ -44,7 +42,16 @@ impl Shared {
     }
 
     pub(super) fn is_triggered(&self) -> bool {
-        self.triggered.load(Ordering::Acquire)
+        let mut current = self;
+        loop {
+            if current.triggered.load(Ordering::Acquire) {
+                return true;
+            }
+            match &current.parent {
+                Some(parent) => current = parent,
+                None => return false,
+            }
+        }
     }
 
     pub(super) fn trigger(self: &Arc<Self>) {
@@ -84,15 +91,20 @@ impl Shared {
     }
 
     pub(super) fn poll_triggered(&self, key: &mut Option<u64>, waker: &Waker) -> bool {
-        let displaced = {
+        if self.is_triggered() {
+            return true;
+        }
+        let owned = waker.clone();
+        let (ready, leftover) = {
             let mut inner = self.lock();
-            if inner.triggered {
-                return true;
+            if self.is_triggered() {
+                (true, Some(owned))
+            } else {
+                (false, inner.waiters.register(key, owned))
             }
-            inner.waiters.register(key, waker)
         };
-        drop(displaced);
-        false
+        drop(leftover);
+        ready
     }
 
     pub(super) fn remove_waiter(&self, key: u64) {
@@ -128,17 +140,5 @@ impl Drop for Shared {
         while let Some(parent) = next {
             next = Arc::into_inner(parent).and_then(|mut shared| shared.release_parent());
         }
-    }
-}
-
-fn wake_all(wakers: Vec<Waker>) {
-    let mut first_panic: Option<Box<dyn Any + Send>> = None;
-    for waker in wakers {
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| waker.wake())) {
-            first_panic.get_or_insert(payload);
-        }
-    }
-    if let Some(payload) = first_panic {
-        resume_unwind(payload);
     }
 }

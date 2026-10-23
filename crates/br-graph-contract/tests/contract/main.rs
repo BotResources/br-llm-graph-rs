@@ -9,6 +9,7 @@ mod instance;
 mod instance_ends;
 mod instance_events;
 mod instance_race;
+mod instance_wakers;
 mod node;
 mod park;
 mod send_sync;

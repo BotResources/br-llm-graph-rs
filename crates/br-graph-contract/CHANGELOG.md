@@ -19,10 +19,13 @@ executor and no node library.
   comparable, self-validating, with an update type that has an empty update
   and that the fields apply to themselves). `State` holds the fields behind
   three checked operations: `create`, `apply` (all or nothing, the first
-  state is untouched) and `rebuild`, each refused as `InvalidState` or
-  `ApplyError` with a `Reason`, under a size limit on the JSON form of the
+  state is untouched) and `rebuild`, each refused as `InvalidState` (create,
+  rebuild) or `ApplyError` (`Refused` by the fields, or `InvalidState`) with a
+  `Reason`, under a size limit on the JSON form of the
   fields (`DEFAULT_STATE_LIMIT`, 128 KiB, a positive limit given by the
-  runner).
+  runner); a refusal for size names the serialized size and the limit.
+  `Input` is a read-only view of a state, `Reason` the text of a refusal and
+  `Cause` the opaque cause.
 - `Node` (name, kind, subkind, async creation of an `Instance` from a
   `CancelView` and an `InstanceId`), `PROGRAMMATIC`, `Edge` and `Target`
   (`Target::End`, `Target::END`; `Target::node("END")` is `Target::End`).

@@ -1,11 +1,8 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use br_graph_contract::{ApplyError, Fields, Reason, State};
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use crate::common::{Tally, TallyUpdate, state, tally};
 
@@ -91,14 +88,16 @@ fn given_data_with_invalid_fields_when_rebuilt_then_it_is_invalid_state() {
 }
 
 #[test]
-fn given_fields_over_the_limit_when_created_then_the_reason_names_the_limit() {
+fn given_fields_over_the_limit_when_created_then_the_reason_names_the_size_and_the_limit() {
     let fields = Tally {
         total: 0,
         notes: vec!["x".repeat(200)],
     };
+    let size = serde_json::to_vec(&fields).unwrap().len();
     let error = State::create_with_limit(fields, limit(100)).unwrap_err();
     let reason = error.reason().to_string();
-    assert!(reason.contains("more than 100 bytes"), "{reason}");
+    assert!(reason.contains(&format!("{size} bytes")), "{reason}");
+    assert!(reason.contains("limit of 100 bytes"), "{reason}");
 }
 
 #[test]
@@ -197,73 +196,4 @@ fn given_a_state_when_converted_into_its_fields_then_the_fields_come_out() {
     let fields = state.into_fields();
     assert_eq!(fields.total, 2);
     assert_eq!(fields.notes, vec!["kept".to_owned()]);
-}
-
-struct Vast {
-    items: u64,
-    emitted: Arc<AtomicU64>,
-}
-
-impl Clone for Vast {
-    fn clone(&self) -> Self {
-        Self {
-            items: self.items,
-            emitted: Arc::clone(&self.emitted),
-        }
-    }
-}
-
-impl PartialEq for Vast {
-    fn eq(&self, other: &Self) -> bool {
-        self.items == other.items
-    }
-}
-
-impl Serialize for Vast {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut sequence = serializer.serialize_seq(Some(usize::try_from(self.items).unwrap()))?;
-        for _ in 0..self.items {
-            self.emitted.fetch_add(1, Ordering::Relaxed);
-            sequence.serialize_element(&0_u8)?;
-        }
-        sequence.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for Vast {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let items = Vec::<u8>::deserialize(deserializer)?;
-        Ok(Self {
-            items: items.len() as u64,
-            emitted: Arc::default(),
-        })
-    }
-}
-
-impl Fields for Vast {
-    type Update = ();
-
-    fn empty_update() {}
-
-    fn validate(&self) -> Result<(), Reason> {
-        Ok(())
-    }
-
-    fn apply(&mut self, _update: ()) -> Result<(), Reason> {
-        Ok(())
-    }
-}
-
-#[test]
-fn given_a_value_far_over_the_limit_when_created_then_it_is_refused_without_being_fully_serialized()
-{
-    let emitted = Arc::new(AtomicU64::new(0));
-    let enormous = Vast {
-        items: 134_217_728,
-        emitted: Arc::clone(&emitted),
-    };
-    let error = State::create(enormous).unwrap_err();
-    let reason = error.reason().to_string();
-    assert!(reason.contains("more than 131072 bytes"), "{reason}");
-    assert!(emitted.load(Ordering::Relaxed) < 1_000_000);
 }

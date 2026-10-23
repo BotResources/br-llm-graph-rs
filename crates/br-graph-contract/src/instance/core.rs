@@ -5,7 +5,7 @@ use std::task::{Context, Poll, Waker};
 
 use super::lifecycle::{Executor, Gate, NodeSide, Outside, remember};
 use super::{Event, EventEndError, Input, InputClosed};
-use crate::waiters::Waiters;
+use crate::waiters::{Waiters, wake_all};
 use crate::{Fields, InstanceId};
 
 pub(super) struct Core<F: Fields> {
@@ -66,9 +66,7 @@ impl<F: Fields> Core<F> {
             inner.queue.push_back(input);
             inner.reader_waker.take()
         };
-        if let Some(waker) = waker {
-            waker.wake();
-        }
+        wake_all(waker);
         Ok(())
     }
 
@@ -83,12 +81,11 @@ impl<F: Fields> Core<F> {
                 _ => None,
             }
         };
-        if let Some(waker) = waker {
-            waker.wake();
-        }
+        wake_all(waker);
     }
 
     pub(super) fn poll_next(&self, cx: &mut Context<'_>) -> Poll<Option<Input<F>>> {
+        let owned = cx.waker().clone();
         let mut inner = self.lock();
         if let Some(input) = inner.queue.pop_front() {
             return Poll::Ready(Some(input));
@@ -96,7 +93,7 @@ impl<F: Fields> Core<F> {
         if !inner.accepts_input() {
             return Poll::Ready(None);
         }
-        let replaced = remember(&mut inner.reader_waker, cx.waker());
+        let replaced = remember(&mut inner.reader_waker, owned);
         drop(inner);
         drop(replaced);
         Poll::Pending
@@ -164,6 +161,7 @@ impl<F: Fields> Core<F> {
     }
 
     pub(super) fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Result<Event<F>, EventEndError>> {
+        let owned = cx.waker().clone();
         let mut inner = self.lock();
         match mem::replace(&mut inner.node, NodeSide::Ended) {
             NodeSide::Sent(event) => Poll::Ready(Ok(event)),
@@ -174,7 +172,7 @@ impl<F: Fields> Core<F> {
             }
             NodeSide::Working(gate) => {
                 inner.node = NodeSide::Working(gate);
-                let replaced = remember(&mut inner.event_waker, cx.waker());
+                let replaced = remember(&mut inner.event_waker, owned);
                 drop(inner);
                 drop(replaced);
                 Poll::Pending
@@ -192,11 +190,12 @@ impl<F: Fields> Core<F> {
     }
 
     pub(super) fn poll_dropped(&self, key: &mut Option<u64>, waker: &Waker) -> bool {
+        let owned = waker.clone();
         let mut inner = self.lock();
         if inner.executor == Executor::Dropped {
             return true;
         }
-        let replaced = inner.dropped_waiters.register(key, waker);
+        let replaced = inner.dropped_waiters.register(key, owned);
         drop(inner);
         drop(replaced);
         false

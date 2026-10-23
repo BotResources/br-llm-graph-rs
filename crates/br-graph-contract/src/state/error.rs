@@ -19,9 +19,9 @@ impl InvalidState {
         self.reason.clone()
     }
 
-    pub(super) fn oversize(limit: NonZeroUsize) -> Self {
+    pub(super) fn oversize(size: usize, limit: NonZeroUsize) -> Self {
         Self::new(format!(
-            "serialized fields take more than {limit} bytes, the limit"
+            "serialized fields take {size} bytes, over the limit of {limit} bytes"
         ))
     }
 }
