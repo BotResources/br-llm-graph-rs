@@ -176,7 +176,7 @@ copy_scripts() {
 
 make_fixture() {
     init_repo
-    copy_scripts
+    copy_scripts ""
     mkdir -p "$DEV/vendor/extdep/src"
     printf '[workspace]\nresolver = "3"\nmembers = ["crates/*"]\nexclude = ["vendor"]\n' >"$DEV/Cargo.toml"
     printf '[package]\nname = "extdep"\nversion = "2.3.4"\nedition = "2024"\n' >"$DEV/vendor/extdep/Cargo.toml"
