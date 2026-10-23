@@ -171,6 +171,7 @@ init_repo() {
 copy_scripts() {
     mkdir -p "$DEV/.github"
     cp -R "$SRC_SCRIPTS" "$DEV/.github/scripts"
+    set_tracked "${1:-}"
 }
 
 make_fixture() {

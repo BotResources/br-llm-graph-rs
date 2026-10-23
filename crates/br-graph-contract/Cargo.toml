@@ -1,0 +1,25 @@
+[package]
+name = "br-graph-contract"
+version = "0.1.0"
+description = "Contract of the graph family: the state, the node that creates instances, the instance with its input and event ends, the edge, the cancel token and the validated graph with its structure, with no run logic"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

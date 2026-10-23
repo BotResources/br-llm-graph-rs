@@ -74,6 +74,25 @@ let json = serde_json::to_string_pretty(&graph.describe())?;  // br-llm-graph-de
 
 The runnable examples are in `crates/br-llm-graph/examples` (`cargo run -p br-llm-graph --example react_agent`): durable agents over a thread store kept in memory, a generator-critic with a rule check, an `LlmCall` as the body of a map, a hook guarding a tool, a served session, resumption from checkpoints, the description of a graph (`--example describe`).
 
+## br-graph-contract
+
+The contract of the graph family, with no run logic: the state that holds the runner's fields, the node that creates instances, the instance with its separate input and event ends, the edge, the target `END`, the cancel token, and the graph validated as a whole with its description as data (`Structure`). It depends on no executor, no node library and no LLM crate, so an executor, a node library and a runner author each import only it. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+
+```toml
+[dependencies]
+br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
+```
+
+| Part | What the crate enforces |
+|---|---|
+| `State` | create, apply (all or nothing) and rebuild check the fields' own validity and a size limit on their JSON form |
+| `Instance::channel` | `give` is ordered against the close (accepted before it and then read, or `InputClosed`); exactly one terminal `Event`; a dropped end ends the instance |
+| `GraphBuilder`, `Structure` | one set of build rules shared by the build and the rebuild of a structure; a `Graph` or a `Structure` that exists is valid |
+| `Graph::evaluate_edge` | targets declared by the edge, no `END` mixed with nodes, no repeats, in declaration order |
+| `CancelToken` | never un-triggered; a child is triggered by its parent and never the reverse |
+
+Not enforced, and left to the implementer as the sealed intent states: that serialize then rebuild gives equal fields, that applying an update and validating are deterministic, that an instance reads its accepted inputs before its terminal event and finishes its work before it, that an edge is a pure function of the state, that an instance never changes the state it reads, and that the executor gives each instance a new id and evaluates edges only after a `Result`.
+
 ## Releases
 
 Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The pull request that bumps `crates/br-llm-graph/Cargo.toml` (with a plain `## X.Y.Z` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/br-llm-graph-<major>.<minor>` line) the release workflow asks the registry again, tags `br-llm-graph/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
