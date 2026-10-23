@@ -6,16 +6,14 @@ use super::shape::Shape;
 use super::{BuildError, StructureError};
 use crate::{Reason, Target};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StructureNode {
     pub name: String,
     pub kind: String,
     pub subkind: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StructureEdge {
     pub name: String,
     pub source: String,

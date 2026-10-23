@@ -1,6 +1,4 @@
-use br_graph_contract::{
-    DEFAULT_STATE_LIMIT, END_TARGET, InstanceId, PROGRAMMATIC, Reason, Target,
-};
+use br_graph_contract::{DEFAULT_STATE_LIMIT, InstanceId, PROGRAMMATIC, Reason, Target};
 use uuid::Uuid;
 
 #[test]
@@ -39,7 +37,19 @@ fn given_the_end_name_when_made_a_target_then_it_is_end_and_never_a_node() {
     assert_eq!(Target::from("review"), Target::node("review"));
     assert!(Target::End.is_end());
     assert!(!Target::node("review").is_end());
-    assert_eq!(Target::End.to_string(), END_TARGET);
+    assert_eq!(Target::End.to_string(), "END");
+    assert_eq!(Target::End.as_str(), "END");
+}
+
+#[test]
+fn given_the_end_name_when_made_through_the_node_constructor_then_it_is_end_like_every_other_spelling()
+ {
+    assert_eq!(Target::node("END"), Target::End);
+    assert_eq!(Target::node(String::from("END")), Target::End);
+    let from_json: Target = serde_json::from_str(r#""END""#).unwrap();
+    assert_eq!(from_json, Target::node("END"));
+    assert_eq!(Target::node("END").as_str(), Target::from("END").as_str());
+    assert_ne!(Target::node("end"), Target::End);
 }
 
 #[test]
@@ -57,6 +67,8 @@ fn given_a_reason_when_converted_then_it_keeps_its_text() {
     assert_eq!(reason.to_string(), "no data");
     assert_eq!(Reason::from(String::from("no data")), reason);
     assert_eq!(reason.clone().into_string(), "no data");
+    let as_ref: &str = reason.as_ref();
+    assert_eq!(as_ref, "no data");
 }
 
 #[test]

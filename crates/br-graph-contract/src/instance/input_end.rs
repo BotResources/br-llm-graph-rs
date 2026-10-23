@@ -25,7 +25,7 @@ impl<F: Fields> InputEnd<F> {
 
 impl<F: Fields> Drop for InputEnd<F> {
     fn drop(&mut self) {
-        self.core.executor_dropped();
+        self.core.input_end_dropped();
     }
 }
 

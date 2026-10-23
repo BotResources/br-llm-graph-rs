@@ -3,8 +3,8 @@
 All notable changes to `br-graph-contract` are documented here. The git tag
 `br-graph-contract/v{version}` releases the crate. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
-Release headings are plain `## X.Y.Z` — the release pipeline greps that exact
-form to decide whether a version ships.
+Release headings have the form `## X.Y.Z - date` — the release pipeline greps
+the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
@@ -24,19 +24,25 @@ executor and no node library.
   fields (`DEFAULT_STATE_LIMIT`, 128 KiB, a positive limit given by the
   runner).
 - `Node` (name, kind, subkind, async creation of an `Instance` from a
-  `CancelView` and an `InstanceId`), `PROGRAMMATIC`, `Edge`, `Target` and
-  `END`.
+  `CancelView` and an `InstanceId`), `PROGRAMMATIC`, `Edge` and `Target`
+  (`Target::End`, `Target::END`; `Target::node("END")` is `Target::End`).
 - `Instance`, built with `Instance::channel`: the executor's `InputEnd`
   (`give`, never waits, refused as `InputClosed` after the close) and
-  `EventEnd` (`recv`), the node's `InputReader` (`next`, `close`, `drain`) and
-  `EventSender` (`finish` sends exactly one terminal `Event`, `dropped`).
-  `Event` is `Result`, `Failed`, `Refused` or `Cancelled`.
+  `EventEnd` (`recv`, which gives `Result<Event, EventEndError>`:
+  `Finished` after the terminal event was delivered or the instance was
+  dropped, `Vanished` when the `EventSender` was dropped without `finish`),
+  the node's `InputReader` (`next`, `close`, `drain`) and `EventSender`
+  (`finish` consumes the sender and sends at most one terminal `Event`;
+  `dropped` gives the named future `Dropped`). `Event` is `Result`, `Failed`,
+  `Refused` or `Cancelled`.
 - `InstanceId`: a UUIDv7 given by the creator, refused as `InvalidInstanceId`
   otherwise.
 - `CancelToken`, `CancelHandle`, `CancelView`: a cooperative, runtime-free
-  signal with child tokens.
+  signal with child tokens that keep their parent alive; `CancelView::triggered`
+  gives the named future `Triggered`.
 - `GraphBuilder` and `Graph`: nodes, edges, entries and a version validated
   as a whole (`BuildError`, one named case per refusal), the checked edge
   evaluation (`EdgeError`) and `Graph::structure`.
 - `Structure`: the graph as plain, sorted, serializable data, rebuilt from
-  JSON through the same build rules (`StructureError`).
+  JSON objects (a positional array is refused) through the same build rules
+  (`StructureError`).

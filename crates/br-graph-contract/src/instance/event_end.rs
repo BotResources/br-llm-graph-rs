@@ -4,8 +4,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use super::Event;
 use super::core::Core;
+use super::{Event, EventEndError};
 use crate::{Fields, InstanceId};
 
 pub struct EventEnd<F: Fields> {
@@ -21,7 +21,7 @@ impl<F: Fields> EventEnd<F> {
         self.core.id()
     }
 
-    pub async fn recv(&mut self) -> Option<Event<F>> {
+    pub async fn recv(&mut self) -> Result<Event<F>, EventEndError> {
         Recv { core: &self.core }.await
     }
 }
@@ -31,7 +31,7 @@ struct Recv<'a, F: Fields> {
 }
 
 impl<F: Fields> Future for Recv<'_, F> {
-    type Output = Option<Event<F>>;
+    type Output = Result<Event<F>, EventEndError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.core.poll_recv(cx)
@@ -46,7 +46,7 @@ impl<F: Fields> Drop for Recv<'_, F> {
 
 impl<F: Fields> Drop for EventEnd<F> {
     fn drop(&mut self) {
-        self.core.executor_dropped();
+        self.core.event_end_dropped();
     }
 }
 

@@ -142,6 +142,43 @@ impl Edge<Tally> for FixedEdge {
     }
 }
 
+pub struct BranchingEdge {
+    pub source: String,
+    pub declared: Vec<Target>,
+}
+
+impl BranchingEdge {
+    pub fn on_total(source: &str) -> Arc<dyn Edge<Tally>> {
+        Arc::new(Self {
+            source: source.into(),
+            declared: targets(&["big", "small"]),
+        })
+    }
+}
+
+impl Edge<Tally> for BranchingEdge {
+    fn name(&self) -> &str {
+        "branch"
+    }
+
+    fn source(&self) -> &str {
+        &self.source
+    }
+
+    fn targets(&self) -> &[Target] {
+        &self.declared
+    }
+
+    fn evaluate(&self, state: &State<Tally>) -> Result<Vec<Target>, br_graph_contract::Cause> {
+        let chosen = if state.fields().total >= 10 {
+            "big"
+        } else {
+            "small"
+        };
+        Ok(targets(&[chosen]))
+    }
+}
+
 pub fn targets(names: &[&str]) -> Vec<Target> {
     names.iter().map(|name| Target::from(*name)).collect()
 }

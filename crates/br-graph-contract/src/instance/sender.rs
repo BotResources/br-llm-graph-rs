@@ -1,11 +1,9 @@
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use super::Event;
 use super::core::Core;
+use super::dropped::{Dropped, Watch};
 use crate::{Fields, InstanceId};
 
 pub struct EventSender<F: Fields> {
@@ -33,37 +31,8 @@ impl<F: Fields> EventSender<F> {
         self.core.is_dropped()
     }
 
-    pub fn dropped(&self) -> impl Future<Output = ()> + Send + 'static {
-        Dropped {
-            core: Arc::clone(&self.core),
-            key: None,
-        }
-    }
-}
-
-struct Dropped<F: Fields> {
-    core: Arc<Core<F>>,
-    key: Option<u64>,
-}
-
-impl<F: Fields> Future for Dropped<F> {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        let this = self.get_mut();
-        if this.core.poll_dropped(&mut this.key, cx.waker()) {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
-        }
-    }
-}
-
-impl<F: Fields> Drop for Dropped<F> {
-    fn drop(&mut self) {
-        if let Some(key) = self.key.take() {
-            self.core.remove_dropped_waiter(key);
-        }
+    pub fn dropped(&self) -> Dropped {
+        Dropped::new(Arc::clone(&self.core) as Arc<dyn Watch>)
     }
 }
 

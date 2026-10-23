@@ -7,6 +7,7 @@ mod reach;
 mod shape;
 mod structure;
 mod value;
+mod wire;
 
 pub use builder::GraphBuilder;
 pub use error::{BuildError, EdgeError, StructureError};

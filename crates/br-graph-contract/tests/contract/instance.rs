@@ -1,22 +1,20 @@
-use std::sync::{Arc, Barrier};
-use std::time::Duration;
+use std::pin::pin;
+use std::sync::Arc;
+use std::task::Poll;
 
-use br_graph_contract::{Event, Input, InputClosed, Instance, Reason};
-use tokio::time::timeout;
+use br_graph_contract::{Input, InputClosed, Instance};
 
 use crate::common::{Tally, TallyUpdate, id, state};
+use crate::park::{counting_waker, poll_with};
 
-fn input(total: i64) -> Input<Tally> {
+pub fn input(total: i64) -> Input<Tally> {
     Input::new(Arc::new(state(total)))
-}
-
-async fn pending<T>(future: impl std::future::Future<Output = T>) -> bool {
-    timeout(Duration::from_millis(50), future).await.is_err()
 }
 
 #[test]
 fn given_an_instance_when_created_then_every_half_reads_the_same_id() {
     let (instance, reader, sender) = Instance::<Tally>::channel(id(1));
+    assert_eq!(instance.id(), id(1));
     let (input_end, event_end) = instance.into_parts();
     assert_eq!(input_end.id(), id(1));
     assert_eq!(event_end.id(), id(1));
@@ -57,39 +55,46 @@ async fn given_an_input_when_given_then_it_holds_the_state_of_the_hand_over() {
     assert_eq!(reader.next().await.unwrap().state().fields().total, 11);
 }
 
-#[tokio::test]
-async fn given_an_input_when_given_then_no_event_comes_back_for_it() {
-    let (instance, _reader, _sender) = Instance::<Tally>::channel(id(1));
-    let (input_end, mut events) = instance.into_parts();
-    input_end.give(input(1)).unwrap();
-    assert!(pending(events.recv()).await);
+#[test]
+fn given_an_input_when_converted_into_its_state_then_the_state_is_the_shared_one() {
+    let shared = Arc::new(state(4));
+    let input = Input::from(Arc::clone(&shared));
+    assert_eq!(input.fields().total, 4);
+    let recovered = input.clone().into_state();
+    assert!(Arc::ptr_eq(&recovered, &shared));
+    assert!(Arc::ptr_eq(&input.into_state(), &shared));
 }
 
-#[tokio::test]
-async fn given_a_silent_instance_when_waiting_for_an_event_then_silence_is_not_an_event() {
-    let (instance, _reader, _sender) = Instance::<Tally>::channel(id(1));
-    let (_input_end, mut events) = instance.into_parts();
-    assert!(pending(events.recv()).await);
-}
-
-#[tokio::test]
-async fn given_a_pending_next_when_an_input_arrives_from_another_task_then_it_wakes() {
+#[test]
+fn given_a_pending_next_when_an_input_is_given_then_the_waker_fires_once_and_the_next_poll_is_ready()
+ {
     let (instance, mut reader, _sender) = Instance::<Tally>::channel(id(1));
     let (input_end, _events) = instance.into_parts();
-    let waiting = tokio::spawn(async move { reader.next().await.map(|i| i.fields().total) });
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    let (wakes, waker) = counting_waker();
+    let mut next = pin!(reader.next());
+    assert!(poll_with(next.as_mut(), &waker).is_pending());
+    assert_eq!(wakes.count(), 0);
     input_end.give(input(5)).unwrap();
-    assert_eq!(waiting.await.unwrap(), Some(5));
+    assert_eq!(wakes.count(), 1);
+    let Poll::Ready(Some(received)) = poll_with(next.as_mut(), &waker) else {
+        unreachable!("the input was given");
+    };
+    assert_eq!(received.fields().total, 5);
 }
 
-#[tokio::test]
-async fn given_a_pending_next_when_the_input_is_closed_then_it_ends_with_none() {
+#[test]
+fn given_a_pending_next_when_the_input_is_closed_then_the_waker_fires_and_it_ends_with_none() {
     let (instance, mut reader, sender) = Instance::<Tally>::channel(id(1));
     let (_input_end, _events) = instance.into_parts();
-    let waiting = tokio::spawn(async move { reader.next().await.is_none() });
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    let (wakes, waker) = counting_waker();
+    let mut next = pin!(reader.next());
+    assert!(poll_with(next.as_mut(), &waker).is_pending());
     sender.close_input();
-    assert!(waiting.await.unwrap());
+    assert_eq!(wakes.count(), 1);
+    assert!(matches!(
+        poll_with(next.as_mut(), &waker),
+        Poll::Ready(None)
+    ));
 }
 
 #[tokio::test]
@@ -124,138 +129,21 @@ async fn given_a_closed_input_when_drained_then_every_accepted_input_comes_in_or
     assert!(reader.drain().is_empty());
 }
 
-#[test]
-fn given_a_race_of_gives_and_a_close_when_read_then_every_accepted_input_is_read_and_no_other() {
-    let mut rounds_with_both_outcomes = 0;
-    for round in 0..300 {
-        let (instance, mut reader, _sender) = Instance::<Tally>::channel(id(round));
-        let (input_end, _events) = instance.into_parts();
-        let input_end = Arc::new(input_end);
-        let start = Arc::new(Barrier::new(5));
-        let givers: Vec<_> = (0..4)
-            .map(|_| {
-                let input_end = Arc::clone(&input_end);
-                let start = Arc::clone(&start);
-                std::thread::spawn(move || {
-                    start.wait();
-                    let outcomes: Vec<bool> = (0..200)
-                        .map(|total| input_end.give(input(total)).is_ok())
-                        .collect();
-                    outcomes
-                })
-            })
-            .collect();
-        start.wait();
-        reader.close();
-        let outcomes: Vec<bool> = givers
-            .into_iter()
-            .flat_map(|giver| giver.join().unwrap())
-            .collect();
-        let accepted = outcomes.iter().filter(|accepted| **accepted).count();
-        assert_eq!(reader.drain().len(), accepted);
-        if accepted > 0 && accepted < outcomes.len() {
-            rounds_with_both_outcomes += 1;
-        }
-    }
-    assert!(rounds_with_both_outcomes > 0);
+#[tokio::test]
+async fn given_a_reader_dropped_when_an_input_is_given_then_the_input_end_is_closed() {
+    let (instance, reader, _sender) = Instance::<Tally>::channel(id(1));
+    let (input_end, _events) = instance.into_parts();
+    drop(reader);
+    assert_eq!(input_end.give(input(1)), Err(InputClosed));
 }
 
 #[tokio::test]
-async fn given_a_result_when_the_instance_finishes_then_it_is_the_only_event_then_the_end_ends() {
-    let (instance, _reader, sender) = Instance::<Tally>::channel(id(1));
-    let (_input_end, mut events) = instance.into_parts();
-    sender.finish(Event::Result(TallyUpdate::Add(2)));
-    assert!(matches!(
-        events.recv().await,
-        Some(Event::Result(TallyUpdate::Add(2)))
-    ));
-    assert!(events.recv().await.is_none());
-    assert!(events.recv().await.is_none());
-}
-
-#[tokio::test]
-async fn given_each_event_kind_when_sent_then_it_is_received_unchanged() {
-    let cases: Vec<Event<Tally>> = vec![
-        Event::Failed("broken".into()),
-        Event::Refused(Reason::new("second time")),
-        Event::Cancelled,
-    ];
-    for event in cases {
-        let (instance, _reader, sender) = Instance::<Tally>::channel(id(1));
-        let (_input_end, mut events) = instance.into_parts();
-        let expected = format!("{event:?}");
-        sender.finish(event);
-        let received = events.recv().await.unwrap();
-        assert_eq!(format!("{received:?}"), expected);
-        assert!(events.recv().await.is_none());
-    }
-}
-
-#[tokio::test]
-async fn given_a_pending_recv_when_the_instance_finishes_from_another_task_then_it_wakes() {
-    let (instance, _reader, sender) = Instance::<Tally>::channel(id(1));
-    let (_input_end, mut events) = instance.into_parts();
-    let waiting = tokio::spawn(async move { events.recv().await.is_some() });
-    tokio::time::sleep(Duration::from_millis(20)).await;
-    sender.finish(Event::Cancelled);
-    assert!(waiting.await.unwrap());
-}
-
-#[tokio::test]
-async fn given_a_finished_instance_when_an_input_is_given_then_it_is_refused_as_input_closed() {
+async fn given_a_reader_closed_early_when_the_node_goes_on_then_inputs_given_before_stay_readable()
+{
     let (instance, mut reader, sender) = Instance::<Tally>::channel(id(1));
     let (input_end, _events) = instance.into_parts();
     input_end.give(input(1)).unwrap();
-    sender.finish(Event::Cancelled);
+    sender.close_input();
     assert_eq!(input_end.give(input(2)), Err(InputClosed));
-    assert!(reader.next().await.is_none());
-}
-
-#[tokio::test]
-async fn given_a_sender_dropped_without_event_when_received_then_the_end_ends_with_none() {
-    let (instance, _reader, sender) = Instance::<Tally>::channel(id(1));
-    let (input_end, mut events) = instance.into_parts();
-    drop(sender);
-    assert!(events.recv().await.is_none());
-    assert_eq!(input_end.give(input(1)), Err(InputClosed));
-}
-
-#[tokio::test]
-async fn given_a_reader_dropped_when_an_input_is_given_then_the_input_end_is_closed_but_the_event_still_comes()
- {
-    let (instance, reader, sender) = Instance::<Tally>::channel(id(1));
-    let (input_end, mut events) = instance.into_parts();
-    drop(reader);
-    assert_eq!(input_end.give(input(1)), Err(InputClosed));
-    sender.finish(Event::Cancelled);
-    assert!(matches!(events.recv().await, Some(Event::Cancelled)));
-}
-
-#[tokio::test]
-async fn given_the_reader_and_the_sender_in_two_tasks_when_the_node_works_then_it_ends_with_one_event()
- {
-    let (instance, mut reader, sender) = Instance::<Tally>::channel(id(1));
-    let (input_end, mut events) = instance.into_parts();
-    let reading = tokio::spawn(async move {
-        let mut total = 0;
-        while let Some(input) = reader.next().await {
-            total += input.fields().total;
-        }
-        total
-    });
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(30)).await;
-        sender.close_input();
-        let total = reading.await.unwrap();
-        sender.finish(Event::Result(TallyUpdate::Add(total)));
-    });
-    for total in 1..=4 {
-        input_end.give(input(total)).unwrap();
-    }
-    assert!(matches!(
-        events.recv().await,
-        Some(Event::Result(TallyUpdate::Add(10)))
-    ));
-    assert!(events.recv().await.is_none());
-    assert_eq!(input_end.give(input(5)), Err(InputClosed));
+    assert_eq!(reader.next().await.unwrap().fields().total, 1);
 }

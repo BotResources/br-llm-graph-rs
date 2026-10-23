@@ -8,6 +8,26 @@ use crate::{Edge, Fields, Node, Target};
 pub(super) struct EdgeEntry<F: Fields> {
     pub(super) edge: Arc<dyn Edge<F>>,
     pub(super) declared: Vec<Target>,
+    positions: HashMap<Target, usize>,
+}
+
+impl<F: Fields> EdgeEntry<F> {
+    pub(super) fn new(edge: Arc<dyn Edge<F>>, declared: Vec<Target>) -> Self {
+        let positions = declared
+            .iter()
+            .enumerate()
+            .map(|(position, target)| (target.clone(), position))
+            .collect();
+        Self {
+            edge,
+            declared,
+            positions,
+        }
+    }
+
+    pub(super) fn position(&self, target: &Target) -> Option<usize> {
+        self.positions.get(target).copied()
+    }
 }
 
 pub struct Graph<F: Fields> {

@@ -18,6 +18,7 @@ struct EdgeSlot<F: Fields> {
     edge: Arc<dyn Edge<F>>,
 }
 
+#[must_use = "a dropped builder loses its nodes, edges and entries"]
 pub struct GraphBuilder<F: Fields> {
     version: String,
     nodes: Vec<NodeSlot<F>>,
@@ -77,10 +78,7 @@ impl<F: Fields> GraphBuilder<F> {
             .edges
             .into_iter()
             .map(|slot| {
-                let entry = EdgeEntry {
-                    edge: slot.edge,
-                    declared: slot.meta.targets,
-                };
+                let entry = EdgeEntry::new(slot.edge, slot.meta.targets);
                 (slot.meta.source, entry)
             })
             .collect();

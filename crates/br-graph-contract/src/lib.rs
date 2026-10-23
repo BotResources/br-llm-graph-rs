@@ -10,7 +10,7 @@ mod state;
 mod target;
 mod waiters;
 
-pub use cancel::{CancelHandle, CancelToken, CancelView};
+pub use cancel::{CancelHandle, CancelToken, CancelView, Triggered};
 pub use cause::Cause;
 pub use edge::Edge;
 pub use graph::{
@@ -18,10 +18,11 @@ pub use graph::{
     StructureNode,
 };
 pub use instance::{
-    Event, EventEnd, EventSender, Input, InputClosed, InputEnd, InputReader, Instance,
+    Dropped, Event, EventEnd, EventEndError, EventSender, Input, InputClosed, InputEnd,
+    InputReader, Instance,
 };
 pub use instance_id::{InstanceId, InvalidInstanceId};
 pub use node::{CreateError, CreateFuture, Node, PROGRAMMATIC};
 pub use reason::Reason;
 pub use state::{ApplyError, DEFAULT_STATE_LIMIT, Fields, InvalidState, State};
-pub use target::{END_TARGET, Target};
+pub use target::Target;

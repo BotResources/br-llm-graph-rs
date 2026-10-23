@@ -2,7 +2,7 @@ use std::error::Error;
 
 use br_graph_contract::{EdgeError, Graph, GraphBuilder, Target};
 
-use crate::common::{Tally, edge, edge_answering, plain, state, targets};
+use crate::common::{BranchingEdge, Tally, edge, edge_answering, plain, state, targets};
 
 fn fork_with(answer: Result<Vec<Target>, String>) -> Graph<Tally> {
     GraphBuilder::new("1")
@@ -114,4 +114,51 @@ fn given_the_same_state_when_evaluated_twice_then_the_answer_is_the_same() {
     let second = graph.evaluate_edge("start", &state).unwrap();
     assert_eq!(first, second);
     assert_eq!(first, targets(&["beta", "gamma"]));
+}
+
+#[test]
+fn given_an_edge_that_branches_on_the_fields_when_evaluated_on_two_states_then_each_state_decides()
+{
+    let graph = GraphBuilder::new("1")
+        .node(plain("start"))
+        .node(plain("big"))
+        .node(plain("small"))
+        .entry("start")
+        .edge(BranchingEdge::on_total("start"))
+        .edge(edge("big", &["END"]))
+        .edge(edge("small", &["END"]))
+        .build()
+        .unwrap();
+    assert_eq!(
+        graph.evaluate_edge("start", &state(25)).unwrap(),
+        targets(&["big"])
+    );
+    assert_eq!(
+        graph.evaluate_edge("start", &state(3)).unwrap(),
+        targets(&["small"])
+    );
+}
+
+#[test]
+fn given_thirty_thousand_declared_and_returned_targets_when_evaluated_then_it_stays_linear() {
+    let count = 30_000;
+    let names: Vec<String> = (0..count).map(|index| format!("lane_{index}")).collect();
+    let declared: Vec<&str> = names.iter().map(String::as_str).collect();
+    let returned: Vec<Target> = declared
+        .iter()
+        .rev()
+        .map(|name| Target::from(*name))
+        .collect();
+    let mut builder = GraphBuilder::new("1")
+        .node(plain("start"))
+        .entry("start")
+        .edge(edge_answering("start", &declared, Ok(returned)));
+    for name in &declared {
+        builder = builder.node(plain(name)).edge(edge(name, &["END"]));
+    }
+    let graph = builder.build().unwrap();
+    let started = std::time::Instant::now();
+    let chosen = graph.evaluate_edge("start", &state(0)).unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    assert_eq!(chosen, targets(&declared));
 }

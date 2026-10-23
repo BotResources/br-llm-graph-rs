@@ -1,10 +1,8 @@
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use super::shared::Shared;
+use super::triggered::Triggered;
 
 pub struct CancelToken {
     handle: CancelHandle,
@@ -22,6 +20,7 @@ pub struct CancelView {
 }
 
 impl CancelToken {
+    #[must_use = "a token that is dropped at once is useless"]
     pub fn new() -> Self {
         Self::from_shared(Shared::new(false))
     }
@@ -43,10 +42,12 @@ impl CancelToken {
         self.view.clone()
     }
 
+    #[must_use = "a child token that is dropped at once is useless"]
     pub fn child(&self) -> CancelToken {
         self.view.child()
     }
 
+    #[must_use = "dropping both parts discards the token"]
     pub fn into_parts(self) -> (CancelHandle, CancelView) {
         (self.handle, self.view)
     }
@@ -79,41 +80,13 @@ impl CancelView {
         self.shared.is_triggered()
     }
 
-    pub fn triggered(&self) -> impl Future<Output = ()> + Send + 'static {
-        Triggered {
-            shared: Arc::clone(&self.shared),
-            key: None,
-        }
+    pub fn triggered(&self) -> Triggered {
+        Triggered::new(Arc::clone(&self.shared))
     }
 
+    #[must_use = "a child token that is dropped at once is useless"]
     pub fn child(&self) -> CancelToken {
         CancelToken::from_shared(self.shared.child())
-    }
-}
-
-struct Triggered {
-    shared: Arc<Shared>,
-    key: Option<u64>,
-}
-
-impl Future for Triggered {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        let this = self.get_mut();
-        if this.shared.poll_triggered(&mut this.key, cx.waker()) {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
-        }
-    }
-}
-
-impl Drop for Triggered {
-    fn drop(&mut self) {
-        if let Some(key) = self.key.take() {
-            self.shared.remove_waiter(key);
-        }
     }
 }
 

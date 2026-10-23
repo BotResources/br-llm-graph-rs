@@ -23,10 +23,7 @@ impl<F: Fields> State<F> {
 
     pub fn create_with_limit(fields: F, limit: NonZeroUsize) -> Result<Self, InvalidState> {
         fields.validate().map_err(InvalidState::new)?;
-        let size = serialized_size(&fields)?;
-        if size > limit.get() {
-            return Err(InvalidState::oversize(size, limit));
-        }
+        let size = serialized_size(&fields, limit)?;
         Ok(Self {
             fields,
             limit,

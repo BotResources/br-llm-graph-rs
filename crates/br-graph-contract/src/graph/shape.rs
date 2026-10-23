@@ -1,9 +1,6 @@
-use serde::Deserialize;
-
 use super::structure::{StructureEdge, StructureNode};
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone)]
 pub struct Shape {
     pub(super) version: String,
     pub(super) entries: Vec<String>,

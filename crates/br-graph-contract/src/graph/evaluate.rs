@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::{EdgeError, Graph};
 use crate::{Fields, State, Target};
 
@@ -22,21 +20,22 @@ impl<F: Fields> Graph<F> {
                 node: node.to_owned(),
             });
         }
-        let chosen: HashSet<&Target> = returned.iter().collect();
-        if let Some(target) = returned
-            .iter()
-            .find(|target| !entry.declared.contains(target))
-        {
-            return Err(EdgeError::UndeclaredTarget {
-                node: node.to_owned(),
-                target: target.clone(),
-            });
+        let mut chosen = vec![false; entry.declared.len()];
+        for target in &returned {
+            let Some(position) = entry.position(target) else {
+                return Err(EdgeError::UndeclaredTarget {
+                    node: node.to_owned(),
+                    target: target.clone(),
+                });
+            };
+            chosen[position] = true;
         }
         Ok(entry
             .declared
             .iter()
-            .filter(|target| chosen.contains(target))
-            .cloned()
+            .zip(chosen)
+            .filter(|(_, picked)| *picked)
+            .map(|(target, _)| target.clone())
             .collect())
     }
 }

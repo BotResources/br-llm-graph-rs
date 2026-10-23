@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub const END_TARGET: &str = "END";
+const END_NAME: &str = "END";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Target {
@@ -14,13 +14,13 @@ impl Target {
     pub const END: Target = Target::End;
 
     pub fn node(name: impl Into<String>) -> Self {
-        Self::Node(name.into())
+        Self::from(name.into())
     }
 
     pub fn as_str(&self) -> &str {
         match self {
             Self::Node(name) => name,
-            Self::End => END_TARGET,
+            Self::End => END_NAME,
         }
     }
 
@@ -31,7 +31,7 @@ impl Target {
 
 impl From<&str> for Target {
     fn from(text: &str) -> Self {
-        if text == END_TARGET {
+        if text == END_NAME {
             Self::End
         } else {
             Self::Node(text.to_owned())
@@ -41,7 +41,7 @@ impl From<&str> for Target {
 
 impl From<String> for Target {
     fn from(text: String) -> Self {
-        if text == END_TARGET {
+        if text == END_NAME {
             Self::End
         } else {
             Self::Node(text)

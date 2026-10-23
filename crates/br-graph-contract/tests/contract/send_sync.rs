@@ -40,3 +40,12 @@ fn given_the_returned_futures_when_checked_then_they_can_move_to_another_task() 
     fn is_future<T: Future>(_: &T) {}
     is_future(&token.view().triggered());
 }
+
+fn owned<T: Send + 'static>(_: T) {}
+
+#[test]
+fn given_the_dropped_future_when_taken_by_value_then_it_is_send_and_static() {
+    let (instance, _reader, sender) = Instance::<Tally>::channel(crate::common::id(1));
+    let (_input_end, _events) = instance.into_parts();
+    owned(sender.dropped());
+}

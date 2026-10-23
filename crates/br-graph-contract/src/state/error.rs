@@ -9,19 +9,19 @@ pub struct InvalidState {
 }
 
 impl InvalidState {
-    pub fn new(reason: impl Into<Reason>) -> Self {
+    pub(crate) fn new(reason: impl Into<Reason>) -> Self {
         Self {
             reason: reason.into(),
         }
     }
 
-    pub fn reason(&self) -> &Reason {
-        &self.reason
+    pub fn reason(&self) -> Reason {
+        self.reason.clone()
     }
 
-    pub(super) fn oversize(size: usize, limit: NonZeroUsize) -> Self {
+    pub(super) fn oversize(limit: NonZeroUsize) -> Self {
         Self::new(format!(
-            "serialized fields take {size} bytes, over the limit of {limit} bytes"
+            "serialized fields take more than {limit} bytes, the limit"
         ))
     }
 }

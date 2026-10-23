@@ -1,8 +1,10 @@
 use std::collections::VecDeque;
+use std::mem;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::task::{Context, Poll, Waker};
 
-use super::{Event, Input, InputClosed};
+use super::lifecycle::{Executor, Gate, NodeSide, Outside, remember};
+use super::{Event, EventEndError, Input, InputClosed};
 use crate::waiters::Waiters;
 use crate::{Fields, InstanceId};
 
@@ -13,26 +15,22 @@ pub(super) struct Core<F: Fields> {
 
 struct Inner<F: Fields> {
     queue: VecDeque<Input<F>>,
-    input_closed: bool,
-    event: Option<Event<F>>,
-    finished: bool,
-    sender_gone: bool,
-    dropped: bool,
+    node: NodeSide<F>,
+    executor: Executor,
     reader_waker: Option<Waker>,
     event_waker: Option<Waker>,
     dropped_waiters: Waiters,
 }
 
-fn remember(slot: &mut Option<Waker>, waker: &Waker) {
-    match slot {
-        Some(existing) if existing.will_wake(waker) => {}
-        _ => *slot = Some(waker.clone()),
+impl<F: Fields> Inner<F> {
+    fn accepts_input(&self) -> bool {
+        matches!(self.node, NodeSide::Working(Gate::Open))
     }
-}
 
-fn wake_all(wakers: impl IntoIterator<Item = Waker>) {
-    for waker in wakers {
-        waker.wake();
+    fn retire(&mut self, outside: &mut Outside<F>) {
+        outside.inputs = mem::take(&mut self.queue);
+        outside.wakers.extend(self.reader_waker.take());
+        outside.wakers.extend(self.event_waker.take());
     }
 }
 
@@ -42,11 +40,8 @@ impl<F: Fields> Core<F> {
             id,
             inner: Mutex::new(Inner {
                 queue: VecDeque::new(),
-                input_closed: false,
-                event: None,
-                finished: false,
-                sender_gone: false,
-                dropped: false,
+                node: NodeSide::Working(Gate::Open),
+                executor: Executor::Attached,
                 reader_waker: None,
                 event_waker: None,
                 dropped_waiters: Waiters::default(),
@@ -65,122 +60,151 @@ impl<F: Fields> Core<F> {
     pub(super) fn give(&self, input: Input<F>) -> Result<(), InputClosed> {
         let waker = {
             let mut inner = self.lock();
-            if inner.input_closed || inner.dropped {
+            if !inner.accepts_input() {
                 return Err(InputClosed);
             }
             inner.queue.push_back(input);
             inner.reader_waker.take()
         };
-        wake_all(waker);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
         Ok(())
     }
 
     pub(super) fn close_input(&self) {
         let waker = {
             let mut inner = self.lock();
-            inner.input_closed = true;
-            inner.reader_waker.take()
+            match &mut inner.node {
+                NodeSide::Working(gate @ Gate::Open) => {
+                    *gate = Gate::Closed;
+                    inner.reader_waker.take()
+                }
+                _ => None,
+            }
         };
-        wake_all(waker);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
     }
 
     pub(super) fn poll_next(&self, cx: &mut Context<'_>) -> Poll<Option<Input<F>>> {
         let mut inner = self.lock();
-        if inner.dropped {
-            return Poll::Ready(None);
-        }
         if let Some(input) = inner.queue.pop_front() {
             return Poll::Ready(Some(input));
         }
-        if inner.input_closed {
+        if !inner.accepts_input() {
             return Poll::Ready(None);
         }
-        remember(&mut inner.reader_waker, cx.waker());
+        let replaced = remember(&mut inner.reader_waker, cx.waker());
+        drop(inner);
+        drop(replaced);
         Poll::Pending
     }
 
     pub(super) fn forget_reader_waker(&self) {
-        self.lock().reader_waker = None;
+        let forgotten = self.lock().reader_waker.take();
+        drop(forgotten);
     }
 
     pub(super) fn drain(&self) -> Vec<Input<F>> {
-        let mut inner = self.lock();
-        if inner.dropped {
-            return Vec::new();
-        }
-        inner.queue.drain(..).collect()
+        let drained = mem::take(&mut self.lock().queue);
+        drained.into()
     }
 
     pub(super) fn finish(&self, event: Event<F>) {
-        let wakers = {
+        let mut outside = Outside::default();
+        {
             let mut inner = self.lock();
-            if !inner.dropped && !inner.finished {
-                inner.event = Some(event);
+            if matches!(inner.node, NodeSide::Working(_)) {
+                inner.node = NodeSide::Sent(event);
+            } else {
+                outside.event = Some(event);
             }
-            inner.finished = true;
-            inner.input_closed = true;
-            inner.queue.clear();
-            [inner.reader_waker.take(), inner.event_waker.take()]
-        };
-        wake_all(wakers.into_iter().flatten());
+            inner.retire(&mut outside);
+        }
+        outside.settle();
     }
 
     pub(super) fn sender_gone(&self) {
-        let wakers = {
+        let mut outside = Outside::default();
+        {
             let mut inner = self.lock();
-            inner.sender_gone = true;
-            inner.input_closed = true;
-            inner.queue.clear();
-            [inner.reader_waker.take(), inner.event_waker.take()]
-        };
-        wake_all(wakers.into_iter().flatten());
+            if matches!(inner.node, NodeSide::Working(_)) {
+                inner.node = NodeSide::Vanished;
+            }
+            inner.retire(&mut outside);
+        }
+        outside.settle();
     }
 
-    pub(super) fn executor_dropped(&self) {
-        let wakers = {
-            let mut inner = self.lock();
-            inner.dropped = true;
-            inner.input_closed = true;
-            inner.queue.clear();
-            let mut wakers = inner.dropped_waiters.drain();
-            wakers.extend(inner.reader_waker.take());
-            wakers.extend(inner.event_waker.take());
-            wakers
-        };
-        wake_all(wakers);
+    pub(super) fn input_end_dropped(&self) {
+        self.detach(false);
     }
 
-    pub(super) fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Option<Event<F>>> {
+    pub(super) fn event_end_dropped(&self) {
+        self.detach(true);
+    }
+
+    fn detach(&self, discard_event: bool) {
+        let mut outside = Outside::default();
+        {
+            let mut inner = self.lock();
+            inner.executor = Executor::Dropped;
+            match mem::replace(&mut inner.node, NodeSide::Ended) {
+                NodeSide::Sent(event) if discard_event => outside.event = Some(event),
+                NodeSide::Sent(event) => inner.node = NodeSide::Sent(event),
+                NodeSide::Vanished => inner.node = NodeSide::Vanished,
+                NodeSide::Working(_) | NodeSide::Ended => {}
+            }
+            inner.retire(&mut outside);
+            outside.wakers.extend(inner.dropped_waiters.drain());
+        }
+        outside.settle();
+    }
+
+    pub(super) fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Result<Event<F>, EventEndError>> {
         let mut inner = self.lock();
-        if let Some(event) = inner.event.take() {
-            return Poll::Ready(Some(event));
+        match mem::replace(&mut inner.node, NodeSide::Ended) {
+            NodeSide::Sent(event) => Poll::Ready(Ok(event)),
+            NodeSide::Ended => Poll::Ready(Err(EventEndError::Finished)),
+            NodeSide::Vanished => {
+                inner.node = NodeSide::Vanished;
+                Poll::Ready(Err(EventEndError::Vanished))
+            }
+            NodeSide::Working(gate) => {
+                inner.node = NodeSide::Working(gate);
+                let replaced = remember(&mut inner.event_waker, cx.waker());
+                drop(inner);
+                drop(replaced);
+                Poll::Pending
+            }
         }
-        if inner.finished || inner.sender_gone || inner.dropped {
-            return Poll::Ready(None);
-        }
-        remember(&mut inner.event_waker, cx.waker());
-        Poll::Pending
     }
 
     pub(super) fn forget_event_waker(&self) {
-        self.lock().event_waker = None;
+        let forgotten = self.lock().event_waker.take();
+        drop(forgotten);
     }
 
     pub(super) fn is_dropped(&self) -> bool {
-        self.lock().dropped
+        self.lock().executor == Executor::Dropped
     }
 
     pub(super) fn poll_dropped(&self, key: &mut Option<u64>, waker: &Waker) -> bool {
         let mut inner = self.lock();
-        if inner.dropped {
+        if inner.executor == Executor::Dropped {
             return true;
         }
-        inner.dropped_waiters.register(key, waker);
+        let replaced = inner.dropped_waiters.register(key, waker);
+        drop(inner);
+        drop(replaced);
         false
     }
 
     pub(super) fn remove_dropped_waiter(&self, key: u64) {
-        self.lock().dropped_waiters.remove(key);
+        let removed = self.lock().dropped_waiters.remove(key);
+        drop(removed);
     }
 
     #[cfg(test)]

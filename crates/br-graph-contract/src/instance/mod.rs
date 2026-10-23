@@ -1,15 +1,20 @@
 mod core;
+mod dropped;
 mod error;
 mod event;
 mod event_end;
 mod input;
 mod input_end;
+mod lifecycle;
 mod reader;
+#[cfg(test)]
+mod reentrancy_tests;
 mod sender;
 #[cfg(test)]
 mod tests;
 
-pub use error::InputClosed;
+pub use dropped::Dropped;
+pub use error::{EventEndError, InputClosed};
 pub use event::Event;
 pub use event_end::EventEnd;
 pub use input::Input;
