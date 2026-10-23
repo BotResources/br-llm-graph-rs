@@ -89,7 +89,7 @@ fn given_a_pending_next_when_the_input_is_closed_then_the_waker_fires_and_it_end
     let (wakes, waker) = counting_waker();
     let mut next = pin!(reader.next());
     assert!(poll_with(next.as_mut(), &waker).is_pending());
-    sender.close_input();
+    drop(sender);
     assert_eq!(wakes.count(), 1);
     assert!(matches!(
         poll_with(next.as_mut(), &waker),
@@ -113,20 +113,19 @@ async fn given_accepted_inputs_when_the_input_is_closed_then_they_are_still_read
 }
 
 #[tokio::test]
-async fn given_a_closed_input_when_drained_then_every_accepted_input_comes_in_order() {
+async fn given_a_closed_input_when_read_to_the_end_then_every_accepted_input_comes_in_order() {
     let (instance, mut reader, _sender) = Instance::<Tally>::channel(id(1));
     let (input_end, _events) = instance.into_parts();
     for total in 0..4 {
         input_end.give(input(total)).unwrap();
     }
     reader.close();
-    let drained: Vec<i64> = reader
-        .drain()
-        .iter()
-        .map(|input| input.fields().total)
-        .collect();
-    assert_eq!(drained, vec![0, 1, 2, 3]);
-    assert!(reader.drain().is_empty());
+    let mut read = Vec::new();
+    while let Some(input) = reader.next().await {
+        read.push(input.fields().total);
+    }
+    assert_eq!(read, vec![0, 1, 2, 3]);
+    assert!(reader.next().await.is_none());
 }
 
 #[tokio::test]
@@ -135,15 +134,4 @@ async fn given_a_reader_dropped_when_an_input_is_given_then_the_input_end_is_clo
     let (input_end, _events) = instance.into_parts();
     drop(reader);
     assert_eq!(input_end.give(input(1)), Err(InputClosed));
-}
-
-#[tokio::test]
-async fn given_a_reader_closed_early_when_the_node_goes_on_then_inputs_given_before_stay_readable()
-{
-    let (instance, mut reader, sender) = Instance::<Tally>::channel(id(1));
-    let (input_end, _events) = instance.into_parts();
-    input_end.give(input(1)).unwrap();
-    sender.close_input();
-    assert_eq!(input_end.give(input(2)), Err(InputClosed));
-    assert_eq!(reader.next().await.unwrap().fields().total, 1);
 }

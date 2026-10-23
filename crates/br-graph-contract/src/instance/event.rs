@@ -9,16 +9,6 @@ pub enum Event<F: Fields> {
     Cancelled,
 }
 
-impl<F: Fields> Event<F> {
-    pub fn failed(cause: impl Into<Cause>) -> Self {
-        Self::Failed(cause.into())
-    }
-
-    pub fn refused(reason: impl Into<Reason>) -> Self {
-        Self::Refused(reason.into())
-    }
-}
-
 impl<F: Fields> fmt::Debug for Event<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

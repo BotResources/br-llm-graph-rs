@@ -55,16 +55,8 @@ impl<F: Fields> State<F> {
         self.limit
     }
 
-    pub fn serialized_size(&self) -> usize {
-        self.size
-    }
-
     pub fn to_json(&self) -> Result<Vec<u8>, InvalidState> {
         serialize(&self.fields)
-    }
-
-    pub fn into_fields(self) -> F {
-        self.fields
     }
 }
 

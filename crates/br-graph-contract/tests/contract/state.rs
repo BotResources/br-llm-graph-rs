@@ -70,7 +70,7 @@ fn given_a_state_when_serialized_and_rebuilt_then_it_is_equal() {
     let json = first.to_json().unwrap();
     let rebuilt = State::<Tally>::rebuild(&json).unwrap();
     assert_eq!(first, rebuilt);
-    assert_eq!(first.serialized_size(), json.len());
+    assert_eq!(first.to_json().unwrap().len(), json.len());
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn given_a_state_when_converted_into_its_fields_then_the_fields_come_out() {
         notes: vec!["kept".into()],
     })
     .unwrap();
-    let fields = state.into_fields();
+    let fields = state.fields().clone();
     assert_eq!(fields.total, 2);
     assert_eq!(fields.notes, vec!["kept".to_owned()]);
 }

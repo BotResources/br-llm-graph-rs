@@ -70,12 +70,12 @@ async fn given_each_event_kind_when_sent_then_it_is_received_as_the_same_variant
 }
 
 #[test]
-fn given_the_event_constructors_when_used_then_they_build_failed_and_refused() {
-    let failed = Event::<Tally>::failed("out of memory");
+fn given_each_event_when_debug_printed_then_it_names_the_case_and_hides_the_update() {
+    let failed = Event::<Tally>::Failed("out of memory".into());
     assert!(matches!(&failed, Event::Failed(cause) if cause.to_string() == "out of memory"));
-    let refused = Event::<Tally>::refused("second time");
+    let refused = Event::<Tally>::Refused("second time".into());
     assert!(matches!(&refused, Event::Refused(reason) if reason.as_str() == "second time"));
-    let owned = Event::<Tally>::refused(String::from("once only"));
+    let owned = Event::<Tally>::Refused(String::from("once only").into());
     assert!(matches!(owned, Event::Refused(reason) if reason == Reason::new("once only")));
     assert_eq!(format!("{:?}", Event::<Tally>::Cancelled), "Cancelled");
     assert!(!format!("{:?}", Event::<Tally>::Result(TallyUpdate::Add(1))).contains("Add"));
@@ -176,6 +176,8 @@ async fn given_the_reader_and_the_sender_in_two_tasks_when_the_node_works_then_i
     let (input_end, mut events) = instance.into_parts();
     let (all_given, given) = tokio::sync::oneshot::channel::<()>();
     let reading = tokio::spawn(async move {
+        given.await.unwrap();
+        reader.close();
         let mut total = 0;
         while let Some(input) = reader.next().await {
             total += input.fields().total;
@@ -183,8 +185,6 @@ async fn given_the_reader_and_the_sender_in_two_tasks_when_the_node_works_then_i
         total
     });
     tokio::spawn(async move {
-        given.await.unwrap();
-        sender.close_input();
         let total = reading.await.unwrap();
         sender.finish(Event::Result(TallyUpdate::Add(total)));
     });

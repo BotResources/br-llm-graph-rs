@@ -1,9 +1,12 @@
+use std::pin::pin;
 use std::sync::{Arc, Barrier};
+use std::task::Poll;
 
 use br_graph_contract::Instance;
 
 use crate::common::id;
 use crate::instance::input;
+use crate::park::{counting_waker, poll_with};
 
 #[test]
 fn given_a_race_of_gives_and_a_close_when_read_then_every_accepted_input_is_read_and_no_other() {
@@ -41,6 +44,16 @@ fn given_a_race_of_gives_and_a_close_when_read_then_every_accepted_input_is_read
             .flatten()
             .filter(|accepted| **accepted)
             .count();
-        assert_eq!(reader.drain().len(), accepted);
+        let (_wakes, waker) = counting_waker();
+        let mut read = 0;
+        loop {
+            let mut next = pin!(reader.next());
+            match poll_with(next.as_mut(), &waker) {
+                Poll::Ready(Some(_)) => read += 1,
+                Poll::Ready(None) => break,
+                Poll::Pending => unreachable!("a closed input never waits"),
+            }
+        }
+        assert_eq!(read, accepted);
     }
 }

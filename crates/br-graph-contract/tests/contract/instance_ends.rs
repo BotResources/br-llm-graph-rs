@@ -48,7 +48,6 @@ async fn given_the_event_end_dropped_when_the_node_looks_then_the_instance_is_dr
     assert!(resolves(sender.dropped()).await);
     assert_eq!(input_end.give(input(2)), Err(InputClosed));
     assert!(reader.next().await.is_none());
-    assert!(reader.drain().is_empty());
 }
 
 #[tokio::test]

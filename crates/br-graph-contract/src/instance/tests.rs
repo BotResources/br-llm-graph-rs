@@ -32,7 +32,7 @@ fn id() -> InstanceId {
 
 #[tokio::test]
 async fn given_dropped_raced_in_a_select_loop_100k_times_when_inspected_then_no_slot_is_left() {
-    let (instance, mut reader, sender) = Instance::<Nothing>::channel(id());
+    let (instance, reader, sender) = Instance::<Nothing>::channel(id());
     let (input_end, events) = instance.into_parts();
     for _ in 0..100_000 {
         tokio::select! {
@@ -42,7 +42,7 @@ async fn given_dropped_raced_in_a_select_loop_100k_times_when_inspected_then_no_
     }
     assert_eq!(input_end.core.waiter_slots(), 0);
     drop(events);
-    drop(reader.drain());
+    drop(reader);
 }
 
 #[tokio::test]

@@ -23,10 +23,6 @@ impl<F: Fields> EventSender<F> {
         self.core.finish(event);
     }
 
-    pub fn close_input(&self) {
-        self.core.close_input();
-    }
-
     pub fn is_dropped(&self) -> bool {
         self.core.is_dropped()
     }

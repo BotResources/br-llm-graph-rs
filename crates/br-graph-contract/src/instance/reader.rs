@@ -28,10 +28,6 @@ impl<F: Fields> InputReader<F> {
     pub fn close(&self) {
         self.core.close_input();
     }
-
-    pub fn drain(&mut self) -> Vec<Input<F>> {
-        self.core.drain()
-    }
 }
 
 struct Next<'a, F: Fields> {

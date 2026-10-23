@@ -34,7 +34,7 @@ executor and no node library.
   `EventEnd` (`recv`, which gives `Result<Event, EventEndError>`:
   `Finished` after the terminal event was delivered or the instance was
   dropped, `Vanished` when the `EventSender` was dropped without `finish`),
-  the node's `InputReader` (`next`, `close`, `drain`) and `EventSender`
+  the node's `InputReader` (`next`, `close`) and `EventSender`
   (`finish` consumes the sender and sends at most one terminal `Event`;
   `dropped` gives the named future `Dropped`). `Event` is `Result`, `Failed`,
   `Refused` or `Cancelled`.

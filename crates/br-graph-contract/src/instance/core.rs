@@ -104,11 +104,6 @@ impl<F: Fields> Core<F> {
         drop(forgotten);
     }
 
-    pub(super) fn drain(&self) -> Vec<Input<F>> {
-        let drained = mem::take(&mut self.lock().queue);
-        drained.into()
-    }
-
     pub(super) fn finish(&self, event: Event<F>) {
         let mut outside = Outside::default();
         {
