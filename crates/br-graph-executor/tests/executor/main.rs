@@ -1,0 +1,37 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+mod api;
+mod basic_run;
+mod cancel;
+mod cancel_resume;
+mod checkpoint_not_built;
+mod checkpoint_wire;
+mod checkpoints;
+mod creation;
+mod debug_output;
+mod display_panics;
+mod failure_resume;
+mod failure_stop;
+mod failures;
+mod fields_panics;
+mod flaky_fields;
+mod grace;
+mod graphs;
+mod hand_over_order;
+mod host;
+mod hygiene;
+mod inputs;
+mod kv;
+mod nodes;
+mod observation;
+mod observer;
+mod observer_faults;
+mod result_step;
+mod resume_errors;
+mod resume_support;
+mod resume_texts;
+mod sink;
+mod sink_refusal;
+mod sink_steps;
+mod start_errors;
+mod unreadable_state;
