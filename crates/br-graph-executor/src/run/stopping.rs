@@ -68,9 +68,12 @@ impl<F: Fields> Run<F> {
     }
 }
 
+const ROUNDING_MARGIN: Duration = Duration::from_millis(1);
 const FAR_FUTURE: Duration = Duration::from_secs(60 * 60 * 24 * 365 * 30);
 
 fn deadline_after(grace: Duration) -> Instant {
     let now = Instant::now();
-    now.checked_add(grace).unwrap_or_else(|| now + FAR_FUTURE)
+    now.checked_add(grace)
+        .filter(|deadline| deadline.checked_add(ROUNDING_MARGIN).is_some())
+        .unwrap_or_else(|| now + FAR_FUTURE)
 }

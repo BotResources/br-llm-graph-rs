@@ -56,20 +56,14 @@ pub(crate) struct Run<F: Fields> {
     slots: BTreeMap<String, NodeSlot<F>>,
     failures: Vec<RunFailure>,
     phase: Phase,
-    origin: Option<Origin>,
     sender: UnboundedSender<Message<F>>,
     receiver: UnboundedReceiver<Message<F>>,
 }
 
 impl<F: Fields> Run<F> {
-    pub(crate) fn new(
-        graph: Arc<Graph<F>>,
-        state: Arc<State<F>>,
-        origin: Origin,
-        config: RunConfig,
-    ) -> Self {
+    pub(crate) fn new(graph: Arc<Graph<F>>, state: Arc<State<F>>, config: RunConfig) -> Self {
         let structure = graph.structure();
-        let mut slots: BTreeMap<String, NodeSlot<F>> = structure
+        let slots: BTreeMap<String, NodeSlot<F>> = structure
             .nodes()
             .iter()
             .filter_map(|described| {
@@ -82,11 +76,6 @@ impl<F: Fields> Run<F> {
                 Some((described.name.clone(), slot))
             })
             .collect();
-        for name in origin.held_names() {
-            if let Some(slot) = slots.get_mut(name) {
-                slot.hold();
-            }
-        }
         let (sender, receiver) = unbounded_channel();
         Self {
             graph,
@@ -99,21 +88,22 @@ impl<F: Fields> Run<F> {
             slots,
             failures: Vec::new(),
             phase: Phase::Running,
-            origin: Some(origin),
             sender,
             receiver,
         }
     }
 
-    pub(crate) async fn drive(mut self) -> Outcome<F> {
-        let origin = self.origin.take();
+    pub(crate) async fn drive(mut self, origin: Origin) -> Outcome<F> {
+        for name in origin.held_names() {
+            if let Some(slot) = self.slots.get_mut(name) {
+                slot.hold();
+            }
+        }
         self.read_token();
         if self.is_stopping() {
-            return self.conclude(origin.and_then(Origin::into_checkpoint));
+            return self.conclude(origin.into_checkpoint());
         }
-        if let Some(origin) = &origin {
-            self.hand_over(origin.first_targets());
-        }
+        self.hand_over(origin.first_targets());
         let mut cancel_requested = pin!(self.cancel.view().triggered());
         loop {
             self.read_token();

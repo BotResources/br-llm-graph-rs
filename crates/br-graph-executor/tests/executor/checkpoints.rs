@@ -85,7 +85,7 @@ fn given_each_kind_of_failure_when_displayed_then_the_text_names_the_node_and_th
             RunFailure::NodeFailed {
                 node: "n".into(),
                 reason: "why".into(),
-                cause: "c".into(),
+                cause: Some("c".into()),
             },
             "node \"n\" failed: why",
         ),

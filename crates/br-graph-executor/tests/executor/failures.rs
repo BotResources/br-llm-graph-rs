@@ -23,6 +23,7 @@ async fn given_a_failing_instance_when_it_sends_failed_then_the_run_fails_and_th
         } => {
             assert_eq!(node, "a");
             assert_eq!(reason, "boom");
+            let cause = cause.as_ref().unwrap();
             assert_eq!(cause.downcast_ref::<TestError>().unwrap().0, "boom");
         }
         other => panic!("unexpected failure {other:?}"),
@@ -89,9 +90,14 @@ async fn given_no_cancel_request_when_an_instance_answers_cancelled_then_it_coun
     a.cancelled();
     let (failures, checkpoint) = failed(host.outcome().await);
     match &failures[0] {
-        RunFailure::NodeFailed { node, reason, .. } => {
+        RunFailure::NodeFailed {
+            node,
+            reason,
+            cause,
+        } => {
             assert_eq!(node, "a");
             assert_eq!(reason, "cancelled without a cancel request");
+            assert!(cause.is_none());
         }
         other => panic!("unexpected failure {other:?}"),
     }

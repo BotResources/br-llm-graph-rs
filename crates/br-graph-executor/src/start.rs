@@ -12,6 +12,6 @@ pub async fn start<F: Fields>(
     config: RunConfig,
 ) -> Result<Outcome<F>, StartError> {
     node_names::check(&graph, &nodes)?;
-    let run = Run::new(graph, Arc::new(state), Origin::Nodes(nodes), config);
-    Ok(run.drive().await)
+    let run = Run::new(graph, Arc::new(state), config);
+    Ok(run.drive(Origin::Nodes(nodes)).await)
 }

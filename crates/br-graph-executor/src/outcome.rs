@@ -48,7 +48,7 @@ pub enum RunFailure {
     NodeFailed {
         node: String,
         reason: String,
-        cause: Cause,
+        cause: Option<Cause>,
     },
     #[error("node {node:?} refused its input: {reason}")]
     NodeRefusedInput { node: String, reason: String },

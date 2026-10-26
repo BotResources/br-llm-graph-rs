@@ -53,6 +53,7 @@ async fn given_a_failed_event_whose_display_panics_when_it_is_handled_then_the_r
         } => {
             assert_eq!(node, "a");
             assert_eq!(reason, "the node cause panics");
+            let cause = cause.as_ref().unwrap();
             assert!(cause.downcast_ref::<PanickingDisplay>().is_some());
         }
         other => panic!("unexpected failure {other:?}"),

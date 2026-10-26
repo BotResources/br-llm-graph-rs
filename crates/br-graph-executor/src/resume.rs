@@ -17,13 +17,8 @@ pub async fn resume<F: Fields>(
     node_names::check(&graph, checkpoint.nodes())?;
     check_structure(&graph, &checkpoint)?;
     let state = rebuild_state::<F>(&checkpoint, limit)?;
-    let run = Run::new(
-        graph,
-        Arc::new(state),
-        Origin::Checkpoint(checkpoint),
-        config,
-    );
-    Ok(run.drive().await)
+    let run = Run::new(graph, Arc::new(state), config);
+    Ok(run.drive(Origin::Checkpoint(checkpoint)).await)
 }
 
 fn rebuild_state<F: Fields>(

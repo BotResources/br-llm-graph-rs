@@ -1,4 +1,4 @@
-use br_graph_contract::{Cause, Event, EventEndError, Fields, InstanceId};
+use br_graph_contract::{Event, EventEndError, Fields, InstanceId};
 
 use super::Run;
 use crate::panic_text::display_of;
@@ -28,7 +28,7 @@ impl<F: Fields> Run<F> {
                 let failure = RunFailure::NodeFailed {
                     node: node.clone(),
                     reason: display_of(&*cause),
-                    cause,
+                    cause: Some(cause),
                 };
                 self.fail_node(&node, failure);
             }
@@ -45,11 +45,10 @@ impl<F: Fields> Run<F> {
                 if self.cancel.handle().is_triggered() {
                     self.leave_untaken(&node);
                 } else {
-                    let reason = "cancelled without a cancel request".to_owned();
                     let failure = RunFailure::NodeFailed {
                         node: node.clone(),
-                        cause: Cause::from(reason.as_str()),
-                        reason,
+                        reason: "cancelled without a cancel request".to_owned(),
+                        cause: None,
                     };
                     self.fail_node(&node, failure);
                 }
