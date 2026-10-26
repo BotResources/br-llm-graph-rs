@@ -17,6 +17,7 @@ pub enum Change {
     Refuse,
     Invalid,
     Grow(usize),
+    Boom,
 }
 
 const INVALID_KEY: &str = "invalid";
@@ -49,6 +50,7 @@ impl Fields for Kv {
                 self.values.insert(INVALID_KEY.to_owned(), 1);
             }
             Change::Grow(bytes) => self.pad.push_str(&"x".repeat(bytes)),
+            Change::Boom => panic!("the fields panic"),
         }
         Ok(())
     }

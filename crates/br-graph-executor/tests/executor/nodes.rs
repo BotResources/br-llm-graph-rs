@@ -102,6 +102,14 @@ impl Handle {
         self.sender.take();
     }
 
+    pub fn panic_in_task(&mut self) {
+        let sender = self.sender.take();
+        tokio::spawn(async move {
+            let _sender = sender;
+            panic!("the work of the node panics");
+        });
+    }
+
     pub async fn is_dropped(&mut self) -> bool {
         tokio::select! {
             biased;

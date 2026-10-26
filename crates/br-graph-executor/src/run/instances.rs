@@ -57,6 +57,7 @@ pub(super) fn spawn_forwarder<F: Fields>(
             id,
             result,
         });
+        std::future::pending::<()>().await;
     });
     AbortGuard::new(task.abort_handle())
 }
