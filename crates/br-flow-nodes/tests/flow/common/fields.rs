@@ -81,6 +81,9 @@ pub fn merged(state: &State<Report>) -> bool {
 }
 
 pub const BAD_VALUE: u32 = 666;
+pub const EXPLODING_VALUE: u32 = 777;
+pub const VALIDATE_PANIC: &str = "validate exploded";
+pub const APPLY_PANIC: &str = "apply exploded";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Item {
@@ -113,6 +116,7 @@ pub enum ItemUpdate {
     Reject,
     Invalidate,
     Trigger(Hook),
+    Explode,
 }
 
 impl Item {
@@ -141,6 +145,9 @@ impl Fields for Item {
     }
 
     fn validate(&self) -> Result<(), Reason> {
+        if self.value == EXPLODING_VALUE {
+            panic!("{VALIDATE_PANIC}");
+        }
         if self.value == BAD_VALUE || self.out == Some(u32::MAX) {
             return Err(Reason::new("the item is not valid"));
         }
@@ -155,6 +162,7 @@ impl Fields for Item {
             ItemUpdate::Reject => return Err(Reason::new("the item refuses this update")),
             ItemUpdate::Invalidate => self.out = Some(u32::MAX),
             ItemUpdate::Trigger(hook) => hook.0.trigger(),
+            ItemUpdate::Explode => panic!("{APPLY_PANIC}"),
         }
         Ok(())
     }

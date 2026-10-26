@@ -1,3 +1,4 @@
+use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -7,11 +8,21 @@ use br_graph_contract::{Fields, State, Structure};
 use crate::ResumeError;
 use crate::panic_text::panic_reason;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Checkpoint {
     state: String,
     structure: Structure,
     nodes: Vec<String>,
+}
+
+impl fmt::Debug for Checkpoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Checkpoint")
+            .field("state_size", &self.state.len())
+            .field("structure", &self.structure)
+            .field("nodes", &self.nodes)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Serialize)]
@@ -61,7 +72,7 @@ impl Checkpoint {
         &self.state
     }
 
-    pub fn structure(&self) -> &Structure {
+    pub(crate) fn structure(&self) -> &Structure {
         &self.structure
     }
 
@@ -82,8 +93,8 @@ impl Checkpoint {
         structure: &Structure,
         nodes: Vec<String>,
     ) -> Result<Checkpoint, String> {
-        let serialized = catch_unwind(AssertUnwindSafe(|| state.to_json()))
-            .map_err(|payload| panic_reason(&*payload))?;
+        let serialized =
+            catch_unwind(AssertUnwindSafe(|| state.to_json())).map_err(panic_reason)?;
         let bytes = serialized.map_err(|error| error.to_string())?;
         let state = String::from_utf8(bytes).map_err(|error| error.to_string())?;
         Ok(Checkpoint {

@@ -161,3 +161,48 @@ async fn given_an_unbuildable_sink_checkpoint_when_the_other_node_ends_in_the_gr
         Some(&Observation::Outcome(OutcomeKind::RunFailed))
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn given_no_sink_when_the_state_cannot_be_serialized_in_a_result_step_then_the_run_fails_with_checkpoint_not_built()
+ {
+    plan(
+        &[Answer::Succeed, Answer::Succeed, Answer::Fail],
+        Answer::Succeed,
+    );
+    let gate = Arc::new(Notify::new());
+    let graph = graph_of(vec![
+        ScriptedNode {
+            name: "a",
+            behavior: Behavior::Result,
+        },
+        ScriptedNode {
+            name: "b",
+            behavior: Behavior::ResultAfter(Arc::clone(&gate)),
+        },
+    ]);
+    let config = RunConfig::new(CancelToken::new(), Duration::from_secs(10));
+    assert!(config.sink.is_none());
+    let initial = State::create(Flaky(7)).unwrap();
+    gate.notify_one();
+
+    let outcome = within(start(
+        graph,
+        initial,
+        vec!["a".to_owned(), "b".to_owned()],
+        config,
+    ))
+    .await
+    .unwrap();
+
+    match outcome {
+        Outcome::RunFailed {
+            failures,
+            checkpoint,
+        } => {
+            assert_eq!(failures.len(), 1);
+            assert!(matches!(failures[0], RunFailure::CheckpointNotBuilt { .. }));
+            assert!(checkpoint.nodes().is_empty());
+        }
+        other => panic!("expected RunFailed, got {other:?}"),
+    }
+}

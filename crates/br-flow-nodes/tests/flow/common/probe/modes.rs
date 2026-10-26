@@ -1,11 +1,21 @@
 use std::fmt;
 
+pub const CREATE_PANIC: &str = "creation exploded";
+
+pub struct Poison;
+
+impl Drop for Poison {
+    fn drop(&mut self) {
+        panic!("the payload dropped");
+    }
+}
+
 #[derive(Debug)]
 pub struct ProbeCause;
 
 impl fmt::Display for ProbeCause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("the probe cause")
+        f.write_str("boom")
     }
 }
 
@@ -21,6 +31,11 @@ pub enum CreateMode {
     FailWhenReleased,
     AnswerAndClose,
     GateThenNormal,
+    PanicNow,
+    PanicInFuture,
+    PanicOpaque,
+    PanicStatic,
+    PanicPoison,
 }
 
 #[derive(Clone, Copy)]
@@ -39,4 +54,6 @@ pub enum Mode {
     SlowCancel,
     TriggerThenAnswer,
     TriggerOnApply,
+    PanicOnApply,
+    PanicWork,
 }

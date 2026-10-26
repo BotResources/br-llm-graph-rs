@@ -1,5 +1,6 @@
 mod map_reduce;
 mod merger;
+mod panic_text;
 mod settle;
 mod signals;
 

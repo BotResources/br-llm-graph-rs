@@ -281,9 +281,9 @@ async fn given_the_errors_of_a_rejected_update_and_of_a_failed_instance_when_dis
         "the update of the internal instance 1 was not accepted: update refused by the fields: the item refuses this update"
     );
     assert!(rejected.source().is_none());
-    assert_eq!(failed.to_string(), "the internal instance 0 failed");
+    assert_eq!(failed.to_string(), "the internal instance 0 failed: boom");
     assert_eq!(
         failed.source().map(ToString::to_string).as_deref(),
-        Some("the probe cause")
+        Some("boom")
     );
 }

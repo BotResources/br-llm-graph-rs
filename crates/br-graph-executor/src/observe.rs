@@ -33,6 +33,7 @@ pub enum Observation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ObservedEvent {
     Result,
     Failed,
@@ -41,6 +42,7 @@ pub enum ObservedEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum OutcomeKind {
     RunEnded,
     RunFailed,

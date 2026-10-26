@@ -4,6 +4,7 @@ use br_graph_contract::{Cause, Fields, State};
 
 use crate::Checkpoint;
 
+#[non_exhaustive]
 pub enum Outcome<F: Fields> {
     RunEnded {
         state: State<F>,
@@ -43,6 +44,7 @@ impl<F: Fields> fmt::Debug for Outcome<F> {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RunFailure {
     #[error("node {node:?} failed: {reason}")]
     NodeFailed {

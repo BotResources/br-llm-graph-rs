@@ -6,7 +6,9 @@ use br_graph_contract::{
 use uuid::Uuid;
 
 use super::MapReduceError;
+use super::creation::Creation;
 use super::work::{ChildEnd, Halt, Work};
+use crate::panic_text::caught;
 use crate::signals::Signals;
 
 async fn listen<G: Fields>(
@@ -29,7 +31,7 @@ impl<F: Fields, G: Fields> Work<'_, F, G> {
             })
         })?;
         let rules = self.rules;
-        let mut creation = rules.internal_node.create(self.scope.view(), id);
+        let mut creation = Creation::begin(&*rules.internal_node, self.scope.view(), id);
         let created = loop {
             tokio::select! {
                 biased;
@@ -42,12 +44,21 @@ impl<F: Fields, G: Fields> Work<'_, F, G> {
                 created = &mut creation => break created,
             }
         };
-        let instance = created.map_err(|error| {
-            Halt::Fault(MapReduceError::InstanceNotCreated {
-                position,
-                cause: error.into_cause(),
-            })
-        })?;
+        let instance = match created {
+            Ok(Ok(instance)) => instance,
+            Ok(Err(error)) => {
+                return Err(Halt::Fault(MapReduceError::InstanceNotCreated {
+                    position,
+                    cause: error.into_cause(),
+                }));
+            }
+            Err(text) => {
+                return Err(Halt::Fault(MapReduceError::InstanceNotCreated {
+                    position,
+                    cause: text.into(),
+                }));
+            }
+        };
         if instance.id() != id {
             return Err(Halt::Fault(MapReduceError::InstanceIdMismatch {
                 position,
@@ -70,16 +81,20 @@ impl<F: Fields, G: Fields> Work<'_, F, G> {
         received: Result<Event<G>, EventEndError>,
     ) -> Result<(), Halt> {
         let fault = match received {
-            Ok(Event::Result(update)) => match self.states[position].apply(update) {
-                Ok(state) => {
-                    self.states[position] = Arc::new(state);
-                    return Ok(());
+            Ok(Event::Result(update)) => {
+                let state = &self.states[position];
+                match caught(|| state.apply(update)) {
+                    Ok(Ok(state)) => {
+                        self.states[position] = Arc::new(state);
+                        return Ok(());
+                    }
+                    Ok(Err(error)) => MapReduceError::UpdateRejected {
+                        position,
+                        reason: error.to_string(),
+                    },
+                    Err(reason) => MapReduceError::UpdateRejected { position, reason },
                 }
-                Err(error) => MapReduceError::UpdateRejected {
-                    position,
-                    reason: error.to_string(),
-                },
-            },
+            }
             Ok(Event::Failed(cause)) => MapReduceError::InternalFailed { position, cause },
             Ok(Event::Refused(reason)) => MapReduceError::InternalRefused {
                 position,

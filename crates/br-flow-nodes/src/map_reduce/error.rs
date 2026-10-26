@@ -5,7 +5,7 @@ use br_graph_contract::Cause;
 pub enum MapReduceError {
     #[error("the initial value of internal state {position} is invalid: {reason}")]
     InvalidInitialValue { position: usize, reason: String },
-    #[error("the internal instance {position} could not be created")]
+    #[error("the internal instance {position} could not be created: {cause}")]
     InstanceNotCreated {
         position: usize,
         #[source]
@@ -21,7 +21,7 @@ pub enum MapReduceError {
     },
     #[error("the internal instance {position} refused its input: its input end is closed")]
     InputRefused { position: usize },
-    #[error("the internal instance {position} failed")]
+    #[error("the internal instance {position} failed: {cause}")]
     InternalFailed {
         position: usize,
         #[source]

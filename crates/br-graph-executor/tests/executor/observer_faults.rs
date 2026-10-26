@@ -18,14 +18,26 @@ impl Observer for Panicking {
     }
 }
 
+struct Poison;
+
+impl Drop for Poison {
+    fn drop(&mut self) {
+        panic!("the payload dropped");
+    }
+}
+
 struct PanicsOnce {
     panicked: AtomicBool,
+    poisoned: bool,
     recorder: Arc<Recorder>,
 }
 
 impl Observer for PanicsOnce {
     fn observe(&self, observation: Observation) {
         if !self.panicked.swap(true, Ordering::SeqCst) {
+            if self.poisoned {
+                std::panic::panic_any(Poison);
+            }
             panic!("the observer panics once");
         }
         self.recorder.observe(observation);
@@ -35,11 +47,22 @@ impl Observer for PanicsOnce {
 #[tokio::test(start_paused = true)]
 async fn given_an_observer_that_panics_once_when_the_run_goes_on_then_it_still_hears_the_later_observations()
  {
+    hears_the_later_observations(false).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_an_observer_that_panics_once_with_a_payload_whose_drop_panics_when_the_run_goes_on_then_it_still_hears_the_later_observations()
+ {
+    hears_the_later_observations(true).await;
+}
+
+async fn hears_the_later_observations(poisoned: bool) {
     let rig = chain("1", &["a", "b"]);
     let recorder = Recorder::new();
     let (mut config, ..) = Setup::new().config();
     config.observer = Some(Arc::new(PanicsOnce {
         panicked: AtomicBool::new(false),
+        poisoned,
         recorder: Arc::clone(&recorder),
     }));
     let run = tokio::spawn(start(

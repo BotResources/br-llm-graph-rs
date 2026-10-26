@@ -13,7 +13,7 @@ use br_graph_contract::{
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use uuid::Uuid;
 
-pub use self::modes::{CreateMode, Mode, ProbeCause};
+pub use self::modes::{CREATE_PANIC, CreateMode, Mode, Poison, ProbeCause};
 pub use self::order::{Log, Mark, Witness};
 pub use self::watch::Watch;
 use self::watch::{Gates, Live, Stats, locked};
@@ -86,11 +86,18 @@ impl Node<Item> for Probe {
 
     fn create(&self, cancel: CancelView, id: InstanceId) -> CreateFuture<'_, Item> {
         let shared = Arc::clone(&self.shared);
-        shared.stats.calls.fetch_add(1, Ordering::SeqCst);
+        let call = shared.stats.calls.fetch_add(1, Ordering::SeqCst);
+        if matches!((shared.create_mode)(call), CreateMode::PanicNow) {
+            panic!("{CREATE_PANIC}");
+        }
         Box::pin(async move {
             let position = shared.stats.created.fetch_add(1, Ordering::SeqCst);
             let create_mode = (shared.create_mode)(position);
             match create_mode {
+                CreateMode::PanicInFuture => panic!("{CREATE_PANIC}"),
+                CreateMode::PanicOpaque => std::panic::panic_any(7_u32),
+                CreateMode::PanicStatic => panic!("literal text"),
+                CreateMode::PanicPoison => std::panic::panic_any(Poison),
                 CreateMode::FailCreate => return Err(CreateError::new(ProbeCause)),
                 CreateMode::Hang => std::future::pending::<()>().await,
                 CreateMode::FailWhenReleased => {

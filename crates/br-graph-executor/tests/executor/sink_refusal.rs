@@ -125,4 +125,7 @@ async fn given_a_host_cancel_in_the_sink_call_when_the_sink_refuses_and_the_othe
     );
     assert_eq!(state_of(&checkpoint), kv(&[("a", 1), ("b", 1)]));
     assert!(checkpoint.nodes().is_empty());
+    let config = RunConfig::new(CancelToken::new(), GRACE);
+    let resumed = within(resume(Arc::clone(&rig.graph), checkpoint, BIG, config)).await;
+    assert!(matches!(resumed, Err(ResumeError::NoNodes)));
 }
