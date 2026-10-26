@@ -71,5 +71,6 @@ impl<F: Fields> Run<F> {
 const FAR_FUTURE: Duration = Duration::from_secs(60 * 60 * 24 * 365 * 30);
 
 fn deadline_after(grace: Duration) -> Instant {
-    Instant::now() + grace.min(FAR_FUTURE)
+    let now = Instant::now();
+    now.checked_add(grace).unwrap_or_else(|| now + FAR_FUTURE)
 }

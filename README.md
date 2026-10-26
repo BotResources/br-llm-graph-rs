@@ -158,7 +158,7 @@ br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", p
 | Part | What the crate gives |
 |---|---|
 | `start`, `resume` | a run from a graph (`Arc<Graph>`), a state and a list of nodes, or from a graph and a `Checkpoint` with the state limit the host gives; `StartError` and `ResumeError` refuse a bad list or a checkpoint that does not fit the graph (the version, the node names and the edges are compared; the entries, kinds and subkinds are not) |
-| `RunConfig` | the cancel token (new for each run: the executor triggers it on a failure) and the grace period (one longer than about 30 years counts as 30 years), both required, and the optional `CheckpointSink` and `Observer` |
+| `RunConfig` | the cancel token (new for each run: the executor triggers it on a failure) and the grace period (one whose deadline cannot be represented, `Duration::MAX` for instance, counts as about 30 years), both required, and the optional `CheckpointSink` and `Observer` |
 | `Outcome` | `RunEnded` with the final state; `RunFailed` and `RunCancelled` with the failures in the order handled (the first is the reported cause) and the most current `Checkpoint` |
 | `RunFailure` | one named cause per failure, with a reason as text and the opaque cause when a node or an edge gave one; `SinkRefused` carries the checkpoint the sink refused |
 | `Checkpoint` | the state, the structure of the graph and the names of the nodes that are not idle; serializable data with one wire form in which the state is a JSON string, exact through every serde door |
