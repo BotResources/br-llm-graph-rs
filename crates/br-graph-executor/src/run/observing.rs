@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 
+use crate::panic_text::release;
 use crate::{Observation, Observer};
 
 pub(super) struct Observing {
@@ -15,7 +16,11 @@ impl Observing {
             let (sender, mut receiver) = unbounded_channel::<Observation>();
             tokio::spawn(async move {
                 while let Some(observation) = receiver.recv().await {
-                    let _ = catch_unwind(AssertUnwindSafe(|| observer.observe(observation)));
+                    if let Err(payload) =
+                        catch_unwind(AssertUnwindSafe(|| observer.observe(observation)))
+                    {
+                        release(payload);
+                    }
                 }
             });
             sender

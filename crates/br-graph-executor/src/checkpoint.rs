@@ -72,7 +72,7 @@ impl Checkpoint {
         &self.state
     }
 
-    pub fn structure(&self) -> &Structure {
+    pub(crate) fn structure(&self) -> &Structure {
         &self.structure
     }
 
@@ -93,8 +93,8 @@ impl Checkpoint {
         structure: &Structure,
         nodes: Vec<String>,
     ) -> Result<Checkpoint, String> {
-        let serialized = catch_unwind(AssertUnwindSafe(|| state.to_json()))
-            .map_err(|payload| panic_reason(&*payload))?;
+        let serialized =
+            catch_unwind(AssertUnwindSafe(|| state.to_json())).map_err(panic_reason)?;
         let bytes = serialized.map_err(|error| error.to_string())?;
         let state = String::from_utf8(bytes).map_err(|error| error.to_string())?;
         Ok(Checkpoint {

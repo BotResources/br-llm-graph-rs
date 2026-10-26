@@ -1,4 +1,5 @@
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StartError {
     #[error("no node to start: the list of nodes is empty")]
     NoNodes,
@@ -9,6 +10,7 @@ pub enum StartError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ResumeError {
     #[error("checkpoint version {checkpoint:?} differs from graph version {graph:?}")]
     VersionMismatch { checkpoint: String, graph: String },

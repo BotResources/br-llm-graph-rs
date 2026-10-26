@@ -29,7 +29,7 @@ pub(super) fn spawn_creation<F: Fields>(
                 cause: Some(error.into_cause()),
             }),
             Err(error) if error.is_panic() => Err(CreationFailure {
-                reason: panic_reason(&*error.into_panic()),
+                reason: panic_reason(error.into_panic()),
                 cause: None,
             }),
             Err(_) => Err(CreationFailure {

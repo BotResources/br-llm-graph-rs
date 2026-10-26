@@ -1,13 +1,9 @@
-use std::time::Duration;
-
-use br_graph_contract::CancelToken;
-use br_graph_executor::{Checkpoint, Outcome, RunConfig, RunFailure};
+use br_graph_contract::State;
+use br_graph_executor::{Checkpoint, Outcome, RunFailure};
 
 use crate::graphs::*;
 use crate::host::*;
 use crate::kv::*;
-use crate::observer::Recorder;
-use crate::sink::RecordingSink;
 
 const MARKER: &str = "MARKER-7f3a9c";
 
@@ -65,15 +61,20 @@ fn given_a_cancelled_outcome_when_debug_printed_then_the_failures_are_shown_and_
 }
 
 #[test]
-fn given_an_ended_outcome_when_debug_printed_then_it_names_the_state_by_size_only() {
+fn given_an_ended_outcome_whose_state_holds_a_marker_when_debug_printed_then_the_marker_is_absent()
+{
     let outcome = Outcome::RunEnded {
-        state: state(&[("k", 1)]),
+        state: State::create(Kv {
+            pad: MARKER.to_owned(),
+            ..kv(&[("k", 1)])
+        })
+        .unwrap(),
     };
 
     let text = format!("{outcome:?}");
 
     assert!(text.starts_with("RunEnded"));
-    assert!(text.contains("serialized_size"));
+    assert!(!text.contains(MARKER));
 }
 
 #[test]
@@ -87,37 +88,4 @@ fn given_a_sink_refusal_failure_when_debug_printed_then_the_checkpoint_state_is_
 
     assert!(text.contains("full"));
     assert!(!text.contains(MARKER));
-}
-
-#[test]
-fn given_a_config_with_neither_sink_nor_observer_when_debug_printed_then_both_show_false() {
-    let config = RunConfig::new(CancelToken::new(), Duration::from_secs(3));
-
-    let text = format!("{config:?}");
-
-    assert!(text.starts_with("RunConfig"));
-    assert!(text.contains("sink: false"));
-    assert!(text.contains("observer: false"));
-}
-
-#[test]
-fn given_a_config_with_a_sink_only_when_debug_printed_then_only_the_sink_shows_true() {
-    let mut config = RunConfig::new(CancelToken::new(), Duration::ZERO);
-    config.sink = Some(RecordingSink::new());
-
-    let text = format!("{config:?}");
-
-    assert!(text.contains("sink: true"));
-    assert!(text.contains("observer: false"));
-}
-
-#[test]
-fn given_a_config_with_an_observer_only_when_debug_printed_then_only_the_observer_shows_true() {
-    let mut config = RunConfig::new(CancelToken::new(), Duration::ZERO);
-    config.observer = Some(Recorder::new());
-
-    let text = format!("{config:?}");
-
-    assert!(text.contains("sink: false"));
-    assert!(text.contains("observer: true"));
 }

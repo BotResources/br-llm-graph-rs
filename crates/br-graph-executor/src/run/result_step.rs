@@ -17,7 +17,7 @@ impl<F: Fields> Run<F> {
                 return;
             }
             Err(payload) => {
-                self.fail_node(&node, update_refused(&node, panic_reason(&*payload)));
+                self.fail_node(&node, update_refused(&node, panic_reason(payload)));
                 return;
             }
         };
@@ -40,7 +40,7 @@ impl<F: Fields> Run<F> {
                 return;
             }
             Err(payload) => {
-                self.fail_node(&node, edge_failed(&node, panic_reason(&*payload)));
+                self.fail_node(&node, edge_failed(&node, panic_reason(payload)));
                 return;
             }
         };
@@ -64,7 +64,7 @@ impl<F: Fields> Run<F> {
             return;
         }
         if !self.is_stopping() {
-            self.offer_checkpoint_to_sink().await;
+            self.take_step_checkpoint().await;
             self.read_token();
         }
         if !self.is_stopping() {

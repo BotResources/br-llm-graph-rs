@@ -14,7 +14,10 @@ async fn given_a_failed_run_when_its_checkpoint_is_read_then_it_holds_the_state_
     let (_, checkpoint) = failed(host.outcome().await);
     let expected = state(&[("k", 1)]).to_json().unwrap();
     assert_eq!(checkpoint.state_json().as_bytes(), expected.as_slice());
-    assert_eq!(checkpoint.structure(), &rig.graph.structure());
+    assert_eq!(
+        serde_json::to_value(&checkpoint).unwrap()["structure"],
+        serde_json::to_value(rig.graph.structure()).unwrap()
+    );
 }
 
 #[tokio::test(start_paused = true)]

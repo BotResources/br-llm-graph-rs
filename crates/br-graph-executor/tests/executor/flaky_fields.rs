@@ -92,6 +92,7 @@ pub enum Behavior {
     Fail,
     Result,
     ResultAfter(Arc<Notify>),
+    Silent,
 }
 
 pub struct ScriptedNode {
@@ -118,10 +119,14 @@ impl Node<Flaky> for ScriptedNode {
             _ => None,
         };
         let fails = matches!(self.behavior, Behavior::Fail);
+        let silent = matches!(self.behavior, Behavior::Silent);
         Box::pin(async move {
             let (instance, mut reader, sender) = Instance::<Flaky>::channel(id);
             tokio::spawn(async move {
                 let _ = reader.next().await;
+                if silent {
+                    std::future::pending::<()>().await;
+                }
                 if let Some(gate) = release {
                     within(gate.notified()).await;
                 }

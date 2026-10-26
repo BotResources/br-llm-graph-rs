@@ -185,6 +185,22 @@ async fn given_a_creation_panicking_without_a_text_when_created_then_it_is_still
 }
 
 #[tokio::test(start_paused = true)]
+async fn given_a_creation_panicking_with_a_payload_whose_drop_panics_when_created_then_it_is_a_creation_failure_with_the_neutral_text()
+ {
+    match creation_panic(Creation::PanicPoison).await {
+        RunFailure::NodeCouldNotStart {
+            node,
+            reason,
+            cause: None,
+        } => {
+            assert_eq!(node, "a");
+            assert_eq!(reason, "panic without a text message");
+        }
+        other => panic!("unexpected failure {other:?}"),
+    }
+}
+
+#[tokio::test(start_paused = true)]
 async fn given_a_cancel_when_a_creation_ends_then_it_keeps_its_first_input_and_is_dropped_at_the_grace_end()
  {
     let rig = x_and_y_into_b();

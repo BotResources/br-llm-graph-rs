@@ -4,6 +4,7 @@ mod api;
 mod basic_run;
 mod cancel;
 mod cancel_resume;
+mod checkpoint_not_built;
 mod checkpoint_wire;
 mod checkpoints;
 mod creation;

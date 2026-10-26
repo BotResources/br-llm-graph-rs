@@ -71,6 +71,8 @@ async fn decide(
         Mode::Refuse => Some(Event::Refused(Reason::new("no thanks"))),
         Mode::CancelAlone => Some(Event::Cancelled),
         Mode::Vanish => None,
+        Mode::PanicOnApply => Some(Event::Result(ItemUpdate::Explode)),
+        Mode::PanicWork => panic!("the work of the instance exploded"),
         Mode::Reject => Some(Event::Result(ItemUpdate::Reject)),
         Mode::Invalidate => Some(Event::Result(ItemUpdate::Invalidate)),
         Mode::Record => Some(Event::Result(ItemUpdate::Record("could not read".into()))),

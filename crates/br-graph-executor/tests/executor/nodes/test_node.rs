@@ -10,6 +10,14 @@ use super::gates::{DropFlag, DropGuard, Gate};
 use super::handle::Handle;
 use super::stage::Stage;
 
+struct Poison;
+
+impl Drop for Poison {
+    fn drop(&mut self) {
+        panic!("the payload dropped");
+    }
+}
+
 pub enum Creation {
     Gated(Gate),
     Fail(&'static str),
@@ -17,6 +25,7 @@ pub enum Creation {
     PanicText(&'static str),
     PanicString(String),
     PanicOther,
+    PanicPoison,
     WrongId,
     InputClosedAtBirth,
     Never(DropFlag),
@@ -85,6 +94,7 @@ impl Node<Kv> for TestNode {
                 Some(Creation::PanicText(message)) => panic!("{message}"),
                 Some(Creation::PanicString(message)) => panic!("{}", message),
                 Some(Creation::PanicOther) => std::panic::panic_any(42_u32),
+                Some(Creation::PanicPoison) => std::panic::panic_any(Poison),
                 Some(Creation::WrongId) => channel_id = other_id(id),
                 Some(Creation::InputClosedAtBirth) => closed_at_birth = true,
                 Some(Creation::Never(flag)) => {

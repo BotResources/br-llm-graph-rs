@@ -34,7 +34,7 @@ fn rebuild_state<F: Fields>(
             reason: error.to_string(),
         }),
         Err(payload) => Err(ResumeError::StateRejected {
-            reason: panic_reason(&*payload),
+            reason: panic_reason(payload),
         }),
     }
 }

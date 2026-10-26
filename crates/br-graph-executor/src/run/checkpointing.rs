@@ -27,10 +27,7 @@ impl<F: Fields> Run<F> {
         }
     }
 
-    pub(super) async fn offer_checkpoint_to_sink(&mut self) {
-        let Some(sink) = self.sink.clone() else {
-            return;
-        };
+    pub(super) async fn take_step_checkpoint(&mut self) {
         let checkpoint =
             match Checkpoint::build(&self.state, &self.structure, self.non_idle_names()) {
                 Ok(checkpoint) => Arc::new(checkpoint),
@@ -39,13 +36,16 @@ impl<F: Fields> Run<F> {
                     return;
                 }
             };
+        let Some(sink) = self.sink.clone() else {
+            return;
+        };
         let offered = Arc::clone(&checkpoint);
         let call = tokio::spawn(async move { sink.accept(&offered).await });
         let _abort_with_this_step = AbortGuard::new(call.abort_handle());
         let reason = match call.await {
             Ok(Ok(())) => return,
             Ok(Err(refusal)) => refusal.reason().to_owned(),
-            Err(error) if error.is_panic() => panic_reason(&*error.into_panic()),
+            Err(error) if error.is_panic() => panic_reason(error.into_panic()),
             Err(_) => "the sink call was cancelled".to_owned(),
         };
         let checkpoint = Arc::try_unwrap(checkpoint).unwrap_or_else(|shared| (*shared).clone());
