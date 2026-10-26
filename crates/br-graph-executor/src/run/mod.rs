@@ -7,6 +7,7 @@ mod handover;
 mod instances;
 mod message;
 mod observing;
+mod origin;
 mod result_step;
 mod slot;
 mod stopping;
@@ -20,10 +21,12 @@ use br_graph_contract::{CancelToken, Fields, Graph, State, Structure};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::time::{Instant, sleep_until};
 
-use crate::{Checkpoint, CheckpointSink, Outcome, RunConfig, RunFailure};
+use crate::{CheckpointSink, Outcome, RunConfig, RunFailure};
 use message::Message;
 use observing::Observing;
 use slot::NodeSlot;
+
+pub(crate) use origin::Origin;
 
 #[derive(Clone, Copy)]
 enum Trigger {
@@ -53,6 +56,7 @@ pub(crate) struct Run<F: Fields> {
     slots: BTreeMap<String, NodeSlot<F>>,
     failures: Vec<RunFailure>,
     phase: Phase,
+    origin: Option<Origin>,
     sender: UnboundedSender<Message<F>>,
     receiver: UnboundedReceiver<Message<F>>,
 }
@@ -61,7 +65,7 @@ impl<F: Fields> Run<F> {
     pub(crate) fn new(
         graph: Arc<Graph<F>>,
         state: Arc<State<F>>,
-        held: &[String],
+        origin: Origin,
         config: RunConfig,
     ) -> Self {
         let structure = graph.structure();
@@ -78,9 +82,9 @@ impl<F: Fields> Run<F> {
                 Some((described.name.clone(), slot))
             })
             .collect();
-        for name in held {
+        for name in origin.held_names() {
             if let Some(slot) = slots.get_mut(name) {
-                slot.held = true;
+                slot.hold();
             }
         }
         let (sender, receiver) = unbounded_channel();
@@ -95,21 +99,21 @@ impl<F: Fields> Run<F> {
             slots,
             failures: Vec::new(),
             phase: Phase::Running,
+            origin: Some(origin),
             sender,
             receiver,
         }
     }
 
-    pub(crate) async fn drive(
-        mut self,
-        first_targets: Vec<String>,
-        starting: Option<Checkpoint>,
-    ) -> Outcome<F> {
+    pub(crate) async fn drive(mut self) -> Outcome<F> {
+        let origin = self.origin.take();
         self.read_token();
         if self.is_stopping() {
-            return self.conclude(starting);
+            return self.conclude(origin.and_then(Origin::into_checkpoint));
         }
-        self.hand_over(&first_targets);
+        if let Some(origin) = &origin {
+            self.hand_over(origin.first_targets());
+        }
         let mut cancel_requested = pin!(self.cancel.view().triggered());
         loop {
             self.read_token();
@@ -135,7 +139,7 @@ impl<F: Fields> Run<F> {
                 }
             };
             match wake {
-                Wake::CancelRequested => self.begin_stopping(Trigger::Host),
+                Wake::CancelRequested => self.read_token(),
                 Wake::Message(message) => self.step(message).await,
                 Wake::Deadline => {
                     self.abandon_all_live();

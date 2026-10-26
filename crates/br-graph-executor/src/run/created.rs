@@ -3,10 +3,8 @@ use std::sync::Arc;
 use br_graph_contract::{Fields, Instance, InstanceId, State};
 
 use super::Run;
-use super::guard::AbortGuard;
 use super::instances::spawn_forwarder;
 use super::message::CreationFailure;
-use super::slot::Live;
 use crate::{Observation, RunFailure};
 
 impl<F: Fields> Run<F> {
@@ -19,17 +17,12 @@ impl<F: Fields> Run<F> {
         let Some(slot) = self.slots.get_mut(&node) else {
             return;
         };
-        let first_input = match &slot.live {
-            Live::Creating {
-                id: live,
-                first_input,
-                ..
-            } if *live == id => Arc::clone(first_input),
-            _ => return,
+        let Some(first_input) = slot.first_input_of_creation(id) else {
+            return;
         };
         let failure = match result {
             Ok(instance) if instance.id() == id => {
-                self.settle_created(node, instance, first_input);
+                self.settle_created(&node, instance, first_input);
                 return;
             }
             Ok(_) => CreationFailure {
@@ -38,47 +31,42 @@ impl<F: Fields> Run<F> {
             },
             Err(failure) => failure,
         };
-        slot.live = Live::Absent;
-        slot.held = true;
-        slot.untaken = true;
-        self.fail(RunFailure::NodeCouldNotStart {
-            node,
-            reason: failure.reason,
-            cause: failure.cause,
-        });
+        slot.end_instance();
+        slot.hold();
+        self.fail_node(
+            &node,
+            RunFailure::NodeCouldNotStart {
+                node: node.clone(),
+                reason: failure.reason,
+                cause: failure.cause,
+            },
+        );
     }
 
-    fn settle_created(&mut self, node: String, instance: Instance<F>, first_input: Arc<State<F>>) {
+    fn settle_created(&mut self, node: &str, instance: Instance<F>, first_input: Arc<State<F>>) {
         let id = instance.id();
         let (input, events) = instance.into_parts();
-        let forwarder: AbortGuard = spawn_forwarder(events, node.clone(), id, self.sender.clone());
-        let Some(slot) = self.slots.get_mut(&node) else {
+        let forwarder = spawn_forwarder(events, node.to_owned(), id, self.sender.clone());
+        let Some(slot) = self.slots.get_mut(node) else {
             return;
         };
-        slot.live = Live::Running {
-            _forwarder: forwarder,
-            id,
-            input,
-        };
-        let (kind, subkind) = (slot.kind.clone(), slot.subkind.clone());
+        slot.become_running(id, input, forwarder);
+        let (kind, subkind) = (slot.kind().to_owned(), slot.subkind().to_owned());
         self.observing.tell(|| Observation::InstanceCreated {
             instance: id,
-            node: node.clone(),
+            node: node.to_owned(),
             kind,
             subkind,
         });
-        if !self.give_input(&node, first_input) {
-            if let Some(slot) = self.slots.get_mut(&node) {
-                slot.held = true;
+        if !self.give_input(node, first_input) {
+            if let Some(slot) = self.slots.get_mut(node) {
+                slot.hold();
             }
             return;
         }
-        let has_held = self.slots.get(&node).is_some_and(|slot| slot.held);
+        let has_held = self.slots.get(node).is_some_and(|slot| slot.is_held());
         if has_held && !self.is_stopping() {
-            let current = Arc::clone(&self.state);
-            if self.give_input(&node, current) {
-                self.clear_held(&node);
-            }
+            self.give_held(node);
         }
     }
 }

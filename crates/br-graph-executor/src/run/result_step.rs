@@ -13,11 +13,11 @@ impl<F: Fields> Run<F> {
         let new_state = match catch_unwind(AssertUnwindSafe(|| current.apply(update))) {
             Ok(Ok(state)) => state,
             Ok(Err(error)) => {
-                self.undo(&node, update_refused(&node, error.to_string()));
+                self.fail_node(&node, update_refused(&node, error.to_string()));
                 return;
             }
             Err(payload) => {
-                self.undo(&node, update_refused(&node, panic_reason(&*payload)));
+                self.fail_node(&node, update_refused(&node, panic_reason(&*payload)));
                 return;
             }
         };
@@ -32,15 +32,15 @@ impl<F: Fields> Run<F> {
                     reason: display_of(&*cause),
                     cause: Some(cause),
                 };
-                self.undo(&node, failure);
+                self.fail_node(&node, failure);
                 return;
             }
             Ok(Err(other)) => {
-                self.undo(&node, edge_failed(&node, other.to_string()));
+                self.fail_node(&node, edge_failed(&node, other.to_string()));
                 return;
             }
             Err(payload) => {
-                self.undo(&node, edge_failed(&node, panic_reason(&*payload)));
+                self.fail_node(&node, edge_failed(&node, panic_reason(&*payload)));
                 return;
             }
         };
@@ -55,7 +55,7 @@ impl<F: Fields> Run<F> {
         for target in &targets {
             if let Target::Node(name) = target {
                 if let Some(slot) = self.slots.get_mut(name) {
-                    slot.held = true;
+                    slot.hold();
                 }
                 named.push(name.clone());
             }
@@ -70,13 +70,6 @@ impl<F: Fields> Run<F> {
         if !self.is_stopping() {
             self.hand_over(&named);
         }
-    }
-
-    fn undo(&mut self, node: &str, failure: RunFailure) {
-        if let Some(slot) = self.slots.get_mut(node) {
-            slot.untaken = true;
-        }
-        self.fail(failure);
     }
 }
 

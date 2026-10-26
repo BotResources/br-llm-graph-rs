@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use br_graph_contract::{Fields, Graph, State};
 
-use crate::run::Run;
+use crate::run::{Origin, Run};
 use crate::{Outcome, RunConfig, StartError, node_names};
 
 pub async fn start<F: Fields>(
@@ -12,6 +12,6 @@ pub async fn start<F: Fields>(
     config: RunConfig,
 ) -> Result<Outcome<F>, StartError> {
     node_names::check(&graph, &nodes)?;
-    let run = Run::new(graph, Arc::new(state), &nodes, config);
-    Ok(run.drive(nodes, None).await)
+    let run = Run::new(graph, Arc::new(state), Origin::Nodes(nodes), config);
+    Ok(run.drive().await)
 }

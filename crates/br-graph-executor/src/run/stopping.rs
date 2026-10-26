@@ -27,13 +27,22 @@ impl<F: Fields> Run<F> {
         }
     }
 
-    pub(super) fn begin_stopping(&mut self, trigger: Trigger) {
-        if !self.is_stopping() {
-            self.phase = Phase::Stopping {
-                deadline: deadline_after(self.grace),
-                trigger,
-            };
+    fn begin_stopping(&mut self, trigger: Trigger) {
+        self.phase = Phase::Stopping {
+            deadline: deadline_after(self.grace),
+            trigger,
+        };
+    }
+
+    pub(super) fn leave_untaken(&mut self, node: &str) {
+        if let Some(slot) = self.slots.get_mut(node) {
+            slot.leave_untaken();
         }
+    }
+
+    pub(super) fn fail_node(&mut self, node: &str, failure: RunFailure) {
+        self.leave_untaken(node);
+        self.fail(failure);
     }
 
     pub(super) fn fail(&mut self, failure: RunFailure) {
@@ -62,8 +71,5 @@ impl<F: Fields> Run<F> {
 const FAR_FUTURE: Duration = Duration::from_secs(60 * 60 * 24 * 365 * 30);
 
 fn deadline_after(grace: Duration) -> Instant {
-    let now = Instant::now();
-    now.checked_add(grace)
-        .or_else(|| now.checked_add(FAR_FUTURE))
-        .unwrap_or(now)
+    Instant::now() + grace.min(FAR_FUTURE)
 }

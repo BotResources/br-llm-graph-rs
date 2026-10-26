@@ -1,7 +1,6 @@
 use br_graph_contract::{Cause, Event, EventEndError, Fields, InstanceId};
 
 use super::Run;
-use super::slot::Live;
 use crate::panic_text::display_of;
 use crate::{Observation, ObservedEvent, RunFailure};
 
@@ -18,7 +17,7 @@ impl<F: Fields> Run<F> {
         if slot.running_id() != Some(id) {
             return;
         }
-        slot.live = Live::Absent;
+        slot.end_instance();
         match result {
             Ok(Event::Result(update)) => {
                 self.report_event(&node, id, ObservedEvent::Result);
@@ -26,47 +25,42 @@ impl<F: Fields> Run<F> {
             }
             Ok(Event::Failed(cause)) => {
                 self.report_event(&node, id, ObservedEvent::Failed);
-                let reason = display_of(&*cause);
-                self.leave_untaken(&node);
-                self.fail(RunFailure::NodeFailed {
-                    node,
-                    reason,
+                let failure = RunFailure::NodeFailed {
+                    node: node.clone(),
+                    reason: display_of(&*cause),
                     cause,
-                });
+                };
+                self.fail_node(&node, failure);
             }
             Ok(Event::Refused(reason)) => {
                 self.report_event(&node, id, ObservedEvent::Refused);
-                self.leave_untaken(&node);
-                self.fail(RunFailure::NodeRefusedInput {
-                    node,
+                let failure = RunFailure::NodeRefusedInput {
+                    node: node.clone(),
                     reason: reason.into_string(),
-                });
+                };
+                self.fail_node(&node, failure);
             }
             Ok(Event::Cancelled) => {
                 self.report_event(&node, id, ObservedEvent::Cancelled);
-                self.leave_untaken(&node);
-                if !self.cancel.handle().is_triggered() {
+                if self.cancel.handle().is_triggered() {
+                    self.leave_untaken(&node);
+                } else {
                     let reason = "cancelled without a cancel request".to_owned();
-                    self.fail(RunFailure::NodeFailed {
-                        node,
+                    let failure = RunFailure::NodeFailed {
+                        node: node.clone(),
                         cause: Cause::from(reason.as_str()),
                         reason,
-                    });
+                    };
+                    self.fail_node(&node, failure);
                 }
             }
             Err(EventEndError::Vanished) => {
-                self.leave_untaken(&node);
-                self.fail(RunFailure::NodeVanished {
-                    node,
-                    reason: "the node side ended without a terminal event".to_owned(),
-                });
+                let failure = vanished(&node, "the node side ended without a terminal event");
+                self.fail_node(&node, failure);
             }
             Err(EventEndError::Finished) => {
-                self.leave_untaken(&node);
-                self.fail(RunFailure::NodeVanished {
-                    node,
-                    reason: "the event end finished without an event".to_owned(),
-                });
+                let failure = vanished(&node, "the event end finished without an event");
+                self.fail_node(&node, failure);
             }
         }
     }
@@ -78,10 +72,11 @@ impl<F: Fields> Run<F> {
             event,
         });
     }
+}
 
-    fn leave_untaken(&mut self, node: &str) {
-        if let Some(slot) = self.slots.get_mut(node) {
-            slot.untaken = true;
-        }
+fn vanished(node: &str, reason: &str) -> RunFailure {
+    RunFailure::NodeVanished {
+        node: node.to_owned(),
+        reason: reason.to_owned(),
     }
 }

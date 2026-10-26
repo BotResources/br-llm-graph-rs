@@ -5,7 +5,7 @@ use std::sync::Arc;
 use br_graph_contract::{Fields, Graph, State};
 
 use crate::panic_text::panic_reason;
-use crate::run::Run;
+use crate::run::{Origin, Run};
 use crate::{Checkpoint, Outcome, ResumeError, RunConfig, node_names};
 
 pub async fn resume<F: Fields>(
@@ -17,9 +17,13 @@ pub async fn resume<F: Fields>(
     node_names::check(&graph, checkpoint.nodes())?;
     check_structure(&graph, &checkpoint)?;
     let state = rebuild_state::<F>(&checkpoint, limit)?;
-    let nodes = checkpoint.nodes().to_vec();
-    let run = Run::new(graph, Arc::new(state), &nodes, config);
-    Ok(run.drive(Vec::new(), Some(checkpoint)).await)
+    let run = Run::new(
+        graph,
+        Arc::new(state),
+        Origin::Checkpoint(checkpoint),
+        config,
+    );
+    Ok(run.drive().await)
 }
 
 fn rebuild_state<F: Fields>(
