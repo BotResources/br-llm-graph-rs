@@ -22,7 +22,7 @@ fn forged(checkpoint: &Checkpoint, edit: impl FnOnce(&mut Value)) -> Checkpoint 
 
 async fn refusal(rig: &Rig, checkpoint: Checkpoint) -> ResumeError {
     let (config, ..) = Setup::new().config();
-    resume(rig.graph.clone(), checkpoint, BIG, config)
+    within(resume(rig.graph.clone(), checkpoint, BIG, config))
         .await
         .unwrap_err()
 }
@@ -157,7 +157,7 @@ async fn a_state_over_the_limit_the_host_gave_is_rejected() {
     let checkpoint = checkpoint_of(&rig).await;
     let (config, ..) = Setup::new().config();
     let limit = std::num::NonZeroUsize::new(5).unwrap();
-    let error = resume(rig.graph.clone(), checkpoint.clone(), limit, config)
+    let error = within(resume(rig.graph.clone(), checkpoint.clone(), limit, config))
         .await
         .unwrap_err();
     assert!(matches!(error, ResumeError::StateRejected { .. }));
@@ -168,7 +168,7 @@ async fn a_state_over_the_limit_the_host_gave_is_rejected() {
     let mut a = rig.stage.instance("a").await;
     a.next_input().await;
     a.failed("stop");
-    assert!(host_run.await.unwrap().is_ok());
+    assert!(within(host_run).await.unwrap().is_ok());
 }
 
 #[tokio::test(start_paused = true)]

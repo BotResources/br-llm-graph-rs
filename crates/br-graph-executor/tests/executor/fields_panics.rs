@@ -103,7 +103,7 @@ async fn given_a_checkpoint_whose_state_panics_in_validation_when_resumed_then_i
         &["a"],
     );
     let config = RunConfig::new(CancelToken::new(), GRACE);
-    let refused = resume(rig.graph.clone(), checkpoint, BIG, config).await;
+    let refused = within(resume(rig.graph.clone(), checkpoint, BIG, config)).await;
     match refused {
         Err(ResumeError::StateRejected { reason }) => {
             assert!(reason.contains("validation panics"), "{reason}");

@@ -20,7 +20,7 @@ async fn given_results_queued_when_the_grace_ends_then_both_are_applied_and_the_
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     a.result(set("a", 1));
     b.result(set("b", 1));
     tokio::time::advance(GRACE).await;

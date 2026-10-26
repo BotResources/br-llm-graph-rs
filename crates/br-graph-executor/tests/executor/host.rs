@@ -146,10 +146,8 @@ pub async fn tasks_back_to(baseline: usize) -> usize {
     alive_tasks()
 }
 
-pub async fn settle() {
-    for _ in 0..64 {
-        tokio::task::yield_now().await;
-    }
+pub async fn quiesce() {
+    tokio::time::sleep(Duration::from_millis(1)).await;
 }
 
 pub fn handwritten_checkpoint(rig: &Rig, state_json: &str, nodes: &[&str]) -> Checkpoint {

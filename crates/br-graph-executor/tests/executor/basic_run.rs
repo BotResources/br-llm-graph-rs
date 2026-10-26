@@ -75,7 +75,7 @@ async fn a_node_is_not_idle_while_its_instance_is_being_created() {
     let gate = Gate::default();
     rig.stage.script("a", Creation::Gated(gate.clone()));
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
-    settle().await;
+    quiesce().await;
     assert!(!host.is_finished());
     gate.release();
     let mut a = rig.stage.instance("a").await;
@@ -201,7 +201,7 @@ async fn instances_are_created_just_in_time_and_never_in_advance() {
         .build();
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
-    settle().await;
+    quiesce().await;
     assert_eq!(rig.stage.create_calls("b"), 0);
     a.result(Change::Empty);
     let mut b = rig.stage.instance("b").await;
@@ -231,7 +231,7 @@ async fn a_silent_instance_keeps_the_run_alive_with_no_failure_and_no_timeout() 
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let _a = rig.stage.instance("a").await;
     tokio::time::advance(Duration::from_secs(24 * 3600)).await;
-    settle().await;
+    quiesce().await;
     assert!(!host.is_finished());
     assert!(
         !host

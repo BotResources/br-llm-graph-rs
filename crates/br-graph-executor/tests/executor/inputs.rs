@@ -31,11 +31,11 @@ async fn an_input_refused_as_closed_waits_for_the_terminal_event_and_goes_to_a_n
     b.close_input();
     a.result(set("k", 1));
     host.observer.wait_for(edge_evaluated("a")).await;
-    settle().await;
+    quiesce().await;
     assert_eq!(rig.stage.create_calls("b"), 1);
     assert_eq!(count(&host.observer.log(), handed("b")), 1);
     tokio::time::advance(Duration::from_secs(3600)).await;
-    settle().await;
+    quiesce().await;
     assert_eq!(rig.stage.create_calls("b"), 1);
     assert!(!host.is_finished());
     b.result(set("done", 1));
@@ -228,6 +228,32 @@ async fn the_other_held_nodes_follow_the_targets_in_the_order_of_their_names() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn given_a_checkpoint_naming_three_nodes_out_of_order_when_resumed_then_they_are_created_in_the_order_of_their_names()
+ {
+    let rig = rig("1")
+        .entry("a")
+        .entry("b")
+        .entry("c")
+        .node("a")
+        .node("b")
+        .node("c")
+        .edge(edge("a", &["END"]))
+        .edge(edge("b", &["END"]))
+        .edge(edge("c", &["END"]))
+        .build();
+    let checkpoint = handwritten_checkpoint(&rig, r#"{"values":{},"pad":""}"#, &["c", "a", "b"]);
+    let resumed = begin_resume(&rig, checkpoint, BIG, Setup::new());
+    let mut a = rig.stage.instance("a").await;
+    let mut b = rig.stage.instance("b").await;
+    let mut c = rig.stage.instance("c").await;
+    assert_eq!(rig.stage.call_order(), ["a", "b", "c"]);
+    a.result(Change::Empty);
+    b.result(Change::Empty);
+    c.result(Change::Empty);
+    ended(resumed.outcome().await);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_node_that_is_a_target_and_held_is_ordered_with_the_targets() {
     let rig = rig("1")
         .entry("a")
@@ -270,7 +296,7 @@ async fn the_executor_drops_no_instance_but_the_one_whose_terminal_event_it_hand
     let mut c = rig.stage.instance("c").await;
     b.result(Change::Empty);
     host.observer.wait_for(edge_evaluated("b")).await;
-    settle().await;
+    quiesce().await;
     assert!(b.is_dropped().await);
     assert!(!c.is_dropped().await);
     c.result(Change::Empty);
@@ -285,7 +311,7 @@ async fn a_first_input_refused_as_closed_goes_to_a_new_instance_and_is_reported_
     rig.stage.detach();
     let mut first = rig.stage.instance("a").await;
     host.observer.wait_for(created("a")).await;
-    settle().await;
+    quiesce().await;
     assert_eq!(count(&host.observer.log(), handed("a")), 0);
     first.result(set("k", 2));
     let mut second = rig.stage.instance("a").await;

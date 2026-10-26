@@ -152,7 +152,7 @@ async fn a_host_trigger_reaches_every_instance() {
     let a = rig.stage.instance("a").await;
     let b = rig.stage.instance("b").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     assert!(a.token.is_triggered());
     assert!(b.token.is_triggered());
     tokio::time::advance(GRACE).await;
@@ -197,7 +197,7 @@ async fn a_live_instance_gets_the_whole_grace_after_a_failure_and_is_then_droppe
     a.failed("boom");
     host.observer.wait_for(handled("a")).await;
     tokio::time::advance(Duration::from_millis(9_900)).await;
-    settle().await;
+    quiesce().await;
     assert!(!b.is_dropped().await);
     assert!(!host.is_finished());
     tokio::time::advance(Duration::from_millis(100)).await;
@@ -213,7 +213,7 @@ async fn a_failure_after_the_host_triggered_the_token_leaves_the_outcome_a_cance
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     a.failed("late");
     let (failures, checkpoint) = cancelled(host.outcome().await);
     assert!(matches!(&failures[0], RunFailure::NodeFailed { node, .. } if node == "a"));

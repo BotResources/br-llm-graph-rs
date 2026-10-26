@@ -68,7 +68,7 @@ async fn given_a_sink_that_refuses_when_the_other_node_ends_during_the_grace_the
     assert_eq!(state_of(&checkpoint), kv(&[("a", 1), ("b", 1)]));
     assert!(checkpoint.nodes().is_empty());
     let config = RunConfig::new(CancelToken::new(), GRACE);
-    let resumed = resume(Arc::clone(&rig.graph), checkpoint, BIG, config).await;
+    let resumed = within(resume(Arc::clone(&rig.graph), checkpoint, BIG, config)).await;
     assert!(matches!(resumed, Err(ResumeError::NoNodes)));
 }
 

@@ -9,7 +9,7 @@ async fn refusal(nodes: &[&str]) -> StartError {
     let rig = chain("1", &["a", "b"]);
     let (config, ..) = Setup::new().config();
     let nodes = nodes.iter().map(|name| (*name).to_owned()).collect();
-    start(rig.graph, state(&[]), nodes, config)
+    within(start(rig.graph, state(&[]), nodes, config))
         .await
         .unwrap_err()
 }
@@ -46,15 +46,15 @@ async fn every_refusal_carries_a_reason_that_names_the_node() {
 async fn a_refused_start_creates_no_instance() {
     let rig = chain("1", &["a", "b"]);
     let (config, ..) = Setup::new().config();
-    let refused = start(
+    let refused = within(start(
         rig.graph.clone(),
         state(&[]),
         vec!["a".into(), "zz".into()],
         config,
-    )
+    ))
     .await;
     assert!(refused.is_err());
-    settle().await;
+    quiesce().await;
     assert_eq!(rig.stage.create_calls("a"), 0);
 }
 

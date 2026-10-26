@@ -48,12 +48,12 @@ async fn a_step_without_an_applied_update_does_not_call_the_sink() {
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;
     host.observer.wait_for_count(handed("a"), 1).await;
-    settle().await;
+    quiesce().await;
     assert_eq!(sink.calls(), 0);
     a.result(Change::Refuse);
     host.observer.wait_for(handled("a")).await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     b.failed("boom");
     failed(host.outcome().await);
     assert_eq!(sink.calls(), 0);
@@ -95,7 +95,7 @@ async fn while_the_sink_works_the_step_waits_for_it_and_no_other_event_is_handle
     a.result(set("k", 1));
     sink.wait_for_calls(1).await;
     c.result(set("j", 1));
-    settle().await;
+    quiesce().await;
     assert_eq!(rig.stage.create_calls("b"), 0);
     assert!(!host.observer.log().iter().any(handled("c")));
     assert!(!c.is_dropped().await);
@@ -122,7 +122,7 @@ async fn a_cancel_during_the_sink_call_is_seen_when_the_sink_answers_and_nothing
     a.result(set("k", 1));
     sink.wait_for_calls(1).await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     gate.notify_one();
     let (failures, checkpoint) = cancelled(host.outcome().await);
     assert!(failures.is_empty());
@@ -202,7 +202,7 @@ async fn after_a_refusal_the_outcome_checkpoint_is_the_most_current_one() {
     p.result(set("k", 1));
     host.observer.wait_for(handled("p")).await;
     sink.wait_for_calls(1).await;
-    settle().await;
+    quiesce().await;
     f.result(set("late", 9));
     let (failures, checkpoint) = failed(host.outcome().await);
     match &failures[0] {

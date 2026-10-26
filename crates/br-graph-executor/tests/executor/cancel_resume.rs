@@ -109,7 +109,7 @@ async fn a_cancelled_and_a_failed_run_can_both_be_taken_up_by_a_resume() {
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     a.cancelled();
     let (_, from_cancel) = cancelled(host.outcome().await);
     let resumed = begin_resume(&rig, from_cancel, BIG, Setup::new());
@@ -130,11 +130,28 @@ async fn an_unbounded_grace_does_not_overflow_and_still_ends_early_when_nothing_
     let host = begin(&rig, state(&[]), &["a"], Setup::new().grace(Duration::MAX));
     let mut a = rig.stage.instance("a").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     a.cancelled();
     let (failures, checkpoint) = cancelled(host.outcome().await);
     assert!(failures.is_empty());
     assert_eq!(checkpoint.nodes(), ["a"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_an_unbounded_grace_when_a_year_passes_after_the_cancel_then_a_later_result_is_applied()
+ {
+    let rig = chain("1", &["a", "b"]);
+    let host = begin(&rig, state(&[]), &["a"], Setup::new().grace(Duration::MAX));
+    let mut a = rig.stage.instance("a").await;
+    host.cancel.trigger();
+    tokio::time::advance(Duration::from_secs(365 * 24 * 3600)).await;
+    quiesce().await;
+    assert!(!a.is_dropped().await);
+    a.result(set("k", 1));
+    let (failures, checkpoint) = cancelled(host.outcome().await);
+    assert!(failures.is_empty());
+    assert_eq!(state_of(&checkpoint), kv(&[("k", 1)]));
+    assert_eq!(checkpoint.nodes(), ["b"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -146,7 +163,5 @@ async fn a_result_sent_after_the_end_of_the_grace_is_lost() {
     tokio::time::advance(GRACE).await;
     let (_, checkpoint) = cancelled(host.outcome().await);
     assert!(a.is_dropped().await);
-    a.result(set("k", 99));
-    settle().await;
     assert_eq!(state_of(&checkpoint), kv(&[("k", 1)]));
 }

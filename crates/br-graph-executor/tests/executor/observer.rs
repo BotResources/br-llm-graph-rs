@@ -3,6 +3,8 @@ use std::sync::{Arc, Mutex};
 use br_graph_executor::{Observation, Observer};
 use tokio::sync::Notify;
 
+use crate::host::within;
+
 #[derive(Default)]
 pub struct Recorder {
     log: Mutex<Vec<Observation>>,
@@ -19,6 +21,10 @@ impl Recorder {
     }
 
     pub async fn wait_for(&self, matches: impl Fn(&Observation) -> bool) -> usize {
+        within(self.found(matches)).await
+    }
+
+    async fn found(&self, matches: impl Fn(&Observation) -> bool) -> usize {
         loop {
             let notified = self.changed.notified();
             tokio::pin!(notified);
@@ -31,6 +37,10 @@ impl Recorder {
     }
 
     pub async fn wait_for_count(&self, matches: impl Fn(&Observation) -> bool, count: usize) {
+        within(self.counted(matches, count)).await;
+    }
+
+    async fn counted(&self, matches: impl Fn(&Observation) -> bool, count: usize) {
         loop {
             let notified = self.changed.notified();
             tokio::pin!(notified);

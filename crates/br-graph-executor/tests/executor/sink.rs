@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use br_graph_executor::{Checkpoint, CheckpointSink, SinkFuture, SinkRefusal};
 use tokio::sync::Notify;
 
+use crate::host::within;
+
 pub enum SinkBehavior {
     Refuse(&'static str),
     Panic,
@@ -55,6 +57,10 @@ impl RecordingSink {
     }
 
     pub async fn wait_for_calls(&self, calls: usize) {
+        within(self.reached(calls)).await;
+    }
+
+    async fn reached(&self, calls: usize) {
         loop {
             let notified = self.entered.notified();
             tokio::pin!(notified);

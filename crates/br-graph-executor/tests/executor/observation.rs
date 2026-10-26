@@ -53,7 +53,7 @@ async fn each_kind_of_event_is_reported_with_the_node_and_the_instance() {
             }
             _ => {
                 host.cancel.trigger();
-                settle().await;
+                quiesce().await;
                 a.cancelled();
                 ObservedEvent::Cancelled
             }

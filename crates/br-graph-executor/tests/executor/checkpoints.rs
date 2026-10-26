@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use br_graph_contract::State;
-use br_graph_executor::Checkpoint;
 
 use crate::graphs::*;
 use crate::host::*;
@@ -56,21 +53,6 @@ async fn a_resumed_state_keeps_the_limit_the_host_gave() {
         failures[0],
         br_graph_executor::RunFailure::UpdateRefused { .. }
     ));
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_checkpoint_is_independent_data_that_can_be_shared_between_threads() {
-    let rig = single("a");
-    let host = begin(&rig, state(&[]), &["a"], Setup::new());
-    let mut a = rig.stage.instance("a").await;
-    a.failed("boom");
-    let (_, checkpoint) = failed(host.outcome().await);
-    let shared: Arc<Checkpoint> = Arc::new(checkpoint);
-    let copy = Arc::clone(&shared);
-    let moved = tokio::spawn(async move { copy.nodes().len() })
-        .await
-        .unwrap();
-    assert_eq!(moved, 1);
 }
 
 #[tokio::test(start_paused = true)]

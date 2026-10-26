@@ -24,10 +24,10 @@ async fn a_cancel_needs_no_event_and_ends_after_the_grace_with_a_checkpoint() {
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     assert!(!host.is_finished());
     tokio::time::advance(Duration::from_millis(9_900)).await;
-    settle().await;
+    quiesce().await;
     assert!(!host.is_finished());
     assert!(!a.is_dropped().await);
     tokio::time::advance(Duration::from_millis(100)).await;
@@ -55,7 +55,7 @@ async fn a_cancelled_event_after_the_cancel_request_is_normal_and_leaves_the_nod
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     a.cancelled();
     let (failures, checkpoint) = cancelled(host.outcome().await);
     assert!(failures.is_empty());
@@ -70,7 +70,7 @@ async fn a_result_in_the_grace_is_applied_its_edge_evaluated_and_its_targets_hel
     let sink = host.sink.clone().unwrap();
     let mut a = rig.stage.instance("a").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     let handed_before = count(&host.observer.log(), handed("b"));
     a.result(set("k", 1));
     let observer = host.observer.clone();
@@ -103,7 +103,7 @@ async fn once_the_token_is_seen_no_input_is_given_in_any_later_step() {
     let mut p = rig.stage.instance("p").await;
     let mut q = rig.stage.instance("q").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     p.result(set("p", 1));
     host.observer.wait_for(edge_evaluated("p")).await;
     q.result(set("q", 1));
@@ -120,7 +120,7 @@ async fn a_result_that_leaves_every_node_idle_ends_the_run_whatever_the_token() 
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     a.result(set("done", 1));
     assert_eq!(value_of(&ended(host.outcome().await), "done"), Some(1));
 }
@@ -138,7 +138,7 @@ async fn the_grace_ends_early_when_no_instance_is_live_after_a_cancel() {
     let mut b = rig.stage.instance("b").await;
     let started = Instant::now();
     host.cancel.trigger();
-    settle().await;
+    quiesce().await;
     a.cancelled();
     b.cancelled();
     let (failures, checkpoint) = cancelled(host.outcome().await);

@@ -124,7 +124,7 @@ impl Node<Flaky> for ScriptedNode {
             tokio::spawn(async move {
                 let _ = reader.next().await;
                 if let Some(gate) = release {
-                    gate.notified().await;
+                    within(gate.notified()).await;
                 }
                 sender.finish(if fails {
                     Event::failed("boom")
@@ -188,7 +188,7 @@ async fn failed_run_with_exhausted_serialization(panics: bool) -> (Vec<RunFailur
     }]);
     let initial = State::create(Flaky(7)).unwrap();
     let config = RunConfig::new(CancelToken::new(), Duration::ZERO);
-    let outcome = start(graph, initial, vec!["a".to_owned()], config)
+    let outcome = within(start(graph, initial, vec!["a".to_owned()], config))
         .await
         .unwrap();
     match outcome {
