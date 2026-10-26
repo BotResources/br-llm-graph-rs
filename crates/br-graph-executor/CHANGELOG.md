@@ -8,6 +8,10 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.1.0 - 2026-10-26
+
+First release: the executor of the graph family. It depends on `br-graph-contract` only, never on a library of nodes.
+
 ### Added
 
 - `start` and `resume`: run a graph of `br-graph-contract` from a state and a list of nodes, or from a checkpoint.
