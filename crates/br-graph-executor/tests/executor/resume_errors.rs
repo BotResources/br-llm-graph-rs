@@ -178,13 +178,13 @@ async fn given_a_state_with_invalid_fields_or_the_wrong_shape_when_resumed_then_
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let invalid = forged(&checkpoint, |value| {
-        value["state"] = json!({"values": {"invalid": 1}, "pad": ""});
+        value["state"] = json!(r#"{"values":{"invalid":1},"pad":""}"#);
     });
     assert!(matches!(
         refusal(&rig, invalid).await,
         ResumeError::StateRejected { .. }
     ));
-    let wrong_shape = forged(&checkpoint, |value| value["state"] = json!(12));
+    let wrong_shape = forged(&checkpoint, |value| value["state"] = json!("12"));
     assert!(matches!(
         refusal(&rig, wrong_shape).await,
         ResumeError::StateRejected { .. }
@@ -267,7 +267,7 @@ async fn given_each_resume_refusal_when_displayed_then_it_has_a_reason() {
             forged(&checkpoint, |v| v["nodes"] = json!(["a", "a"])),
         )
         .await,
-        refusal(&rig, forged(&checkpoint, |v| v["state"] = json!(1))).await,
+        refusal(&rig, forged(&checkpoint, |v| v["state"] = json!("1"))).await,
         Checkpoint::from_json_slice(b"nope").unwrap_err(),
     ];
     for error in errors {

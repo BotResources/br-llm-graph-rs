@@ -153,7 +153,8 @@ pub async fn quiesce() {
 pub fn handwritten_checkpoint(rig: &Rig, state_json: &str, nodes: &[&str]) -> Checkpoint {
     let structure = serde_json::to_string(&rig.graph.structure()).unwrap();
     let names = serde_json::to_string(nodes).unwrap();
-    let document = format!(r#"{{"state":{state_json},"structure":{structure},"nodes":{names}}}"#);
+    let state = serde_json::to_string(state_json).unwrap();
+    let document = format!(r#"{{"state":{state},"structure":{structure},"nodes":{names}}}"#);
     Checkpoint::from_json_slice(document.as_bytes()).unwrap()
 }
 
