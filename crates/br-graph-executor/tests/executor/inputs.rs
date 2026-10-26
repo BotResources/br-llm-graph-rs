@@ -5,6 +5,7 @@ use br_graph_executor::RunFailure;
 use crate::graphs::*;
 use crate::host::*;
 use crate::kv::*;
+use crate::nodes::*;
 use crate::observer::*;
 
 fn two_sources_into_b() -> Rig {
@@ -274,4 +275,26 @@ async fn the_executor_drops_no_instance_but_the_one_whose_terminal_event_it_hand
     assert!(!c.is_dropped().await);
     c.result(Change::Empty);
     ended(host.outcome().await);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_first_input_refused_as_closed_goes_to_a_new_instance_and_is_reported_once() {
+    let rig = chain("1", &["a"]);
+    rig.stage.script("a", Creation::InputClosedAtBirth);
+    let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
+    rig.stage.detach();
+    let mut first = rig.stage.instance("a").await;
+    host.observer.wait_for(created("a")).await;
+    settle().await;
+    assert_eq!(count(&host.observer.log(), handed("a")), 0);
+    first.result(set("k", 2));
+    let mut second = rig.stage.instance("a").await;
+    assert_ne!(second.id, first.id);
+    assert_eq!(second.next_input().await, kv(&[("k", 2)]));
+    second.result(Change::Empty);
+    let observer = host.observer.clone();
+    ended(host.outcome().await);
+    let log = observer.log();
+    assert_eq!(count(&log, created("a")), 2);
+    assert_eq!(count(&log, handed("a")), 1);
 }

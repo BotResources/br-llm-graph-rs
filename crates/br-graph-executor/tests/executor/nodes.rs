@@ -48,6 +48,7 @@ pub enum Creation {
     PanicString(String),
     PanicOther,
     WrongId,
+    InputClosedAtBirth,
     Never(DropFlag),
 }
 
@@ -273,6 +274,7 @@ impl Node<Kv> for TestNode {
         let announce = self.stage.announce.clone();
         Box::pin(async move {
             let mut channel_id = id;
+            let mut closed_at_birth = false;
             match creation {
                 Some(Creation::Gated(gate)) => gate.0.notified().await,
                 Some(Creation::Fail(message)) => {
@@ -282,6 +284,7 @@ impl Node<Kv> for TestNode {
                 Some(Creation::PanicString(message)) => panic!("{}", message),
                 Some(Creation::PanicOther) => std::panic::panic_any(42_u32),
                 Some(Creation::WrongId) => channel_id = other_id(id),
+                Some(Creation::InputClosedAtBirth) => closed_at_birth = true,
                 Some(Creation::Never(flag)) => {
                     let _guard = DropGuard(flag);
                     std::future::pending::<()>().await;
@@ -289,6 +292,9 @@ impl Node<Kv> for TestNode {
                 None => {}
             }
             let (instance, reader, sender) = Instance::<Kv>::channel(channel_id);
+            if closed_at_birth {
+                sender.close_input();
+            }
             let dropped = sender.dropped();
             let handle = Handle {
                 node: name,
