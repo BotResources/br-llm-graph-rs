@@ -10,7 +10,8 @@ use crate::kv::*;
 use crate::observer::*;
 
 #[tokio::test(start_paused = true)]
-async fn an_instance_created_reports_its_id_node_kind_and_subkind() {
+async fn given_a_created_instance_when_observed_then_the_report_names_its_id_node_kind_and_subkind()
+{
     let rig = rig("1")
         .entry("a")
         .node_of("a", "programmatic", "merger")
@@ -33,7 +34,8 @@ async fn an_instance_created_reports_its_id_node_kind_and_subkind() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn each_kind_of_event_is_reported_with_the_node_and_the_instance() {
+async fn given_each_kind_of_event_when_handled_then_it_is_reported_with_the_node_and_the_instance()
+{
     for kind in ["result", "failed", "refused", "cancelled"] {
         let rig = single("a");
         let host = begin(&rig, state(&[]), &["a"], Setup::new());
@@ -68,7 +70,8 @@ async fn each_kind_of_event_is_reported_with_the_node_and_the_instance() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_update_is_reported_after_the_result_that_gave_it_and_a_refused_one_is_not_reported() {
+async fn given_a_result_when_observed_then_the_update_follows_it_and_a_refused_update_is_not_reported()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -85,7 +88,8 @@ async fn an_update_is_reported_after_the_result_that_gave_it_and_a_refused_one_i
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_evaluated_edge_reports_its_targets_without_repeat_in_declared_order() {
+async fn given_an_evaluated_edge_when_observed_then_its_targets_come_in_declared_order_without_repeat()
+ {
     let rig = rig("1")
         .entry("x")
         .node("x")
@@ -110,7 +114,7 @@ async fn an_evaluated_edge_reports_its_targets_without_repeat_in_declared_order(
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_outcome_is_reported_once_and_last_for_each_kind() {
+async fn given_each_kind_of_outcome_when_the_run_stops_then_it_is_reported_once_and_last() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -146,7 +150,8 @@ async fn the_outcome_is_reported_once_and_last_for_each_kind() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn per_instance_the_order_is_created_then_inputs_then_the_event_that_ends_it() {
+async fn given_an_instance_when_observed_then_the_order_is_created_then_inputs_then_its_ending_event()
+ {
     let rig = rig("1")
         .entry("a")
         .entry("b")
@@ -192,7 +197,8 @@ async fn per_instance_the_order_is_created_then_inputs_then_the_event_that_ends_
 }
 
 #[tokio::test(start_paused = true)]
-async fn events_are_handled_in_the_order_they_reach_the_executor() {
+async fn given_events_reaching_the_executor_in_an_order_when_handled_then_the_observer_sees_that_order()
+ {
     let rig = rig("1")
         .entry("a")
         .entry("b")
@@ -212,7 +218,7 @@ async fn events_are_handled_in_the_order_they_reach_the_executor() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_sink_and_the_observer_see_the_same_order() {
+async fn given_a_sink_and_an_observer_when_steps_run_then_both_see_the_same_order() {
     let rig = rig("1")
         .entry("a")
         .entry("b")
@@ -245,7 +251,7 @@ async fn the_sink_and_the_observer_see_the_same_order() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_host_fold_of_the_observations_gives_the_live_instances() {
+async fn given_the_observations_when_a_host_folds_them_then_it_knows_the_live_instances() {
     let rig = fan("x", &["b", "c"]);
     let host = begin(&rig, state(&[]), &["x"], Setup::new());
     let mut x = rig.stage.instance("x").await;

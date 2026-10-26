@@ -15,7 +15,8 @@ fn triggered_token() -> CancelToken {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_token_already_triggered_gives_a_cancel_at_once_with_the_state_and_the_started_nodes() {
+async fn given_a_token_already_triggered_when_a_run_starts_then_it_is_cancelled_at_once_with_the_started_nodes()
+ {
     let rig = chain("1", &["a", "b"]);
     let setup = Setup::new()
         .grace(Duration::from_secs(3600))
@@ -34,7 +35,8 @@ async fn a_token_already_triggered_gives_a_cancel_at_once_with_the_state_and_the
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_token_already_triggered_on_a_resume_returns_the_checkpoint_it_started_from() {
+async fn given_a_token_already_triggered_when_a_run_resumes_then_it_returns_the_starting_checkpoint()
+ {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[("k", 3)]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -53,7 +55,8 @@ async fn a_token_already_triggered_on_a_resume_returns_the_checkpoint_it_started
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_paused_run_resumes_from_its_checkpoint_and_a_dropped_node_starts_from_nothing() {
+async fn given_a_paused_run_when_resumed_then_the_dropped_node_starts_from_nothing_with_the_checkpoint_state()
+ {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -73,7 +76,7 @@ async fn a_paused_run_resumes_from_its_checkpoint_and_a_dropped_node_starts_from
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_resumed_node_receives_the_state_of_the_checkpoint_which_can_be_later_than_the_one_it_saw()
+async fn given_a_checkpoint_later_than_the_input_a_node_saw_when_resumed_then_the_node_gets_the_later_state()
  {
     let rig = rig("1")
         .entry("a")
@@ -104,7 +107,7 @@ async fn a_resumed_node_receives_the_state_of_the_checkpoint_which_can_be_later_
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_cancelled_and_a_failed_run_can_both_be_taken_up_by_a_resume() {
+async fn given_a_cancelled_and_a_failed_run_when_resumed_then_each_checkpoint_is_taken_up() {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -125,7 +128,7 @@ async fn a_cancelled_and_a_failed_run_can_both_be_taken_up_by_a_resume() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_unbounded_grace_does_not_overflow_and_still_ends_early_when_nothing_is_live() {
+async fn given_an_unbounded_grace_when_nothing_is_live_then_it_does_not_overflow_and_ends_early() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new().grace(Duration::MAX));
     let mut a = rig.stage.instance("a").await;
@@ -155,7 +158,7 @@ async fn given_an_unbounded_grace_when_a_year_passes_after_the_cancel_then_a_lat
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_result_sent_after_the_end_of_the_grace_is_lost() {
+async fn given_the_grace_ended_when_a_result_is_sent_then_the_checkpoint_does_not_hold_it() {
     let rig = single("a");
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;

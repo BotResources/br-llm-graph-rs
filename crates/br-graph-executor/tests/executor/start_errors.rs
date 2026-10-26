@@ -15,12 +15,12 @@ async fn refusal(nodes: &[&str]) -> StartError {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_empty_list_of_nodes_is_refused() {
+async fn given_an_empty_list_of_nodes_when_started_then_the_start_is_refused() {
     assert!(matches!(refusal(&[]).await, StartError::NoNodes));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_name_that_is_not_a_node_of_the_graph_is_refused() {
+async fn given_an_unknown_name_when_started_then_the_start_is_refused() {
     assert!(matches!(
         refusal(&["a", "zz"]).await,
         StartError::UnknownNode { name } if name == "zz"
@@ -28,7 +28,7 @@ async fn a_name_that_is_not_a_node_of_the_graph_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_name_listed_twice_is_refused() {
+async fn given_a_name_listed_twice_when_started_then_the_start_is_refused() {
     assert!(matches!(
         refusal(&["a", "a"]).await,
         StartError::DuplicateNode { name } if name == "a"
@@ -36,14 +36,14 @@ async fn a_name_listed_twice_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn every_refusal_carries_a_reason_that_names_the_node() {
+async fn given_each_start_refusal_when_displayed_then_the_reason_names_the_node() {
     assert!(!refusal(&[]).await.to_string().is_empty());
     assert!(refusal(&["zz"]).await.to_string().contains("zz"));
     assert!(refusal(&["b", "b"]).await.to_string().contains('b'));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_refused_start_creates_no_instance() {
+async fn given_a_refused_start_when_it_returns_then_no_instance_was_created() {
     let rig = chain("1", &["a", "b"]);
     let (config, ..) = Setup::new().config();
     let refused = within(start(
@@ -59,7 +59,7 @@ async fn a_refused_start_creates_no_instance() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_node_of_the_middle_of_the_graph_can_be_started() {
+async fn given_a_node_of_the_middle_of_the_graph_when_started_then_the_run_goes_on_from_it() {
     let rig = chain("1", &["a", "b", "c"]);
     let host = begin(&rig, state(&[("k", 1)]), &["b"], Setup::new());
     let mut b = rig.stage.instance("b").await;
@@ -72,7 +72,7 @@ async fn a_node_of_the_middle_of_the_graph_can_be_started() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn all_nodes_can_be_started_together_and_each_gets_one_input() {
+async fn given_all_nodes_listed_when_started_then_each_gets_one_input() {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[("k", 7)]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;

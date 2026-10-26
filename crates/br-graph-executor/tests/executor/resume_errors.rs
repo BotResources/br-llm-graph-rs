@@ -32,7 +32,7 @@ fn base() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_checkpoint_of_another_version_is_refused() {
+async fn given_a_checkpoint_of_another_version_when_resumed_then_it_is_refused() {
     let checkpoint = checkpoint_of(&base()).await;
     let error = refusal(&chain("2", &["a", "b"]), checkpoint).await;
     assert!(matches!(
@@ -42,7 +42,7 @@ async fn a_checkpoint_of_another_version_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn only_equality_of_versions_counts_never_an_order() {
+async fn given_versions_that_differ_in_any_order_when_resumed_then_only_equality_counts() {
     for (old, new) in [("1", "2"), ("2", "1"), ("1.9", "1.10"), ("1.10", "1.9")] {
         let checkpoint = checkpoint_of(&chain(old, &["a", "b"])).await;
         let error = refusal(&chain(new, &["a", "b"]), checkpoint).await;
@@ -51,21 +51,21 @@ async fn only_equality_of_versions_counts_never_an_order() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_graph_with_more_nodes_is_refused() {
+async fn given_a_graph_with_more_nodes_when_resumed_then_the_checkpoint_is_refused() {
     let checkpoint = checkpoint_of(&base()).await;
     let error = refusal(&chain("1", &["a", "b", "c"]), checkpoint).await;
     assert!(matches!(error, ResumeError::StructureMismatch { .. }));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_graph_with_fewer_nodes_is_refused() {
+async fn given_a_graph_with_fewer_nodes_when_resumed_then_the_checkpoint_is_refused() {
     let checkpoint = checkpoint_of(&base()).await;
     let error = refusal(&chain("1", &["a"]), checkpoint).await;
     assert!(matches!(error, ResumeError::StructureMismatch { .. }));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_renamed_node_is_refused() {
+async fn given_a_renamed_node_when_resumed_then_the_checkpoint_is_refused() {
     let checkpoint = checkpoint_of(&base()).await;
     let error = refusal(&chain("1", &["a", "c"]), checkpoint).await;
     assert!(matches!(error, ResumeError::StructureMismatch { .. }));
@@ -82,28 +82,28 @@ fn with_edges(a_targets: &[&str], a_edge_name: &str, a_source: &str, b_source: &
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_different_set_of_targets_is_refused() {
+async fn given_another_set_of_targets_when_resumed_then_the_checkpoint_is_refused() {
     let checkpoint = checkpoint_of(&with_edges(&["b"], "after_a", "a", "b")).await;
     let error = refusal(&with_edges(&["b", "END"], "after_a", "a", "b"), checkpoint).await;
     assert!(matches!(error, ResumeError::StructureMismatch { .. }));
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_same_targets_in_another_declared_order_are_refused() {
+async fn given_the_same_targets_in_another_order_when_resumed_then_the_checkpoint_is_refused() {
     let checkpoint = checkpoint_of(&with_edges(&["b", "END"], "after_a", "a", "b")).await;
     let error = refusal(&with_edges(&["END", "b"], "after_a", "a", "b"), checkpoint).await;
     assert!(matches!(error, ResumeError::StructureMismatch { .. }));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_different_edge_name_is_refused() {
+async fn given_an_edge_with_another_name_when_resumed_then_the_checkpoint_is_refused() {
     let checkpoint = checkpoint_of(&with_edges(&["b"], "after_a", "a", "b")).await;
     let error = refusal(&with_edges(&["b"], "leave_a", "a", "b"), checkpoint).await;
     assert!(matches!(error, ResumeError::StructureMismatch { .. }));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_different_edge_source_is_refused() {
+async fn given_an_edge_with_another_source_when_resumed_then_the_checkpoint_is_refused() {
     let one = rig("1")
         .entry("a")
         .node("a")
@@ -124,7 +124,7 @@ async fn a_different_edge_source_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn entries_kinds_and_subkinds_are_not_compared() {
+async fn given_other_entries_kinds_and_subkinds_when_resumed_then_the_checkpoint_is_accepted() {
     let checkpoint = checkpoint_of(&base()).await;
     let other_entries = rig("1")
         .entry("a")
@@ -152,7 +152,8 @@ async fn entries_kinds_and_subkinds_are_not_compared() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_state_over_the_limit_the_host_gave_is_rejected() {
+async fn given_a_state_over_the_limit_when_resumed_then_it_is_rejected_and_an_exact_limit_is_accepted()
+ {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let (config, ..) = Setup::new().config();
@@ -172,7 +173,8 @@ async fn a_state_over_the_limit_the_host_gave_is_rejected() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_state_with_invalid_fields_or_the_wrong_shape_is_rejected_as_a_state() {
+async fn given_a_state_with_invalid_fields_or_the_wrong_shape_when_resumed_then_it_is_rejected_as_a_state()
+ {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let invalid = forged(&checkpoint, |value| {
@@ -190,7 +192,7 @@ async fn a_state_with_invalid_fields_or_the_wrong_shape_is_rejected_as_a_state()
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_node_that_is_not_in_the_graph_is_refused() {
+async fn given_an_unknown_node_when_resumed_then_the_checkpoint_is_refused() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let forged = forged(&checkpoint, |value| value["nodes"] = json!(["zz"]));
@@ -201,7 +203,7 @@ async fn a_node_that_is_not_in_the_graph_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_node_named_twice_is_refused() {
+async fn given_a_node_named_twice_when_resumed_then_the_checkpoint_is_refused() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let forged = forged(&checkpoint, |value| value["nodes"] = json!(["a", "a"]));
@@ -212,7 +214,7 @@ async fn a_node_named_twice_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_checkpoint_that_names_no_node_is_refused() {
+async fn given_a_checkpoint_naming_no_node_when_resumed_then_it_is_refused() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let forged = forged(&checkpoint, |value| value["nodes"] = json!([]));
@@ -220,7 +222,7 @@ async fn a_checkpoint_that_names_no_node_is_refused() {
 }
 
 #[test]
-fn bytes_that_are_not_a_checkpoint_are_malformed() {
+fn given_bytes_that_are_no_checkpoint_when_read_then_they_are_malformed() {
     let cases: [&[u8]; 4] = [b"{\"state\":", b"{}", b"[]", b"not json"];
     for bytes in cases {
         assert!(matches!(
@@ -231,7 +233,7 @@ fn bytes_that_are_not_a_checkpoint_are_malformed() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_unknown_field_or_a_broken_structure_is_malformed() {
+async fn given_an_unknown_field_or_a_broken_structure_when_read_then_the_checkpoint_is_malformed() {
     let checkpoint = checkpoint_of(&base()).await;
     let mut value: Value =
         serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
@@ -252,7 +254,7 @@ async fn an_unknown_field_or_a_broken_structure_is_malformed() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn every_refusal_has_a_reason() {
+async fn given_each_resume_refusal_when_displayed_then_it_has_a_reason() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let errors = [
@@ -274,7 +276,7 @@ async fn every_refusal_has_a_reason() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_checkpoint_survives_serialization_and_resumes() {
+async fn given_a_serialized_checkpoint_when_resumed_then_the_run_goes_on() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let bytes = serde_json::to_vec(&checkpoint).unwrap();

@@ -12,6 +12,7 @@ mod failures;
 mod fields_panics;
 mod grace;
 mod graphs;
+mod hand_over_order;
 mod host;
 mod hygiene;
 mod inputs;

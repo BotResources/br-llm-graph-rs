@@ -14,7 +14,7 @@ fn is_send<T: Send>(_: &T) {}
 fn is_send_sync<T: Send + Sync>() {}
 
 #[test]
-fn the_futures_of_a_run_and_its_results_can_be_sent_between_threads() {
+fn given_the_public_types_when_checked_for_threads_then_runs_and_results_are_send() {
     let rig = single("a");
     let config = RunConfig::new(CancelToken::new(), Duration::ZERO);
     let started = start(Arc::clone(&rig.graph), state(&[]), vec!["a".into()], config);

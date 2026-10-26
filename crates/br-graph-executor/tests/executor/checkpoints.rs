@@ -5,7 +5,7 @@ use crate::host::*;
 use crate::kv::*;
 
 #[tokio::test(start_paused = true)]
-async fn the_state_of_a_checkpoint_is_the_exact_serialization_of_the_state_and_the_structure_the_graph_s()
+async fn given_a_failed_run_when_its_checkpoint_is_read_then_it_holds_the_serialized_state_and_the_graph_structure()
  {
     let rig = single("a");
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
@@ -18,7 +18,8 @@ async fn the_state_of_a_checkpoint_is_the_exact_serialization_of_the_state_and_t
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_host_can_start_again_from_the_state_and_the_node_names_of_a_checkpoint() {
+async fn given_a_checkpoint_when_the_host_reads_its_state_and_nodes_then_it_can_start_a_new_run_from_them()
+ {
     let rig = fan("x", &["b", "c"]);
     let host = begin(&rig, state(&[("k", 5)]), &["c", "b"], Setup::new());
     let mut b = rig.stage.instance("b").await;
@@ -38,7 +39,7 @@ async fn a_host_can_start_again_from_the_state_and_the_node_names_of_a_checkpoin
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_resumed_state_keeps_the_limit_the_host_gave() {
+async fn given_a_resume_limit_when_an_update_exceeds_it_then_the_update_is_refused() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -56,7 +57,8 @@ async fn a_resumed_state_keeps_the_limit_the_host_gave() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn every_node_a_checkpoint_names_gets_a_new_instance_with_one_input_of_its_state() {
+async fn given_a_checkpoint_naming_nodes_when_resumed_then_each_gets_a_new_instance_with_one_input_of_its_state()
+ {
     let rig = fan("x", &["b", "c"]);
     let host = begin(&rig, state(&[("k", 5)]), &["b", "c"], Setup::new());
     let mut b = rig.stage.instance("b").await;
@@ -76,7 +78,7 @@ async fn every_node_a_checkpoint_names_gets_a_new_instance_with_one_input_of_its
 }
 
 #[test]
-fn every_failure_names_its_cause_in_its_display() {
+fn given_each_kind_of_failure_when_displayed_then_the_text_names_its_cause() {
     use br_graph_executor::RunFailure;
     let failures = [
         RunFailure::NodeFailed {

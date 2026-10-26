@@ -10,7 +10,8 @@ use crate::nodes::*;
 use crate::observer::*;
 
 #[tokio::test(start_paused = true)]
-async fn a_result_gives_an_input_to_each_target_with_the_state_after_the_update() {
+async fn given_a_result_with_two_targets_when_handled_then_each_target_gets_one_input_with_the_updated_state()
+ {
     let rig = fan("x", &["b", "c"]);
     let host = begin(&rig, state(&[]), &["x"], Setup::new());
     let mut x = rig.stage.instance("x").await;
@@ -25,7 +26,8 @@ async fn a_result_gives_an_input_to_each_target_with_the_state_after_the_update(
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_edge_routes_on_the_state_after_the_update() {
+async fn given_an_edge_reading_the_state_when_a_result_is_applied_then_it_routes_on_the_updated_state()
+ {
     let rig = rig("1")
         .entry("a")
         .node("a")
@@ -51,7 +53,7 @@ async fn the_edge_routes_on_the_state_after_the_update() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_instance_id_is_a_uuid_v7_shared_by_the_node_and_the_observer() {
+async fn given_a_created_instance_when_observed_then_its_id_is_the_uuid_v7_the_node_received() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -70,7 +72,8 @@ async fn an_instance_id_is_a_uuid_v7_shared_by_the_node_and_the_observer() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_node_is_not_idle_while_its_instance_is_being_created() {
+async fn given_a_slow_creation_when_the_run_waits_then_the_node_is_not_idle_and_the_run_does_not_end()
+ {
     let rig = single("a");
     let gate = Gate::default();
     rig.stage.script("a", Creation::Gated(gate.clone()));
@@ -84,7 +87,7 @@ async fn a_node_is_not_idle_while_its_instance_is_being_created() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_loop_creates_a_new_instance_with_a_new_id_each_time() {
+async fn given_a_loop_when_the_node_runs_again_then_each_round_gets_a_new_instance_with_a_new_id() {
     let rig = rig("1")
         .entry("a")
         .node("a")
@@ -111,7 +114,7 @@ async fn a_loop_creates_a_new_instance_with_a_new_id_each_time() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_run_is_not_limited_in_its_number_of_events() {
+async fn given_a_long_loop_when_it_runs_then_the_number_of_events_is_not_limited() {
     let rig = rig("1")
         .entry("a")
         .node("a")
@@ -132,7 +135,8 @@ async fn a_run_is_not_limited_in_its_number_of_events() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_instance_that_accepted_three_inputs_answers_all_with_one_result() {
+async fn given_an_instance_with_three_accepted_inputs_when_it_sends_one_result_then_the_edge_is_evaluated_once()
+ {
     let rig = rig("1")
         .entry("a")
         .entry("p")
@@ -161,7 +165,7 @@ async fn an_instance_that_accepted_three_inputs_answers_all_with_one_result() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn no_node_waits_for_an_unrelated_node() {
+async fn given_two_independent_nodes_when_one_is_silent_then_the_other_goes_on() {
     let rig = fan("x", &["b", "c"]);
     let host = begin(&rig, state(&[]), &["x"], Setup::new());
     let mut x = rig.stage.instance("x").await;
@@ -176,7 +180,8 @@ async fn no_node_waits_for_an_unrelated_node() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_expected_error_written_in_the_fields_is_normal_data() {
+async fn given_an_error_written_in_the_fields_when_the_node_answers_then_the_run_goes_on_as_normal_data()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -188,7 +193,7 @@ async fn an_expected_error_written_in_the_fields_is_normal_data() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn instances_are_created_just_in_time_and_never_in_advance() {
+async fn given_a_graph_when_a_run_goes_on_then_instances_are_created_only_when_an_input_is_due() {
     let rig = rig("1")
         .entry("a")
         .entry("c")
@@ -211,7 +216,8 @@ async fn instances_are_created_just_in_time_and_never_in_advance() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_final_state_holds_every_applied_update_in_order() {
+async fn given_a_chain_of_nodes_when_each_sends_a_result_then_the_final_state_holds_every_update_in_order()
+ {
     let rig = chain("1", &["a", "b", "c"]);
     let host = begin(&rig, state(&[("n", 1)]), &["a"], Setup::new());
     for (name, update) in [
@@ -226,7 +232,7 @@ async fn the_final_state_holds_every_applied_update_in_order() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_silent_instance_keeps_the_run_alive_with_no_failure_and_no_timeout() {
+async fn given_a_silent_instance_when_a_day_passes_then_the_run_is_alive_with_no_failure() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let _a = rig.stage.instance("a").await;
@@ -243,7 +249,7 @@ async fn a_silent_instance_keeps_the_run_alive_with_no_failure_and_no_timeout() 
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_executor_retries_nothing() {
+async fn given_a_failed_node_when_the_run_stops_then_the_node_is_not_created_again() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -253,7 +259,7 @@ async fn the_executor_retries_nothing() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_edge_of_a_target_end_adds_nothing() {
+async fn given_an_edge_to_end_when_handled_then_no_instance_is_created() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;

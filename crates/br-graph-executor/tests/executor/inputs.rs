@@ -23,7 +23,8 @@ fn two_sources_into_b() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_input_refused_as_closed_waits_for_the_terminal_event_and_goes_to_a_new_instance() {
+async fn given_an_input_refused_as_closed_when_the_terminal_event_is_handled_then_a_new_instance_gets_it()
+ {
     let rig = two_sources_into_b();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -60,7 +61,7 @@ async fn an_input_refused_as_closed_waits_for_the_terminal_event_and_goes_to_a_n
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_second_refused_input_adds_nothing_to_the_held_one() {
+async fn given_a_held_input_when_a_second_input_is_refused_then_nothing_is_added_to_it() {
     let rig = two_sources_into_b();
     let host = begin(&rig, state(&[]), &["a", "b", "c"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -83,7 +84,7 @@ async fn a_second_refused_input_adds_nothing_to_the_held_one() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_input_given_as_the_instance_ends_is_never_lost() {
+async fn given_an_instance_ending_when_an_input_is_given_then_the_input_is_never_lost() {
     let rig = two_sources_into_b();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -99,7 +100,7 @@ async fn an_input_given_as_the_instance_ends_is_never_lost() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_held_input_whose_old_instance_fails_is_never_given() {
+async fn given_a_held_input_when_the_old_instance_fails_then_the_input_is_never_given() {
     let rig = two_sources_into_b();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -115,7 +116,7 @@ async fn a_held_input_whose_old_instance_fails_is_never_given() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_input_for_a_live_instance_is_given_at_once_whatever_it_is_doing() {
+async fn given_a_live_instance_when_an_input_is_due_then_it_is_given_at_once() {
     let rig = fan("x", &["b"]);
     let host = begin(&rig, state(&[]), &["x", "b"], Setup::new());
     let mut x = rig.stage.instance("x").await;
@@ -129,7 +130,7 @@ async fn an_input_for_a_live_instance_is_given_at_once_whatever_it_is_doing() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn giving_an_input_never_waits_for_the_instance() {
+async fn given_a_busy_instance_when_an_input_is_given_then_the_executor_does_not_wait_for_it() {
     let rig = rig("1")
         .entry("a")
         .entry("b")
@@ -157,137 +158,7 @@ async fn giving_an_input_never_waits_for_the_instance() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_targets_are_handed_over_in_the_order_the_edge_declared_them() {
-    let rig = rig("1")
-        .entry("b")
-        .entry("c")
-        .entry("x")
-        .node("b")
-        .node("c")
-        .node("x")
-        .edge(edge("x", &["c", "b"]))
-        .edge(edge("b", &["END"]))
-        .edge(edge("c", &["END"]))
-        .build();
-    let host = begin(&rig, state(&[]), &["b", "c", "x"], Setup::new());
-    let mut b = rig.stage.instance("b").await;
-    let mut c = rig.stage.instance("c").await;
-    let mut x = rig.stage.instance("x").await;
-    x.result(Change::Empty);
-    host.observer.wait_for_count(handed("b"), 2).await;
-    let log = host.observer.log();
-    let evaluated = position(&log, edge_evaluated("x"));
-    let order: Vec<_> = log[evaluated..]
-        .iter()
-        .filter_map(|o| match o {
-            br_graph_executor::Observation::InputHandedOver { node, .. } => Some(node.clone()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(order, ["c", "b"]);
-    b.result(Change::Empty);
-    c.result(Change::Empty);
-    ended(host.outcome().await);
-}
-
-#[tokio::test(start_paused = true)]
-async fn the_other_held_nodes_follow_the_targets_in_the_order_of_their_names() {
-    let rig = rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .node("c")
-        .node("d")
-        .edge(routing_on("a", &["d", "c", "END"], |fields| {
-            if fields.values.contains_key("second") {
-                vec!["END"]
-            } else {
-                vec!["d", "c"]
-            }
-        }))
-        .edge(edge("b", &["a"]))
-        .edge(edge("c", &["END"]))
-        .edge(edge("d", &["END"]))
-        .build();
-    let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
-    let mut a = rig.stage.instance("a").await;
-    let mut b = rig.stage.instance("b").await;
-    a.close_input();
-    b.result(Change::Empty);
-    host.observer.wait_for(edge_evaluated("b")).await;
-    a.result(Change::Empty);
-    let mut c = rig.stage.instance("c").await;
-    let mut d = rig.stage.instance("d").await;
-    let mut a_again = rig.stage.instance("a").await;
-    assert_eq!(rig.stage.call_order()[2..], ["d", "c", "a"]);
-    c.result(Change::Empty);
-    d.result(Change::Empty);
-    a_again.result(set("second", 1));
-    ended(host.outcome().await);
-}
-
-#[tokio::test(start_paused = true)]
-async fn given_a_checkpoint_naming_three_nodes_out_of_order_when_resumed_then_they_are_created_in_the_order_of_their_names()
- {
-    let rig = rig("1")
-        .entry("a")
-        .entry("b")
-        .entry("c")
-        .node("a")
-        .node("b")
-        .node("c")
-        .edge(edge("a", &["END"]))
-        .edge(edge("b", &["END"]))
-        .edge(edge("c", &["END"]))
-        .build();
-    let checkpoint = handwritten_checkpoint(&rig, r#"{"values":{},"pad":""}"#, &["c", "a", "b"]);
-    let resumed = begin_resume(&rig, checkpoint, BIG, Setup::new());
-    let mut a = rig.stage.instance("a").await;
-    let mut b = rig.stage.instance("b").await;
-    let mut c = rig.stage.instance("c").await;
-    assert_eq!(rig.stage.call_order(), ["a", "b", "c"]);
-    a.result(Change::Empty);
-    b.result(Change::Empty);
-    c.result(Change::Empty);
-    ended(resumed.outcome().await);
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_node_that_is_a_target_and_held_is_ordered_with_the_targets() {
-    let rig = rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .node("c")
-        .edge(routing_on("a", &["c", "a", "END"], |fields| {
-            if fields.values.contains_key("second") {
-                vec!["END"]
-            } else {
-                vec!["c", "a"]
-            }
-        }))
-        .edge(edge("b", &["a"]))
-        .edge(edge("c", &["END"]))
-        .build();
-    let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
-    let mut a = rig.stage.instance("a").await;
-    let mut b = rig.stage.instance("b").await;
-    a.close_input();
-    b.result(Change::Empty);
-    host.observer.wait_for(edge_evaluated("b")).await;
-    a.result(Change::Empty);
-    let mut c = rig.stage.instance("c").await;
-    let mut a_again = rig.stage.instance("a").await;
-    assert_eq!(rig.stage.call_order()[2..], ["c", "a"]);
-    c.result(Change::Empty);
-    a_again.result(set("second", 1));
-    ended(host.outcome().await);
-}
-
-#[tokio::test(start_paused = true)]
-async fn the_executor_drops_no_instance_but_the_one_whose_terminal_event_it_handles() {
+async fn given_several_live_instances_when_one_ends_then_no_other_instance_is_dropped() {
     let rig = fan("x", &["b", "c"]);
     let host = begin(&rig, state(&[]), &["x"], Setup::new());
     let mut x = rig.stage.instance("x").await;
@@ -304,7 +175,8 @@ async fn the_executor_drops_no_instance_but_the_one_whose_terminal_event_it_hand
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_first_input_refused_as_closed_goes_to_a_new_instance_and_is_reported_once() {
+async fn given_a_first_input_refused_as_closed_when_the_instance_ends_then_a_new_instance_gets_it_and_it_is_reported_once()
+ {
     let rig = chain("1", &["a"]);
     rig.stage.script("a", Creation::InputClosedAtBirth);
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());

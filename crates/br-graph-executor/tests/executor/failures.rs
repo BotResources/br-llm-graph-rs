@@ -20,7 +20,8 @@ fn two_independent() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_failed_instance_fails_the_run_with_its_cause_and_stays_not_idle() {
+async fn given_a_failing_instance_when_it_sends_failed_then_the_run_fails_with_its_cause_and_the_node_stays_not_idle()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -46,7 +47,7 @@ async fn a_failed_instance_fails_the_run_with_its_cause_and_stays_not_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_refused_input_fails_the_run_with_its_reason() {
+async fn given_a_refused_input_when_the_instance_answers_then_the_run_fails_with_the_reason() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -65,7 +66,7 @@ async fn a_refused_input_fails_the_run_with_its_reason() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_vanished_node_fails_the_run_and_stays_not_idle() {
+async fn given_a_vanished_node_when_detected_then_the_run_fails_and_the_node_stays_not_idle() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -77,7 +78,8 @@ async fn a_vanished_node_fails_the_run_and_stays_not_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_panic_in_the_work_of_an_instance_is_seen_as_a_vanished_node() {
+async fn given_an_instance_whose_work_panics_when_its_event_end_closes_then_the_node_is_seen_as_vanished()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -87,7 +89,7 @@ async fn a_panic_in_the_work_of_an_instance_is_seen_as_a_vanished_node() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_cancelled_event_without_a_cancel_request_counts_as_a_failure() {
+async fn given_no_cancel_request_when_an_instance_answers_cancelled_then_it_counts_as_a_failure() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -104,7 +106,8 @@ async fn a_cancelled_event_without_a_cancel_request_counts_as_a_failure() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_cancelled_event_after_the_executor_triggered_the_token_is_not_a_failure() {
+async fn given_a_failure_that_triggered_the_token_when_an_instance_answers_cancelled_then_it_is_no_new_failure()
+ {
     let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -119,7 +122,8 @@ async fn a_cancelled_event_after_the_executor_triggered_the_token_is_not_a_failu
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_first_failure_triggers_the_token_for_the_host_and_every_instance() {
+async fn given_a_first_failure_when_detected_then_the_token_is_triggered_for_the_host_and_every_instance()
+ {
     let rig = rig("1")
         .entry("f")
         .entry("c")
@@ -146,7 +150,7 @@ async fn the_first_failure_triggers_the_token_for_the_host_and_every_instance() 
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_host_trigger_reaches_every_instance() {
+async fn given_live_instances_when_the_host_triggers_the_token_then_every_instance_sees_it() {
     let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let a = rig.stage.instance("a").await;
@@ -160,7 +164,8 @@ async fn a_host_trigger_reaches_every_instance() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn after_a_failure_the_targets_of_a_late_result_are_held_and_its_update_is_kept() {
+async fn given_a_failure_when_a_late_result_arrives_then_its_update_is_kept_and_its_targets_are_held()
+ {
     let rig = rig("1")
         .entry("f")
         .entry("a")
@@ -189,7 +194,8 @@ async fn after_a_failure_the_targets_of_a_late_result_are_held_and_its_update_is
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_live_instance_gets_the_whole_grace_after_a_failure_and_is_then_dropped() {
+async fn given_a_failure_when_another_instance_stays_live_then_it_gets_the_whole_grace_and_is_then_dropped()
+ {
     let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -208,7 +214,8 @@ async fn a_live_instance_gets_the_whole_grace_after_a_failure_and_is_then_droppe
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_failure_after_the_host_triggered_the_token_leaves_the_outcome_a_cancel() {
+async fn given_the_host_triggered_the_token_when_a_node_fails_then_the_outcome_is_a_cancel_with_the_failure_listed()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -221,7 +228,7 @@ async fn a_failure_after_the_host_triggered_the_token_leaves_the_outcome_a_cance
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_failure_before_the_host_triggers_the_token_wins_over_the_cancel() {
+async fn given_a_failure_when_the_host_cancels_afterwards_then_the_run_is_failed() {
     let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -234,7 +241,8 @@ async fn a_failure_before_the_host_triggers_the_token_wins_over_the_cancel() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn failures_are_listed_in_the_order_they_were_handled_and_the_first_is_the_cause() {
+async fn given_several_failures_when_the_run_stops_then_they_are_listed_in_order_and_the_first_is_the_cause()
+ {
     for (first, second) in [("a", "b"), ("b", "a")] {
         let rig = two_independent();
         let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
@@ -260,7 +268,8 @@ async fn failures_are_listed_in_the_order_they_were_handled_and_the_first_is_the
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_checkpoint_of_a_failure_holds_the_state_after_every_finished_step() {
+async fn given_a_failure_when_the_run_stops_then_the_checkpoint_holds_the_state_after_every_finished_step()
+ {
     let rig = chain("1", &["a", "b", "c"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -275,7 +284,8 @@ async fn the_checkpoint_of_a_failure_holds_the_state_after_every_finished_step()
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_instance_dropped_at_the_end_of_the_grace_counts_as_not_idle_and_is_no_fault() {
+async fn given_an_instance_dropped_at_the_grace_end_when_the_run_stops_then_it_is_not_idle_and_no_fault()
+ {
     let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;

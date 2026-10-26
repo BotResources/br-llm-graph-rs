@@ -83,7 +83,7 @@ impl CheckpointSink for RecordingSink {
             self.received.lock().unwrap().push(checkpoint.clone());
             self.entered.notify_waiters();
             let behavior = self.script.lock().unwrap().pop_front();
-            let answer = match behavior {
+            match behavior {
                 None => Ok(()),
                 Some(SinkBehavior::Refuse(reason)) => Err(SinkRefusal::new(reason)),
                 Some(SinkBehavior::Panic) => panic!("the sink panics"),
@@ -95,8 +95,7 @@ impl CheckpointSink for RecordingSink {
                     gate.notified().await;
                     Err(SinkRefusal::new(reason))
                 }
-            };
-            answer
+            }
         })
     }
 }

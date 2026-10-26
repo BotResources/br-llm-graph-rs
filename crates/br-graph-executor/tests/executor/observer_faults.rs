@@ -68,7 +68,7 @@ async fn given_an_observer_that_panics_once_when_the_run_goes_on_then_it_still_h
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_observer_that_panics_does_not_fail_the_run() {
+async fn given_an_observer_that_always_panics_when_the_run_goes_on_then_the_run_is_not_failed() {
     let rig = chain("1", &["a", "b"]);
     let (mut config, ..) = Setup::new().config();
     config.observer = Some(Arc::new(Panicking));
@@ -90,7 +90,7 @@ async fn an_observer_that_panics_does_not_fail_the_run() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_run_gives_the_same_outcome_with_and_without_an_observer() {
+async fn given_a_run_when_it_has_no_observer_then_the_outcome_is_the_same() {
     let mut finals = Vec::new();
     for with_observer in [true, false] {
         let rig = chain("1", &["a", "b"]);
@@ -116,7 +116,7 @@ async fn a_run_gives_the_same_outcome_with_and_without_an_observer() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_resume_reports_through_the_same_observer_contract() {
+async fn given_a_resumed_run_when_observed_then_the_same_contract_holds() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -149,7 +149,8 @@ impl Observer for HeldUntilReleased {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_run_ends_while_the_observer_is_still_held_on_its_first_observation() {
+async fn given_an_observer_held_on_its_first_observation_when_the_run_ends_then_the_run_does_not_wait_for_it()
+ {
     let rig = single("a");
     let (release, receiver) = channel();
     let (mut config, ..) = Setup::new().config();

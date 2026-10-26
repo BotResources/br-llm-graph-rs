@@ -201,7 +201,8 @@ async fn failed_run_with_exhausted_serialization(panics: bool) -> (Vec<RunFailur
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_state_that_stops_serializing_fails_the_run_with_an_unreadable_checkpoint() {
+async fn given_a_state_that_stops_serializing_when_the_run_stops_then_the_failure_is_listed_and_the_checkpoint_state_is_null()
+ {
     let (failures, state_json) = failed_run_with_exhausted_serialization(false).await;
     assert!(matches!(failures[0], RunFailure::NodeFailed { .. }));
     assert!(matches!(failures[1], RunFailure::CheckpointNotBuilt { .. }));
@@ -209,7 +210,8 @@ async fn a_state_that_stops_serializing_fails_the_run_with_an_unreadable_checkpo
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_state_that_panics_while_serializing_is_reported_the_same_way() {
+async fn given_a_state_that_panics_when_serialized_then_the_checkpoint_failure_is_reported_the_same_way()
+ {
     let (failures, _) = failed_run_with_exhausted_serialization(true).await;
     match &failures[1] {
         RunFailure::CheckpointNotBuilt { reason } => {

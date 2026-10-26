@@ -22,7 +22,7 @@ fn two_sources_into_b() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_creation_gets_the_state_of_the_step_that_started_it_and_later_the_held_input_with_the_state_at_that_moment()
+async fn given_a_slow_creation_when_it_ends_then_the_first_input_has_the_old_state_and_the_held_one_the_current_state()
  {
     let rig = two_sources_into_b();
     let gate = Gate::default();
@@ -52,7 +52,7 @@ async fn a_creation_gets_the_state_of_the_step_that_started_it_and_later_the_hel
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_handling_of_events_goes_on_while_a_creation_is_slow() {
+async fn given_a_slow_creation_when_other_events_arrive_then_they_are_handled_meanwhile() {
     let rig = two_sources_into_b();
     let gate = Gate::default();
     rig.stage.script("b", Creation::Gated(gate.clone()));
@@ -72,7 +72,7 @@ async fn the_handling_of_events_goes_on_while_a_creation_is_slow() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn no_input_is_reported_before_the_creation_ends() {
+async fn given_a_slow_creation_when_it_is_pending_then_no_observation_is_reported() {
     let rig = single("a");
     let gate = Gate::default();
     rig.stage.script("a", Creation::Gated(gate.clone()));
@@ -89,7 +89,7 @@ async fn no_input_is_reported_before_the_creation_ends() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_end_of_a_creation_waits_for_the_step_in_progress() {
+async fn given_a_step_blocked_in_the_sink_when_a_creation_ends_then_it_is_handled_after_the_step() {
     let rig = rig("1")
         .entry("x")
         .entry("b")
@@ -122,7 +122,7 @@ async fn the_end_of_a_creation_waits_for_the_step_in_progress() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_instance_with_another_id_than_the_given_one_fails_the_run() {
+async fn given_an_instance_with_another_id_when_created_then_the_run_fails() {
     let rig = single("a");
     rig.stage.script("a", Creation::WrongId);
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
@@ -135,7 +135,8 @@ async fn an_instance_with_another_id_than_the_given_one_fails_the_run() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_creation_error_fails_the_run_with_its_cause_and_keeps_the_input_held() {
+async fn given_a_creation_error_when_the_node_is_created_then_the_run_fails_with_its_cause_and_the_input_stays_held()
+ {
     let rig = single("a");
     rig.stage.script("a", Creation::Fail("no model"));
     let host = begin(&rig, state(&[("k", 4)]), &["a"], Setup::new());
@@ -169,7 +170,7 @@ async fn creation_panic(creation: Creation) -> RunFailure {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_creation_that_panics_with_a_text_is_a_creation_failure_carrying_the_text() {
+async fn given_a_creation_panicking_with_a_text_when_created_then_the_failure_carries_the_text() {
     for creation in [
         Creation::PanicText("model missing"),
         Creation::PanicString("model missing".to_owned()),
@@ -189,7 +190,8 @@ async fn a_creation_that_panics_with_a_text_is_a_creation_failure_carrying_the_t
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_creation_that_panics_without_a_text_is_still_a_creation_failure() {
+async fn given_a_creation_panicking_without_a_text_when_created_then_it_is_still_a_creation_failure()
+ {
     match creation_panic(Creation::PanicOther).await {
         RunFailure::NodeCouldNotStart { reason, .. } => assert!(!reason.is_empty()),
         other => panic!("unexpected failure {other:?}"),
@@ -197,7 +199,7 @@ async fn a_creation_that_panics_without_a_text_is_still_a_creation_failure() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_creation_that_ends_after_the_cancel_keeps_its_first_input_gets_no_other_and_is_dropped_at_the_end_of_the_grace()
+async fn given_a_creation_ending_after_a_cancel_when_handled_then_it_keeps_its_first_input_and_is_dropped_at_the_grace_end()
  {
     let rig = two_sources_into_b();
     let gate = Gate::default();
@@ -225,7 +227,8 @@ async fn a_creation_that_ends_after_the_cancel_keeps_its_first_input_gets_no_oth
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_creation_that_ends_while_the_run_is_failing_is_dropped_at_the_end_of_the_grace() {
+async fn given_a_creation_ending_during_a_failure_when_handled_then_the_instance_is_dropped_at_the_grace_end()
+ {
     let rig = rig("1")
         .entry("x")
         .entry("z")
@@ -257,7 +260,7 @@ async fn a_creation_that_ends_while_the_run_is_failing_is_dropped_at_the_end_of_
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_creation_still_running_at_the_end_of_the_grace_is_dropped_with_its_creation() {
+async fn given_a_creation_in_progress_when_the_grace_ends_then_the_creation_is_dropped() {
     let rig = single("a");
     let flag = DropFlag::default();
     rig.stage.script("a", Creation::Never(flag.clone()));

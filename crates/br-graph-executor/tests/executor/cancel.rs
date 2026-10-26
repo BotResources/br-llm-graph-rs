@@ -19,7 +19,8 @@ fn two_independent() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_cancel_needs_no_event_and_ends_after_the_grace_with_a_checkpoint() {
+async fn given_a_live_instance_when_the_host_cancels_then_the_run_ends_after_the_grace_with_a_checkpoint()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -39,7 +40,8 @@ async fn a_cancel_needs_no_event_and_ends_after_the_grace_with_a_checkpoint() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_instance_that_ignores_the_token_is_dropped_without_the_run_waiting_for_its_work() {
+async fn given_an_instance_ignoring_the_token_when_the_grace_ends_then_it_is_dropped_without_waiting()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -50,7 +52,8 @@ async fn an_instance_that_ignores_the_token_is_dropped_without_the_run_waiting_f
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_cancelled_event_after_the_cancel_request_is_normal_and_leaves_the_node_not_idle() {
+async fn given_a_cancel_request_when_the_instance_answers_cancelled_then_it_is_no_failure_and_the_node_stays_not_idle()
+ {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -64,7 +67,8 @@ async fn a_cancelled_event_after_the_cancel_request_is_normal_and_leaves_the_nod
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_result_in_the_grace_is_applied_its_edge_evaluated_and_its_targets_held() {
+async fn given_a_cancel_when_a_result_comes_in_the_grace_then_it_is_applied_and_its_targets_are_held()
+ {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -86,7 +90,7 @@ async fn a_result_in_the_grace_is_applied_its_edge_evaluated_and_its_targets_hel
 }
 
 #[tokio::test(start_paused = true)]
-async fn once_the_token_is_seen_no_input_is_given_in_any_later_step() {
+async fn given_the_token_seen_when_later_results_arrive_then_no_input_is_given_in_any_step() {
     let rig = rig("1")
         .entry("p")
         .entry("q")
@@ -115,7 +119,7 @@ async fn once_the_token_is_seen_no_input_is_given_in_any_later_step() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_result_that_leaves_every_node_idle_ends_the_run_whatever_the_token() {
+async fn given_a_cancel_when_a_result_leaves_every_node_idle_then_the_run_is_ended() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -126,7 +130,7 @@ async fn a_result_that_leaves_every_node_idle_ends_the_run_whatever_the_token() 
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_grace_ends_early_when_no_instance_is_live_after_a_cancel() {
+async fn given_a_cancel_when_no_instance_is_live_then_the_grace_ends_early() {
     let rig = two_independent();
     let host = begin(
         &rig,
@@ -148,7 +152,7 @@ async fn the_grace_ends_early_when_no_instance_is_live_after_a_cancel() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_grace_ends_early_when_no_instance_is_live_after_a_failure() {
+async fn given_a_failure_when_no_instance_is_live_then_the_grace_ends_early() {
     let rig = two_independent();
     let host = begin(
         &rig,
@@ -167,7 +171,7 @@ async fn the_grace_ends_early_when_no_instance_is_live_after_a_failure() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_zero_grace_drops_the_live_instances_at_once() {
+async fn given_a_zero_grace_when_the_host_cancels_then_the_live_instances_are_dropped_at_once() {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new().grace(Duration::ZERO));
     let mut a = rig.stage.instance("a").await;
@@ -181,7 +185,7 @@ async fn a_zero_grace_drops_the_live_instances_at_once() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_zero_grace_after_a_failure_drops_the_other_instances_at_once() {
+async fn given_a_zero_grace_when_a_node_fails_then_the_other_instances_are_dropped_at_once() {
     let rig = two_independent();
     let host = begin(
         &rig,

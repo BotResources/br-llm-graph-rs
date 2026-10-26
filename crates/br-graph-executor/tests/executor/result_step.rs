@@ -21,7 +21,7 @@ async fn undone_result(update: Change) -> (RunFailure, br_graph_executor::Checkp
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_refused_update_undoes_the_step_and_keeps_the_node_not_idle() {
+async fn given_a_refused_update_when_handled_then_the_step_is_undone_and_the_node_stays_not_idle() {
     let (failure, checkpoint, dropped) = undone_result(Change::Refuse).await;
     assert!(matches!(failure, RunFailure::UpdateRefused { node, .. } if node == "a"));
     assert_eq!(state_of(&checkpoint), kv(&[("k", 1)]));
@@ -30,14 +30,14 @@ async fn a_refused_update_undoes_the_step_and_keeps_the_node_not_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_update_that_gives_invalid_fields_is_refused() {
+async fn given_an_update_giving_invalid_fields_when_applied_then_it_is_refused() {
     let (failure, checkpoint, _) = undone_result(Change::Invalid).await;
     assert!(matches!(failure, RunFailure::UpdateRefused { .. }));
     assert_eq!(state_of(&checkpoint), kv(&[("k", 1)]));
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_update_that_makes_the_state_over_its_size_limit_is_refused() {
+async fn given_an_update_over_the_size_limit_when_applied_then_it_is_refused() {
     let rig = single("a");
     let small = State::create_with_limit(kv(&[("k", 1)]), NonZeroUsize::new(100).unwrap()).unwrap();
     let host = begin(&rig, small, &["a"], Setup::new());
@@ -49,7 +49,7 @@ async fn an_update_that_makes_the_state_over_its_size_limit_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_panic_in_the_fields_while_applying_an_update_refuses_the_update() {
+async fn given_fields_that_panic_when_an_update_is_applied_then_the_update_is_refused() {
     let (failure, checkpoint, _) = undone_result(Change::Boom).await;
     match failure {
         RunFailure::UpdateRefused { reason, .. } => assert!(reason.contains("the fields panic")),
@@ -81,7 +81,7 @@ fn with_edge_of_a(edge: std::sync::Arc<dyn br_graph_contract::Edge<Kv>>) -> Rig 
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_edge_that_fails_undoes_the_step_and_keeps_its_cause() {
+async fn given_an_edge_that_fails_when_evaluated_then_the_step_is_undone_and_the_cause_is_kept() {
     let rig = with_edge_of_a(edge_failing("a", &["b", "END"], "edge broke"));
     let (failure, checkpoint) = edge_failure(rig).await;
     match failure {
@@ -100,7 +100,8 @@ async fn an_edge_that_fails_undoes_the_step_and_keeps_its_cause() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_edge_that_breaks_the_checked_evaluation_fails_the_run_without_a_cause() {
+async fn given_an_edge_breaking_the_checked_evaluation_when_evaluated_then_the_run_fails_without_a_cause()
+ {
     let broken = [
         edge_returning("a", &["b", "END"], &["c"]),
         edge_returning("a", &["b", "END"], &[]),
@@ -117,7 +118,7 @@ async fn an_edge_that_breaks_the_checked_evaluation_fails_the_run_without_a_caus
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_edge_that_panics_is_an_edge_failure_without_a_cause() {
+async fn given_an_edge_that_panics_when_evaluated_then_it_is_an_edge_failure_without_a_cause() {
     let rig = with_edge_of_a(edge_panicking("a", &["b", "END"]));
     let (failure, _) = edge_failure(rig).await;
     match failure {
@@ -131,7 +132,8 @@ async fn an_edge_that_panics_is_an_edge_failure_without_a_cause() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_repeated_target_gives_one_input_and_is_reported_once() {
+async fn given_a_target_repeated_by_an_edge_when_handed_over_then_one_input_is_given_and_reported_once()
+ {
     let rig = rig("1")
         .entry("x")
         .node("x")
@@ -155,7 +157,7 @@ async fn a_repeated_target_gives_one_input_and_is_reported_once() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn updates_are_applied_in_the_order_the_events_were_handled() {
+async fn given_results_from_two_nodes_when_handled_then_updates_are_applied_in_handling_order() {
     for (first, second, expected) in [("a", "b", 20), ("b", "a", 10)] {
         let rig = rig("1")
             .entry("a")
@@ -180,7 +182,7 @@ async fn updates_are_applied_in_the_order_the_events_were_handled() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_edge_sees_every_update_applied_before_it() {
+async fn given_two_results_when_the_second_edge_runs_then_it_sees_every_update_applied_before() {
     let rig = rig("1")
         .entry("a")
         .entry("b")

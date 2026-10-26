@@ -23,7 +23,8 @@ fn a_then_b_with_c_alone() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_sink_gets_a_checkpoint_in_each_step_that_applied_an_update_and_did_not_end_the_run() {
+async fn given_steps_applying_updates_when_the_run_goes_on_then_the_sink_gets_a_checkpoint_in_each_but_the_last()
+ {
     let rig = chain("1", &["a", "b", "c", "d"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -41,7 +42,7 @@ async fn the_sink_gets_a_checkpoint_in_each_step_that_applied_an_update_and_did_
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_step_without_an_applied_update_does_not_call_the_sink() {
+async fn given_a_step_without_an_applied_update_when_handled_then_the_sink_is_not_called() {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -60,7 +61,8 @@ async fn a_step_without_an_applied_update_does_not_call_the_sink() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_checkpoint_names_the_targets_and_the_live_instances_and_holds_every_update() {
+async fn given_a_step_when_its_checkpoint_is_built_then_it_names_targets_and_live_nodes_and_holds_every_update()
+ {
     let rig = a_then_b_with_c_alone();
     let host = begin(&rig, state(&[]), &["a", "c"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -84,7 +86,7 @@ async fn a_checkpoint_names_the_targets_and_the_live_instances_and_holds_every_u
 }
 
 #[tokio::test(start_paused = true)]
-async fn while_the_sink_works_the_step_waits_for_it_and_no_other_event_is_handled() {
+async fn given_a_sink_that_works_when_events_arrive_then_none_is_handled_until_it_answers() {
     let rig = a_then_b_with_c_alone();
     let host = begin(&rig, state(&[]), &["a", "c"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -112,7 +114,8 @@ async fn while_the_sink_works_the_step_waits_for_it_and_no_other_event_is_handle
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_cancel_during_the_sink_call_is_seen_when_the_sink_answers_and_nothing_is_handed_over() {
+async fn given_a_cancel_during_the_sink_call_when_the_sink_answers_then_the_cancel_is_seen_and_nothing_is_handed_over()
+ {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -131,7 +134,8 @@ async fn a_cancel_during_the_sink_call_is_seen_when_the_sink_answers_and_nothing
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_last_checkpoint_stored_names_the_last_node_and_a_resume_runs_it_again() {
+async fn given_a_run_ended_when_the_last_stored_checkpoint_is_resumed_then_the_last_node_runs_again()
+ {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -150,7 +154,8 @@ async fn the_last_checkpoint_stored_names_the_last_node_and_a_resume_runs_it_aga
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_sink_that_refuses_fails_the_run_and_the_outcome_holds_the_refused_checkpoint() {
+async fn given_a_sink_that_refuses_when_called_then_the_run_fails_and_the_outcome_holds_the_refused_checkpoint()
+ {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -169,7 +174,7 @@ async fn a_sink_that_refuses_fails_the_run_and_the_outcome_holds_the_refused_che
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_sink_that_panics_counts_as_a_refusal() {
+async fn given_a_sink_that_panics_when_called_then_it_counts_as_a_refusal() {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     host.sink.clone().unwrap().script(SinkBehavior::Panic);
@@ -183,7 +188,8 @@ async fn a_sink_that_panics_counts_as_a_refusal() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn after_a_refusal_the_outcome_checkpoint_is_the_most_current_one() {
+async fn given_a_refusal_when_a_result_is_applied_in_the_grace_then_the_outcome_checkpoint_is_the_most_current()
+ {
     let rig = rig("1")
         .entry("p")
         .entry("f")
@@ -222,7 +228,7 @@ async fn after_a_refusal_the_outcome_checkpoint_is_the_most_current_one() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn no_sink_call_is_made_after_a_failure_and_the_checkpoint_of_the_outcome_is_newer() {
+async fn given_a_failure_when_a_result_is_applied_in_the_grace_then_the_sink_is_not_called_again() {
     let rig = rig("1")
         .entry("p")
         .entry("f")
