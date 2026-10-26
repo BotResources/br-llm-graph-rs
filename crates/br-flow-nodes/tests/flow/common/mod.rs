@@ -20,15 +20,14 @@ pub const BOUND: Duration = Duration::from_secs(30);
 pub const CREATION_GATE: u32 = u32::MAX;
 
 pub async fn tasks_end() -> bool {
-    for _ in 0..1000 {
-        if tokio::runtime::Handle::current()
+    let all_ended = async {
+        while tokio::runtime::Handle::current()
             .metrics()
             .num_alive_tasks()
-            == 0
+            != 0
         {
-            return true;
+            tokio::time::sleep(Duration::from_millis(1)).await;
         }
-        tokio::task::yield_now().await;
-    }
-    false
+    };
+    tokio::time::timeout(BOUND, all_ended).await.is_ok()
 }
