@@ -1,9 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/br-graph-contract", "crates/br-llm-graph"]
+members = ["crates/br-graph-contract", "crates/br-llm-graph", "crates/br-flow-nodes"]
 
 [workspace.package]
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
 repository = "https://github.com/BotResources/br-llm-graph-rs"
+
+[patch."https://github.com/BotResources/br-llm-graph-rs"]
+br-graph-contract = { path = "crates/br-graph-contract" }

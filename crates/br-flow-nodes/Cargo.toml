@@ -1,0 +1,26 @@
+[package]
+name = "br-flow-nodes"
+version = "0.1.0"
+description = "Two generic programmatic nodes for the control of a graph: a merger node that waits for lanes that finish at different times, and a map-reduce node that runs one internal node for each element of a list, with a limit on how many run at the same time"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "macros"] }
+uuid = { version = "1", features = ["v7"] }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
