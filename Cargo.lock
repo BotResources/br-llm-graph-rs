@@ -25,6 +25,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-graph-executor"
+version = "0.1.0"
+dependencies = [
+ "br-graph-contract",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "br-llm-clients-core"
 version = "0.4.0"
 source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.4.0#d3b2c9bfe945eca799a82fb8a59b1014a63a9dd6"

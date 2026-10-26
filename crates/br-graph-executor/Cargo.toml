@@ -1,0 +1,27 @@
+[package]
+name = "br-graph-executor"
+version = "0.1.0"
+description = "Executor of the graph family: runs a graph defined with br-graph-contract, event-driven, with fail-fast failures, cancel with a grace period, checkpoints and resume"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+uuid = { version = "1", features = ["v7"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
