@@ -95,3 +95,34 @@ async fn given_a_cancel_in_the_sink_call_when_the_sink_refuses_then_the_run_is_c
         Some(&Observation::Outcome(OutcomeKind::RunCancelled))
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn given_a_host_cancel_in_the_sink_call_when_the_sink_refuses_and_the_other_node_ends_in_the_grace_then_the_run_is_cancelled_with_the_failure()
+ {
+    let rig = two_independent();
+    let host = begin(&rig, state(&[]), &["a", "b"], Setup::new().sink());
+    let sink = host.sink.clone().unwrap();
+    let gate = Arc::new(Notify::new());
+    sink.script(SinkBehavior::BlockThenRefuse(gate.clone(), "disk full"));
+    let observer = host.observer.clone();
+    let mut a = rig.stage.instance("a").await;
+    let mut b = rig.stage.instance("b").await;
+    a.result(set("a", 1));
+    sink.wait_for_calls(1).await;
+    host.cancel.trigger();
+    gate.notify_one();
+    b.result(set("b", 1));
+    let outcome = host.outcome().await;
+    let log = within(observer.wait_for_outcome()).await;
+    let (failures, checkpoint) = cancelled(outcome);
+    assert_eq!(failures.len(), 1);
+    assert!(
+        matches!(&failures[0], RunFailure::SinkRefused { reason, .. } if reason == "disk full")
+    );
+    assert_eq!(
+        log.last(),
+        Some(&Observation::Outcome(OutcomeKind::RunCancelled))
+    );
+    assert_eq!(state_of(&checkpoint), kv(&[("a", 1), ("b", 1)]));
+    assert!(checkpoint.nodes().is_empty());
+}

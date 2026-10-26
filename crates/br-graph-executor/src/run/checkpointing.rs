@@ -16,15 +16,14 @@ impl<F: Fields> Run<F> {
             .collect()
     }
 
-    pub(super) fn outcome_checkpoint(&mut self) -> Checkpoint {
+    pub(super) fn outcome_checkpoint(&self) -> (Checkpoint, Option<RunFailure>) {
         let nodes = self.non_idle_names();
         match Checkpoint::build(&self.state, &self.structure, nodes.clone()) {
-            Ok(checkpoint) => checkpoint,
-            Err(reason) => {
-                self.failures
-                    .push(RunFailure::CheckpointNotBuilt { reason });
-                Checkpoint::unreadable(&self.structure, nodes)
-            }
+            Ok(checkpoint) => (checkpoint, None),
+            Err(reason) => (
+                Checkpoint::unreadable(&self.structure, nodes),
+                Some(RunFailure::CheckpointNotBuilt { reason }),
+            ),
         }
     }
 

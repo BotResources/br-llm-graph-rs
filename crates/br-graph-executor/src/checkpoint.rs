@@ -95,7 +95,7 @@ impl Checkpoint {
 
     pub(crate) fn unreadable(structure: &Structure, nodes: Vec<String>) -> Checkpoint {
         Checkpoint {
-            state: "null".to_owned(),
+            state: String::new(),
             structure: structure.clone(),
             nodes,
         }

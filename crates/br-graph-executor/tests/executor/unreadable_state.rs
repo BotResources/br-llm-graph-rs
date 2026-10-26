@@ -1,218 +1,110 @@
-use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
-use br_graph_contract::{
-    CancelToken, CancelView, Cause, CreateError, CreateFuture, Edge, Event, Fields, Graph,
-    GraphBuilder, Instance, InstanceId, Node, PROGRAMMATIC, Reason, State, Target,
-};
+use br_graph_contract::{CancelToken, Graph, State};
 use br_graph_executor::{
-    Checkpoint, CheckpointSink, Observation, Outcome, OutcomeKind, RunConfig, RunFailure,
-    SinkFuture, start,
+    Checkpoint, Observation, Outcome, OutcomeKind, ResumeError, RunConfig, RunFailure, resume,
+    start,
 };
 use tokio::sync::Notify;
 
-use crate::host::within;
+use crate::flaky_fields::*;
+use crate::host::{BIG, within};
 use crate::observer::Recorder;
-use serde::de::Error as _;
-use serde::ser::Error as _;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone, Copy)]
-enum Answer {
-    Succeed,
-    Fail,
-    Panic,
+struct FailedRun {
+    graph: Arc<Graph<Flaky>>,
+    failures: Vec<RunFailure>,
+    checkpoint: Checkpoint,
 }
 
-struct Plan {
-    script: VecDeque<Answer>,
-    then: Answer,
-}
-
-thread_local! {
-    static PLAN: RefCell<Plan> = const {
-        RefCell::new(Plan { script: VecDeque::new(), then: Answer::Succeed })
-    };
-}
-
-fn plan(script: &[Answer], then: Answer) {
-    PLAN.with(|plan| {
-        *plan.borrow_mut() = Plan {
-            script: script.iter().copied().collect(),
-            then,
-        }
-    });
-}
-
-fn next_answer() -> Answer {
-    PLAN.with(|plan| {
-        let mut plan = plan.borrow_mut();
-        let then = plan.then;
-        plan.script.pop_front().unwrap_or(then)
-    })
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct Flaky(u32);
-
-impl Serialize for Flaky {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match next_answer() {
-            Answer::Succeed => serializer.serialize_u32(self.0),
-            Answer::Panic => panic!("serialization panics"),
-            Answer::Fail => Err(S::Error::custom("serialization exhausted")),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Flaky {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        u32::deserialize(deserializer)
-            .map(Flaky)
-            .map_err(D::Error::custom)
-    }
-}
-
-impl Fields for Flaky {
-    type Update = ();
-
-    fn empty_update() {}
-
-    fn validate(&self) -> Result<(), Reason> {
-        Ok(())
-    }
-
-    fn apply(&mut self, _update: ()) -> Result<(), Reason> {
-        Ok(())
-    }
-}
-
-enum Behavior {
-    Fail,
-    Result,
-    ResultAfter(Arc<Notify>),
-}
-
-struct ScriptedNode {
-    name: &'static str,
-    behavior: Behavior,
-}
-
-impl Node<Flaky> for ScriptedNode {
-    fn name(&self) -> &str {
-        self.name
-    }
-
-    fn kind(&self) -> &str {
-        PROGRAMMATIC
-    }
-
-    fn subkind(&self) -> &str {
-        "worker"
-    }
-
-    fn create(&self, _cancel: CancelView, id: InstanceId) -> CreateFuture<'_, Flaky> {
-        let release = match &self.behavior {
-            Behavior::ResultAfter(gate) => Some(Arc::clone(gate)),
-            _ => None,
-        };
-        let fails = matches!(self.behavior, Behavior::Fail);
-        Box::pin(async move {
-            let (instance, mut reader, sender) = Instance::<Flaky>::channel(id);
-            tokio::spawn(async move {
-                let _ = reader.next().await;
-                if let Some(gate) = release {
-                    within(gate.notified()).await;
-                }
-                sender.finish(if fails {
-                    Event::failed("boom")
-                } else {
-                    Event::Result(())
-                });
-            });
-            Ok::<_, CreateError>(instance)
-        })
-    }
-}
-
-struct EndEdge(&'static str);
-
-impl Edge<Flaky> for EndEdge {
-    fn name(&self) -> &str {
-        self.0
-    }
-
-    fn source(&self) -> &str {
-        self.0
-    }
-
-    fn targets(&self) -> &[Target] {
-        &[Target::End]
-    }
-
-    fn evaluate(&self, _state: &State<Flaky>) -> Result<Vec<Target>, Cause> {
-        Ok(vec![Target::End])
-    }
-}
-
-struct AcceptingSink;
-
-impl CheckpointSink for AcceptingSink {
-    fn accept<'a>(&'a self, _checkpoint: &'a Checkpoint) -> SinkFuture<'a> {
-        Box::pin(async { Ok(()) })
-    }
-}
-
-fn graph_of(nodes: Vec<ScriptedNode>) -> Arc<Graph<Flaky>> {
-    let mut builder = GraphBuilder::<Flaky>::new("1");
-    for node in nodes {
-        let name = node.name;
-        builder = builder
-            .node(Arc::new(node))
-            .edge(Arc::new(EndEdge(name)))
-            .entry(name);
-    }
-    Arc::new(builder.build().unwrap())
-}
-
-async fn failed_run_with_exhausted_serialization(panics: bool) -> (Vec<RunFailure>, String) {
-    plan(
-        &[Answer::Succeed],
-        if panics { Answer::Panic } else { Answer::Fail },
-    );
+async fn failed_run(initial: u32, script: &[Answer], then: Answer) -> FailedRun {
+    plan(script, then);
     let graph = graph_of(vec![ScriptedNode {
         name: "a",
         behavior: Behavior::Fail,
     }]);
-    let initial = State::create(Flaky(7)).unwrap();
+    let initial = State::create(Flaky(initial)).unwrap();
     let config = RunConfig::new(CancelToken::new(), Duration::ZERO);
-    let outcome = within(start(graph, initial, vec!["a".to_owned()], config))
-        .await
-        .unwrap();
+    let outcome = within(start(
+        Arc::clone(&graph),
+        initial,
+        vec!["a".to_owned()],
+        config,
+    ))
+    .await
+    .unwrap();
     match outcome {
         Outcome::RunFailed {
             failures,
             checkpoint,
-        } => (failures, checkpoint.state_json().to_owned()),
+        } => FailedRun {
+            graph,
+            failures,
+            checkpoint,
+        },
         other => panic!("expected RunFailed, got {other:?}"),
     }
 }
 
+async fn run_with_exhausted_serialization(panics: bool) -> FailedRun {
+    let then = if panics { Answer::Panic } else { Answer::Fail };
+    failed_run(7, &[Answer::Succeed], then).await
+}
+
+async fn resume_refusal(run: FailedRun) -> ResumeError {
+    plan(&[], Answer::Succeed);
+    let config = RunConfig::new(CancelToken::new(), Duration::ZERO);
+    match within(resume(run.graph, run.checkpoint, BIG, config)).await {
+        Err(error) => error,
+        Ok(outcome) => panic!("expected a refusal, got {outcome:?}"),
+    }
+}
+
 #[tokio::test(start_paused = true)]
-async fn given_an_unserializable_state_when_the_run_stops_then_the_checkpoint_state_is_null() {
-    let (failures, state_json) = failed_run_with_exhausted_serialization(false).await;
-    assert!(matches!(failures[0], RunFailure::NodeFailed { .. }));
-    assert!(matches!(failures[1], RunFailure::CheckpointNotBuilt { .. }));
-    assert_eq!(state_json, "null");
+async fn given_an_unserializable_state_when_the_run_stops_then_the_checkpoint_state_is_empty_text()
+{
+    let run = run_with_exhausted_serialization(false).await;
+    assert!(matches!(run.failures[0], RunFailure::NodeFailed { .. }));
+    assert!(matches!(
+        run.failures[1],
+        RunFailure::CheckpointNotBuilt { .. }
+    ));
+    assert_eq!(run.checkpoint.state_json(), "");
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_an_unreadable_checkpoint_when_resumed_for_fields_that_accept_null_then_the_state_is_rejected()
+ {
+    let run = run_with_exhausted_serialization(false).await;
+    plan(&[], Answer::Succeed);
+    assert_eq!(
+        State::<Flaky>::rebuild_with_limit(b"null", BIG)
+            .unwrap()
+            .into_fields(),
+        Flaky(0)
+    );
+    let refused = resume_refusal(run).await;
+    assert!(matches!(refused, ResumeError::StateRejected { .. }));
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_a_state_panicking_in_deserialization_when_resumed_then_it_is_rejected_with_the_panic_text()
+ {
+    let run = failed_run(PANICS_WHEN_DESERIALIZED, &[], Answer::Succeed).await;
+    assert_eq!(run.checkpoint.state_json(), "13");
+    let refused = resume_refusal(run).await;
+    assert_eq!(
+        refused.to_string(),
+        "checkpoint state cannot be rebuilt: deserialization panics"
+    );
 }
 
 #[tokio::test(start_paused = true)]
 async fn given_a_state_that_panics_when_serialized_then_the_checkpoint_failure_is_reported_the_same_way()
  {
-    let (failures, _) = failed_run_with_exhausted_serialization(true).await;
-    match &failures[1] {
+    let run = run_with_exhausted_serialization(true).await;
+    match &run.failures[1] {
         RunFailure::CheckpointNotBuilt { reason } => {
             assert!(reason.contains("serialization panics"));
         }

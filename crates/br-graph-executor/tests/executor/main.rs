@@ -11,6 +11,7 @@ mod display_panics;
 mod failure_resume;
 mod failures;
 mod fields_panics;
+mod flaky_fields;
 mod grace;
 mod graphs;
 mod hand_over_order;
