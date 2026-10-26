@@ -26,6 +26,8 @@ mod observer;
 mod observer_faults;
 mod result_step;
 mod resume_errors;
+mod resume_support;
+mod resume_texts;
 mod sink;
 mod sink_refusal;
 mod sink_steps;
