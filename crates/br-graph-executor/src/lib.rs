@@ -1,1 +1,18 @@
+mod checkpoint;
+mod config;
+mod errors;
+mod observe;
+mod outcome;
+mod resume;
+mod run;
+mod sink;
+mod start;
 
+pub use checkpoint::Checkpoint;
+pub use config::RunConfig;
+pub use errors::{ResumeError, StartError};
+pub use observe::{Observation, ObservedEvent, Observer, OutcomeKind};
+pub use outcome::{Outcome, RunFailure};
+pub use resume::resume;
+pub use sink::{CheckpointSink, SinkFuture, SinkRefusal};
+pub use start::start;
