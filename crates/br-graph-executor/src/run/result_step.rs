@@ -4,7 +4,7 @@ use std::sync::Arc;
 use br_graph_contract::{EdgeError, Fields, Target};
 
 use super::Run;
-use super::guard::panic_reason;
+use crate::panic_text::panic_reason;
 use crate::{Observation, RunFailure};
 
 impl<F: Fields> Run<F> {

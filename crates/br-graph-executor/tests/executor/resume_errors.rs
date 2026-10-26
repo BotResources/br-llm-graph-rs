@@ -35,13 +35,10 @@ fn base() -> Rig {
 async fn a_checkpoint_of_another_version_is_refused() {
     let checkpoint = checkpoint_of(&base()).await;
     let error = refusal(&chain("2", &["a", "b"]), checkpoint).await;
-    assert_eq!(
+    assert!(matches!(
         error,
-        ResumeError::VersionMismatch {
-            checkpoint: "1".into(),
-            graph: "2".into()
-        }
-    );
+        ResumeError::VersionMismatch { checkpoint, graph } if checkpoint == "1" && graph == "2"
+    ));
 }
 
 #[tokio::test(start_paused = true)]
@@ -167,7 +164,9 @@ async fn a_state_over_the_limit_the_host_gave_is_rejected() {
     let (config, ..) = Setup::new().config();
     let exact = std::num::NonZeroUsize::new(checkpoint.state_json().len()).unwrap();
     let host_run = tokio::spawn(resume(rig.graph.clone(), checkpoint, exact, config));
+    rig.stage.detach();
     let mut a = rig.stage.instance("a").await;
+    a.next_input().await;
     a.failed("stop");
     assert!(host_run.await.unwrap().is_ok());
 }
@@ -195,10 +194,10 @@ async fn a_node_that_is_not_in_the_graph_is_refused() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let forged = forged(&checkpoint, |value| value["nodes"] = json!(["zz"]));
-    assert_eq!(
+    assert!(matches!(
         refusal(&rig, forged).await,
-        ResumeError::UnknownNode { name: "zz".into() }
-    );
+        ResumeError::UnknownNode { name } if name == "zz"
+    ));
 }
 
 #[tokio::test(start_paused = true)]
@@ -206,10 +205,10 @@ async fn a_node_named_twice_is_refused() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let forged = forged(&checkpoint, |value| value["nodes"] = json!(["a", "a"]));
-    assert_eq!(
+    assert!(matches!(
         refusal(&rig, forged).await,
-        ResumeError::DuplicateNode { name: "a".into() }
-    );
+        ResumeError::DuplicateNode { name } if name == "a"
+    ));
 }
 
 #[tokio::test(start_paused = true)]
@@ -217,7 +216,7 @@ async fn a_checkpoint_that_names_no_node_is_refused() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
     let forged = forged(&checkpoint, |value| value["nodes"] = json!([]));
-    assert_eq!(refusal(&rig, forged).await, ResumeError::NoNodes);
+    assert!(matches!(refusal(&rig, forged).await, ResumeError::NoNodes));
 }
 
 #[test]

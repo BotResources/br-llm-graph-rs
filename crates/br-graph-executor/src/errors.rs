@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum StartError {
     #[error("no node to start: the list of nodes is empty")]
     NoNodes,
@@ -8,7 +8,7 @@ pub enum StartError {
     DuplicateNode { name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ResumeError {
     #[error("checkpoint version {checkpoint:?} differs from graph version {graph:?}")]
     VersionMismatch { checkpoint: String, graph: String },

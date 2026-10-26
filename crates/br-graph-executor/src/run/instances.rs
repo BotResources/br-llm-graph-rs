@@ -4,8 +4,9 @@ use br_graph_contract::{CancelView, EventEnd, Fields, InstanceId, Node};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-use super::guard::{AbortGuard, AbortOnDrop, panic_reason};
+use super::guard::{AbortGuard, AbortOnDrop};
 use super::message::{CreationFailure, Message};
+use crate::panic_text::panic_reason;
 
 pub(super) fn mint_id() -> Result<InstanceId, String> {
     InstanceId::new(Uuid::now_v7()).map_err(|error| error.to_string())

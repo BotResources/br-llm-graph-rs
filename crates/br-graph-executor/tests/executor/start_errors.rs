@@ -16,23 +16,23 @@ async fn refusal(nodes: &[&str]) -> StartError {
 
 #[tokio::test(start_paused = true)]
 async fn an_empty_list_of_nodes_is_refused() {
-    assert_eq!(refusal(&[]).await, StartError::NoNodes);
+    assert!(matches!(refusal(&[]).await, StartError::NoNodes));
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_name_that_is_not_a_node_of_the_graph_is_refused() {
-    assert_eq!(
+    assert!(matches!(
         refusal(&["a", "zz"]).await,
-        StartError::UnknownNode { name: "zz".into() }
-    );
+        StartError::UnknownNode { name } if name == "zz"
+    ));
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_name_listed_twice_is_refused() {
-    assert_eq!(
+    assert!(matches!(
         refusal(&["a", "a"]).await,
-        StartError::DuplicateNode { name: "a".into() }
-    );
+        StartError::DuplicateNode { name } if name == "a"
+    ));
 }
 
 #[tokio::test(start_paused = true)]

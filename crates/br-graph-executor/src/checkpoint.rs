@@ -1,9 +1,12 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 use br_graph_contract::{Fields, State, Structure};
 
 use crate::ResumeError;
+use crate::panic_text::panic_reason;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -45,7 +48,9 @@ impl Checkpoint {
         structure: &Structure,
         nodes: Vec<String>,
     ) -> Result<Checkpoint, String> {
-        let bytes = state.to_json().map_err(|error| error.to_string())?;
+        let serialized = catch_unwind(AssertUnwindSafe(|| state.to_json()))
+            .map_err(|payload| panic_reason(&*payload))?;
+        let bytes = serialized.map_err(|error| error.to_string())?;
         let text = String::from_utf8(bytes).map_err(|error| error.to_string())?;
         let state = RawValue::from_string(text).map_err(|error| error.to_string())?;
         Ok(Checkpoint {

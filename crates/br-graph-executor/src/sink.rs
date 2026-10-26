@@ -9,7 +9,7 @@ pub trait CheckpointSink: Send + Sync {
     fn accept<'a>(&'a self, checkpoint: &'a Checkpoint) -> SinkFuture<'a>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[error("checkpoint refused: {reason}")]
 pub struct SinkRefusal {
     reason: String,

@@ -3,6 +3,7 @@ mod config;
 mod errors;
 mod observe;
 mod outcome;
+mod panic_text;
 mod resume;
 mod run;
 mod sink;

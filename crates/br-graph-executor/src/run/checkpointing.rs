@@ -1,7 +1,8 @@
 use br_graph_contract::Fields;
 
 use super::Run;
-use super::guard::{AbortOnDrop, panic_reason};
+use super::guard::AbortOnDrop;
+use crate::panic_text::panic_reason;
 use crate::{Checkpoint, RunFailure};
 
 impl<F: Fields> Run<F> {

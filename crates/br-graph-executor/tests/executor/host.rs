@@ -73,6 +73,7 @@ impl Setup {
 pub fn begin(rig: &Rig, state: State<Kv>, nodes: &[&str], setup: Setup) -> Host {
     let (config, cancel, observer, sink) = setup.config();
     let nodes: Vec<String> = nodes.iter().map(|name| (*name).to_owned()).collect();
+    rig.stage.attach(Arc::clone(&observer));
     let graph = Arc::clone(&rig.graph);
     let run = tokio::spawn(async move {
         match start(graph, state, nodes, config).await {
@@ -90,6 +91,7 @@ pub fn begin(rig: &Rig, state: State<Kv>, nodes: &[&str], setup: Setup) -> Host 
 
 pub fn begin_resume(rig: &Rig, checkpoint: Checkpoint, limit: NonZeroUsize, setup: Setup) -> Host {
     let (config, cancel, observer, sink) = setup.config();
+    rig.stage.attach(Arc::clone(&observer));
     let graph = Arc::clone(&rig.graph);
     let run = tokio::spawn(async move {
         match resume(graph, checkpoint, limit, config).await {

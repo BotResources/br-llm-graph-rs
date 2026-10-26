@@ -10,7 +10,10 @@ use tokio::sync::Notify;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use uuid::Uuid;
 
+use br_graph_executor::Observation;
+
 use crate::kv::{Change, Kv};
+use crate::observer::Recorder;
 
 #[derive(Clone, Default)]
 pub struct Gate(Arc<Notify>);
@@ -130,6 +133,7 @@ pub struct Stage {
     calls: Mutex<Vec<(String, InstanceId)>>,
     announce: UnboundedSender<Handle>,
     inbox: tokio::sync::Mutex<Inbox>,
+    observer: Mutex<Option<Arc<Recorder>>>,
 }
 
 impl Stage {
@@ -143,6 +147,7 @@ impl Stage {
                 receiver: Some(receiver),
                 stash: HashMap::new(),
             }),
+            observer: Mutex::new(None),
         })
     }
 
@@ -183,7 +188,32 @@ impl Stage {
             .collect()
     }
 
+    pub fn attach(&self, observer: Arc<Recorder>) {
+        *self.observer.lock().unwrap() = Some(observer);
+    }
+
+    pub fn detach(&self) {
+        *self.observer.lock().unwrap() = None;
+    }
+
     pub async fn instance(&self, node: &str) -> Handle {
+        let handle = self.next_announced(node).await;
+        let observer = self.observer.lock().unwrap().clone();
+        if let Some(observer) = observer {
+            let id = handle.id;
+            observer
+                .wait_for(|observation| {
+                    matches!(
+                        observation,
+                        Observation::InputHandedOver { instance, .. } if *instance == id
+                    )
+                })
+                .await;
+        }
+        handle
+    }
+
+    async fn next_announced(&self, node: &str) -> Handle {
         let mut inbox = self.inbox.lock().await;
         loop {
             if let Some(handle) = inbox.stash.get_mut(node).and_then(VecDeque::pop_front) {
