@@ -9,6 +9,7 @@ pub enum SinkBehavior {
     Refuse(&'static str),
     Panic,
     Block(Arc<Notify>),
+    BlockThenRefuse(Arc<Notify>, &'static str),
 }
 
 #[derive(Default)]
@@ -18,6 +19,14 @@ pub struct RecordingSink {
     entered: Notify,
     active: AtomicUsize,
     overlaps: AtomicUsize,
+}
+
+struct InFlight<'a>(&'a AtomicUsize);
+
+impl Drop for InFlight<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl RecordingSink {
@@ -35,6 +44,10 @@ impl RecordingSink {
 
     pub fn calls(&self) -> usize {
         self.received.lock().unwrap().len()
+    }
+
+    pub fn in_flight(&self) -> usize {
+        self.active.load(Ordering::SeqCst)
     }
 
     pub fn overlaps(&self) -> usize {
@@ -60,6 +73,7 @@ impl CheckpointSink for RecordingSink {
             if self.active.fetch_add(1, Ordering::SeqCst) > 0 {
                 self.overlaps.fetch_add(1, Ordering::SeqCst);
             }
+            let _in_flight = InFlight(&self.active);
             self.received.lock().unwrap().push(checkpoint.clone());
             self.entered.notify_waiters();
             let behavior = self.script.lock().unwrap().pop_front();
@@ -71,8 +85,11 @@ impl CheckpointSink for RecordingSink {
                     gate.notified().await;
                     Ok(())
                 }
+                Some(SinkBehavior::BlockThenRefuse(gate, reason)) => {
+                    gate.notified().await;
+                    Err(SinkRefusal::new(reason))
+                }
             };
-            self.active.fetch_sub(1, Ordering::SeqCst);
             answer
         })
     }

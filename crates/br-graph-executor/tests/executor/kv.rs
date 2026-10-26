@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct Kv {
     pub values: BTreeMap<String, i64>,
     pub pad: String,
+    #[serde(default)]
+    pub wide: u128,
 }
 
 #[derive(Debug)]
@@ -17,10 +19,12 @@ pub enum Change {
     Refuse,
     Invalid,
     Grow(usize),
+    Wide(u128),
     Boom,
 }
 
 const INVALID_KEY: &str = "invalid";
+const VALIDATION_PANIC_KEY: &str = "panic_on_validate";
 
 impl Fields for Kv {
     type Update = Change;
@@ -30,6 +34,9 @@ impl Fields for Kv {
     }
 
     fn validate(&self) -> Result<(), Reason> {
+        if self.values.contains_key(VALIDATION_PANIC_KEY) {
+            panic!("validation panics");
+        }
         if self.values.contains_key(INVALID_KEY) {
             return Err(Reason::new("the fields hold the invalid key"));
         }
@@ -50,6 +57,7 @@ impl Fields for Kv {
                 self.values.insert(INVALID_KEY.to_owned(), 1);
             }
             Change::Grow(bytes) => self.pad.push_str(&"x".repeat(bytes)),
+            Change::Wide(value) => self.wide = value,
             Change::Boom => panic!("the fields panic"),
         }
         Ok(())
@@ -71,6 +79,7 @@ pub fn kv(pairs: &[(&str, i64)]) -> Kv {
             .map(|(key, value)| ((*key).to_owned(), *value))
             .collect(),
         pad: String::new(),
+        wide: 0,
     }
 }
 

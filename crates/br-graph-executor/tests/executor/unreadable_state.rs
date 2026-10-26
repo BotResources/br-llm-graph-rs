@@ -1,19 +1,57 @@
-use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
 use br_graph_contract::{
-    CancelToken, CancelView, Cause, CreateError, CreateFuture, Edge, Event, Fields, GraphBuilder,
-    Instance, InstanceId, Node, PROGRAMMATIC, Reason, State, Target,
+    CancelToken, CancelView, Cause, CreateError, CreateFuture, Edge, Event, Fields, Graph,
+    GraphBuilder, Instance, InstanceId, Node, PROGRAMMATIC, Reason, State, Target,
 };
-use br_graph_executor::{Outcome, RunConfig, RunFailure, start};
+use br_graph_executor::{
+    Checkpoint, CheckpointSink, Observation, Outcome, OutcomeKind, RunConfig, RunFailure,
+    SinkFuture, start,
+};
+use tokio::sync::Notify;
+
+use crate::host::within;
+use crate::observer::Recorder;
 use serde::de::Error as _;
 use serde::ser::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+#[derive(Clone, Copy)]
+enum Answer {
+    Succeed,
+    Fail,
+    Panic,
+}
+
+struct Plan {
+    script: VecDeque<Answer>,
+    then: Answer,
+}
+
 thread_local! {
-    static SERIALIZATIONS_LEFT: Cell<usize> = const { Cell::new(0) };
-    static PANIC_WHEN_EXHAUSTED: Cell<bool> = const { Cell::new(false) };
+    static PLAN: RefCell<Plan> = const {
+        RefCell::new(Plan { script: VecDeque::new(), then: Answer::Succeed })
+    };
+}
+
+fn plan(script: &[Answer], then: Answer) {
+    PLAN.with(|plan| {
+        *plan.borrow_mut() = Plan {
+            script: script.iter().copied().collect(),
+            then,
+        }
+    });
+}
+
+fn next_answer() -> Answer {
+    PLAN.with(|plan| {
+        let mut plan = plan.borrow_mut();
+        let then = plan.then;
+        plan.script.pop_front().unwrap_or(then)
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -21,17 +59,10 @@ struct Flaky(u32);
 
 impl Serialize for Flaky {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let allowed = SERIALIZATIONS_LEFT.with(|left| {
-            let remaining = left.get();
-            left.set(remaining.saturating_sub(1));
-            remaining > 0
-        });
-        if allowed {
-            serializer.serialize_u32(self.0)
-        } else if PANIC_WHEN_EXHAUSTED.with(Cell::get) {
-            panic!("serialization panics")
-        } else {
-            Err(S::Error::custom("serialization exhausted"))
+        match next_answer() {
+            Answer::Succeed => serializer.serialize_u32(self.0),
+            Answer::Panic => panic!("serialization panics"),
+            Answer::Fail => Err(S::Error::custom("serialization exhausted")),
         }
     }
 }
@@ -58,11 +89,20 @@ impl Fields for Flaky {
     }
 }
 
-struct FailingNode;
+enum Behavior {
+    Fail,
+    Result,
+    ResultAfter(Arc<Notify>),
+}
 
-impl Node<Flaky> for FailingNode {
+struct ScriptedNode {
+    name: &'static str,
+    behavior: Behavior,
+}
+
+impl Node<Flaky> for ScriptedNode {
     fn name(&self) -> &str {
-        "a"
+        self.name
     }
 
     fn kind(&self) -> &str {
@@ -74,26 +114,38 @@ impl Node<Flaky> for FailingNode {
     }
 
     fn create(&self, _cancel: CancelView, id: InstanceId) -> CreateFuture<'_, Flaky> {
+        let release = match &self.behavior {
+            Behavior::ResultAfter(gate) => Some(Arc::clone(gate)),
+            _ => None,
+        };
+        let fails = matches!(self.behavior, Behavior::Fail);
         Box::pin(async move {
             let (instance, mut reader, sender) = Instance::<Flaky>::channel(id);
             tokio::spawn(async move {
                 let _ = reader.next().await;
-                sender.finish(Event::failed("boom"));
+                if let Some(gate) = release {
+                    gate.notified().await;
+                }
+                sender.finish(if fails {
+                    Event::failed("boom")
+                } else {
+                    Event::Result(())
+                });
             });
             Ok::<_, CreateError>(instance)
         })
     }
 }
 
-struct EndEdge;
+struct EndEdge(&'static str);
 
 impl Edge<Flaky> for EndEdge {
     fn name(&self) -> &str {
-        "after_a"
+        self.0
     }
 
     fn source(&self) -> &str {
-        "a"
+        self.0
     }
 
     fn targets(&self) -> &[Target] {
@@ -105,18 +157,38 @@ impl Edge<Flaky> for EndEdge {
     }
 }
 
+struct AcceptingSink;
+
+impl CheckpointSink for AcceptingSink {
+    fn accept<'a>(&'a self, _checkpoint: &'a Checkpoint) -> SinkFuture<'a> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+fn graph_of(nodes: Vec<ScriptedNode>) -> Arc<Graph<Flaky>> {
+    let mut builder = GraphBuilder::<Flaky>::new("1");
+    for node in nodes {
+        let name = node.name;
+        builder = builder
+            .node(Arc::new(node))
+            .edge(Arc::new(EndEdge(name)))
+            .entry(name);
+    }
+    Arc::new(builder.build().unwrap())
+}
+
 async fn failed_run_with_exhausted_serialization(panics: bool) -> (Vec<RunFailure>, String) {
-    SERIALIZATIONS_LEFT.with(|left| left.set(1));
-    PANIC_WHEN_EXHAUSTED.with(|flag| flag.set(panics));
-    let graph = GraphBuilder::<Flaky>::new("1")
-        .node(Arc::new(FailingNode))
-        .edge(Arc::new(EndEdge))
-        .entry("a")
-        .build()
-        .unwrap();
+    plan(
+        &[Answer::Succeed],
+        if panics { Answer::Panic } else { Answer::Fail },
+    );
+    let graph = graph_of(vec![ScriptedNode {
+        name: "a",
+        behavior: Behavior::Fail,
+    }]);
     let initial = State::create(Flaky(7)).unwrap();
     let config = RunConfig::new(CancelToken::new(), Duration::ZERO);
-    let outcome = start(Arc::new(graph), initial, vec!["a".to_owned()], config)
+    let outcome = start(graph, initial, vec!["a".to_owned()], config)
         .await
         .unwrap();
     match outcome {
@@ -145,4 +217,54 @@ async fn a_state_that_panics_while_serializing_is_reported_the_same_way() {
         }
         other => panic!("unexpected failure {other:?}"),
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_a_sink_step_whose_checkpoint_cannot_be_built_when_the_other_node_ends_during_the_grace_then_the_run_is_failed_not_ended()
+ {
+    plan(
+        &[Answer::Succeed, Answer::Succeed, Answer::Fail],
+        Answer::Succeed,
+    );
+    let gate = Arc::new(Notify::new());
+    let graph = graph_of(vec![
+        ScriptedNode {
+            name: "a",
+            behavior: Behavior::Result,
+        },
+        ScriptedNode {
+            name: "b",
+            behavior: Behavior::ResultAfter(Arc::clone(&gate)),
+        },
+    ]);
+    let observer = Recorder::new();
+    let mut config = RunConfig::new(CancelToken::new(), Duration::from_secs(10));
+    config.sink = Some(Arc::new(AcceptingSink));
+    config.observer = Some(Arc::clone(&observer) as _);
+    let initial = State::create(Flaky(7)).unwrap();
+    gate.notify_one();
+    let outcome = within(start(
+        graph,
+        initial,
+        vec!["a".to_owned(), "b".to_owned()],
+        config,
+    ))
+    .await
+    .unwrap();
+    let log = within(observer.wait_for_outcome()).await;
+    match outcome {
+        Outcome::RunFailed {
+            failures,
+            checkpoint,
+        } => {
+            assert!(matches!(failures[0], RunFailure::CheckpointNotBuilt { .. }));
+            assert_eq!(failures.len(), 1);
+            assert!(checkpoint.nodes().is_empty());
+        }
+        other => panic!("expected RunFailed, got {other:?}"),
+    }
+    assert_eq!(
+        log.last(),
+        Some(&Observation::Outcome(OutcomeKind::RunFailed))
+    );
 }

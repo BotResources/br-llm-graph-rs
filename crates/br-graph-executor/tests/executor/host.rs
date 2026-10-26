@@ -107,14 +107,43 @@ pub fn begin_resume(rig: &Rig, checkpoint: Checkpoint, limit: NonZeroUsize, setu
     }
 }
 
+pub const HANG_LIMIT: Duration = Duration::from_secs(7 * 24 * 3600);
+
+pub async fn within<T>(waiting: impl std::future::Future<Output = T>) -> T {
+    match tokio::time::timeout(HANG_LIMIT, waiting).await {
+        Ok(value) => value,
+        Err(_) => panic!("nothing happened within a week of virtual time: the test would hang"),
+    }
+}
+
 impl Host {
     pub async fn outcome(self) -> Outcome<Kv> {
-        self.run.await.unwrap()
+        within(self.run).await.unwrap()
+    }
+
+    pub fn drop_the_run(&self) {
+        self.run.abort();
     }
 
     pub fn is_finished(&self) -> bool {
         self.run.is_finished()
     }
+}
+
+pub fn alive_tasks() -> usize {
+    tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks()
+}
+
+pub async fn tasks_back_to(baseline: usize) -> usize {
+    for _ in 0..1_000 {
+        if alive_tasks() <= baseline {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    alive_tasks()
 }
 
 pub async fn settle() {

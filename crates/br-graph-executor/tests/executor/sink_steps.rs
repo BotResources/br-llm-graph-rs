@@ -205,7 +205,17 @@ async fn after_a_refusal_the_outcome_checkpoint_is_the_most_current_one() {
     settle().await;
     f.result(set("late", 9));
     let (failures, checkpoint) = failed(host.outcome().await);
-    assert!(matches!(&failures[0], RunFailure::SinkRefused { .. }));
+    match &failures[0] {
+        RunFailure::SinkRefused {
+            checkpoint: refused,
+            ..
+        } => {
+            assert_eq!(refused, &sink.received()[0]);
+            assert_ne!(refused, &checkpoint);
+            assert_eq!(state_of(refused), kv(&[("k", 1)]));
+        }
+        other => panic!("unexpected failure {other:?}"),
+    }
     assert_eq!(state_of(&sink.received()[0]), kv(&[("k", 1)]));
     assert_eq!(state_of(&checkpoint), kv(&[("k", 1), ("late", 9)]));
     assert_ne!(checkpoint, sink.received()[0]);
