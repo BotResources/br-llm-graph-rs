@@ -1,4 +1,6 @@
-use br_graph_contract::{Fields, Reason, State};
+use std::fmt;
+
+use br_graph_contract::{CancelHandle, Fields, Reason, State};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,6 +90,21 @@ pub struct Item {
     pub label: String,
 }
 
+#[derive(Clone)]
+pub struct Hook(pub CancelHandle);
+
+impl fmt::Debug for Hook {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Hook")
+    }
+}
+
+impl PartialEq for Hook {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ItemUpdate {
     Nothing,
@@ -95,6 +112,7 @@ pub enum ItemUpdate {
     Record(String),
     Reject,
     Invalidate,
+    Trigger(Hook),
 }
 
 impl Item {
@@ -136,6 +154,7 @@ impl Fields for Item {
             ItemUpdate::Record(error) => self.error = Some(error),
             ItemUpdate::Reject => return Err(Reason::new("the item refuses this update")),
             ItemUpdate::Invalidate => self.out = Some(u32::MAX),
+            ItemUpdate::Trigger(hook) => hook.0.trigger(),
         }
         Ok(())
     }

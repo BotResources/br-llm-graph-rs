@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use br_graph_contract::{CancelView, Event, EventSender, InputReader, Reason};
+use br_graph_contract::{CancelView, Dropped, Event, EventSender, InputReader, Reason};
 
 use super::watch::{Live, locked};
-use super::{Mode, ProbeCause, Shared};
-use crate::common::{Item, ItemUpdate};
+use super::{Mark, Mode, ProbeCause, Shared, Witness};
+use crate::common::{Hook, Item, ItemUpdate};
 
 pub(super) async fn child(
     shared: Arc<Shared>,
@@ -15,7 +15,7 @@ pub(super) async fn child(
     sender: EventSender<Item>,
     cancel: CancelView,
 ) {
-    let mut dropped = sender.dropped();
+    let mut dropped = Witness::new(sender.dropped(), &shared.log, Mark::Dropped(position));
     let first = tokio::select! {
         biased;
         () = &mut dropped => None,
@@ -26,7 +26,7 @@ pub(super) async fn child(
             let value = input.fields().value;
             locked(&shared.stats.inputs).push((sender.id(), value));
             shared.started.send(value).ok();
-            decide(&shared, value, &cancel, &mut dropped).await
+            decide(&shared, position, value, &cancel, &mut dropped).await
         }
         None => None,
     };
@@ -46,18 +46,20 @@ pub(super) async fn child(
 
 async fn decide(
     shared: &Shared,
+    position: usize,
     value: u32,
     cancel: &CancelView,
-    dropped: &mut br_graph_contract::Dropped,
+    dropped: &mut Witness<Dropped>,
 ) -> Option<Event<Item>> {
     let answer = || Event::Result(ItemUpdate::Set(value * 2));
     let gate = shared.gates.gate(value);
+    let triggered = || Witness::new(cancel.triggered(), &shared.log, Mark::Triggered(position));
     match (shared.mode)(value) {
         Mode::Answer => Some(answer()),
         Mode::Gate => tokio::select! {
             biased;
             () = &mut *dropped => None,
-            () = cancel.triggered() => Some(Event::Cancelled),
+            () = triggered() => Some(Event::Cancelled),
             () = gate.notified() => Some(answer()),
         },
         Mode::Silent => tokio::select! {
@@ -84,6 +86,10 @@ async fn decide(
                 gate.notified().await;
                 Some(Event::Cancelled)
             }
+        },
+        Mode::TriggerOnApply => match locked(&shared.outer).as_ref() {
+            Some(handle) => Some(Event::Result(ItemUpdate::Trigger(Hook(handle.clone())))),
+            None => Some(answer()),
         },
         Mode::TriggerThenAnswer => {
             if let Some(handle) = locked(&shared.outer).as_ref() {

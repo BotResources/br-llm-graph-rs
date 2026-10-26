@@ -1,6 +1,4 @@
-use br_graph_contract::{
-    CancelView, Dropped, Event, EventSender, Fields, Input, InputReader, Triggered,
-};
+use br_graph_contract::{CancelView, Dropped, EventSender, Fields, Input, InputReader, Triggered};
 
 pub(crate) struct Signals {
     pub(crate) cancel: Triggered,
@@ -32,14 +30,4 @@ impl Signals {
             next = reader.next() => next.map_or(Awaited::Gone, Awaited::Input),
         }
     }
-}
-
-pub(crate) fn settle<F: Fields>(
-    reader: &mut InputReader<F>,
-    sender: EventSender<F>,
-    event: Event<F>,
-) {
-    reader.close();
-    drop(reader.drain());
-    sender.finish(event);
 }

@@ -3,7 +3,8 @@ use std::sync::Arc;
 use br_graph_contract::{CancelView, Event, EventSender, Fields, InputReader, Reason, State};
 
 use super::{LateInput, Rules};
-use crate::signals::{Awaited, Signals, settle};
+use crate::settle::settle;
+use crate::signals::{Awaited, Signals};
 
 enum Decision {
     Wait,

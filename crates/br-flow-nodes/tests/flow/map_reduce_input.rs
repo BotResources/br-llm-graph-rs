@@ -24,7 +24,7 @@ async fn the_instance_waits_for_its_first_input_before_it_calls_the_map_function
     assert_eq!(watch.created(), 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn it_works_on_the_state_of_the_last_input_it_had_already_accepted() {
     let (probe, watch) = Probe::with_mode(|_| Mode::Answer);
     let (node, maps, reduces) = counting_fan_out(&probe, 2);

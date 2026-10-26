@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use br_flow_nodes::{LateInput, Merger};
-use br_graph_contract::{Event, InputClosed, Node};
+use br_graph_contract::{Event, EventEndError, InputClosed, Node};
 
 use crate::common::{Driver, Report, ReportUpdate, both_filled, merged};
 
@@ -85,7 +85,7 @@ async fn after_its_result_the_instance_sends_nothing_more_and_refuses_inputs() {
         .unwrap();
     driver.update().await;
 
-    assert!(driver.events.recv().await.is_err());
+    assert_eq!(driver.ended().await, EventEndError::Finished);
     assert_eq!(
         driver.give(Report::filled(true, true, false).state()),
         Err(InputClosed)
@@ -188,7 +188,7 @@ async fn the_fire_again_policy_stays_silent_when_a_spent_input_is_not_ready() {
     driver.silent().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn inputs_read_after_the_close_are_not_judged_by_spent_and_one_result_answers_them_all() {
     let (node, ready_calls, spent_calls) = counting(LateInput::Fail);
     let mut driver = Driver::start(&node).await;
@@ -206,10 +206,10 @@ async fn inputs_read_after_the_close_are_not_judged_by_spent_and_one_result_answ
     assert_eq!(driver.update().await, ReportUpdate::Nothing);
     assert_eq!(spent_calls.load(Ordering::SeqCst), 1);
     assert_eq!(ready_calls.load(Ordering::SeqCst), 1);
-    assert!(driver.events.recv().await.is_err());
+    assert_eq!(driver.ended().await, EventEndError::Finished);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn the_fail_policy_sends_one_refusal_for_all_the_accepted_inputs() {
     let mut driver = Driver::start(&plain().late_input(LateInput::Fail)).await;
 
@@ -221,7 +221,7 @@ async fn the_fail_policy_sends_one_refusal_for_all_the_accepted_inputs() {
         .unwrap();
 
     assert!(matches!(driver.event().await, Event::Refused(_)));
-    assert!(driver.events.recv().await.is_err());
+    assert_eq!(driver.ended().await, EventEndError::Finished);
 }
 
 #[tokio::test(flavor = "multi_thread")]

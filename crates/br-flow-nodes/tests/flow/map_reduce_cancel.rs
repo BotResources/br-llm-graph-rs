@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use br_graph_contract::{Event, InputClosed};
+use br_graph_contract::{Event, EventEndError, InputClosed};
 
 use crate::common::{Driver, Mode, Probe, Report, counting_fan_out};
 
@@ -73,7 +73,8 @@ async fn cancel_discards_what_the_live_instances_send_while_they_stop() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cancel_after_every_state_is_final_gives_the_result_or_cancelled_and_never_both() {
+async fn a_cancel_triggered_by_the_last_instance_before_it_answers_gives_cancelled_and_never_reduces()
+ {
     let (probe, watch) = Probe::with_mode(|_| Mode::TriggerThenAnswer);
     let (node, _maps, reduces) = counting_fan_out(&probe, 1);
     let mut driver = Driver::start(&node).await;
@@ -82,12 +83,24 @@ async fn a_cancel_after_every_state_is_final_gives_the_result_or_cancelled_and_n
 
     let event = driver.event().await;
 
-    match event {
-        Event::Result(_) => assert_eq!(reduces.load(Ordering::SeqCst), 1),
-        Event::Cancelled => assert_eq!(reduces.load(Ordering::SeqCst), 0),
-        other => panic!("expected Result or Cancelled, got {other:?}"),
-    }
-    assert!(driver.events.recv().await.is_err());
+    assert!(matches!(event, Event::Cancelled), "{event:?}");
+    assert_eq!(reduces.load(Ordering::SeqCst), 0);
+    assert_eq!(driver.ended().await, EventEndError::Finished);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancel_triggered_while_the_last_result_is_applied_gives_cancelled_and_never_reduces() {
+    let (probe, watch) = Probe::with_mode(|_| Mode::TriggerOnApply);
+    let (node, _maps, reduces) = counting_fan_out(&probe, 1);
+    let mut driver = Driver::start(&node).await;
+    watch.outer_trigger(driver.cancel.handle().clone());
+    driver.give(Report::with_items(&[1]).state()).unwrap();
+
+    let event = driver.event().await;
+
+    assert!(matches!(event, Event::Cancelled), "{event:?}");
+    assert_eq!(reduces.load(Ordering::SeqCst), 0);
+    assert_eq!(driver.ended().await, EventEndError::Finished);
 }
 
 #[tokio::test(start_paused = true)]

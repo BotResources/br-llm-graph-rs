@@ -5,7 +5,8 @@ use br_graph_contract::{CancelView, Event, EventSender, Fields, InputReader};
 
 use super::Rules;
 use super::work::{self, Outcome};
-use crate::signals::{Awaited, Signals, settle};
+use crate::settle::settle;
+use crate::signals::{Awaited, Signals};
 
 pub(super) async fn run<F: Fields, G: Fields>(
     rules: Arc<Rules<F, G>>,

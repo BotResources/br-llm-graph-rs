@@ -5,8 +5,7 @@ use br_flow_nodes::MapReduce;
 use br_graph_contract::{Event, State};
 
 use crate::common::{
-    Driver, Item, Mode, Probe, Report, ReportUpdate, counting_fan_out, fan_out, in_order, items_of,
-    nz, summed,
+    Driver, Item, Mode, Probe, Report, ReportUpdate, counting_fan_out, fan_out, nz, ordered, summed,
 };
 
 fn reduced(sum: u32, errors: &[&str]) -> ReportUpdate {
@@ -19,11 +18,14 @@ fn reduced(sum: u32, errors: &[&str]) -> ReportUpdate {
 #[tokio::test(flavor = "multi_thread")]
 async fn each_element_runs_through_the_internal_node_and_reduce_joins_the_results() {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Answer);
-    let mut driver = Driver::start(&fan_out(&probe, 2)).await;
+    let mut driver = Driver::start(&ordered(&probe, 2)).await;
 
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
-    assert_eq!(driver.update().await, reduced(12, &[]));
+    assert_eq!(
+        driver.update().await,
+        reduced(0, &["1:Some(2)", "2:Some(4)", "3:Some(6)"])
+    );
     assert_eq!(watch.values_in_creation_order(), vec![1, 2, 3]);
     assert_eq!(watch.dropped_positions(3).await, vec![0, 1, 2]);
     assert_eq!(watch.extra_inputs(), 0);
@@ -32,8 +34,7 @@ async fn each_element_runs_through_the_internal_node_and_reduce_joins_the_result
 #[tokio::test(flavor = "multi_thread")]
 async fn reduce_gets_the_states_in_map_order_whatever_the_order_the_instances_end() {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Gate);
-    let node = MapReduce::new("fan", items_of, probe, nz(3), in_order);
-    let mut driver = Driver::start(&node).await;
+    let mut driver = Driver::start(&ordered(&probe, 3)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
     watch.started_values(3).await;
 
@@ -42,13 +43,16 @@ async fn reduce_gets_the_states_in_map_order_whatever_the_order_the_instances_en
         assert_eq!(watch.dropped_positions(1).await, vec![value as usize - 1]);
     }
 
-    assert_eq!(driver.update().await, reduced(0, &["1", "2", "3"]));
+    assert_eq!(
+        driver.update().await,
+        reduced(0, &["1:Some(2)", "2:Some(4)", "3:Some(6)"])
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn at_most_the_limit_run_at_once_and_the_next_starts_when_one_ends_in_list_order() {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Gate);
-    let mut driver = Driver::start(&fan_out(&probe, 2)).await;
+    let mut driver = Driver::start(&ordered(&probe, 2)).await;
     driver
         .give(Report::with_items(&[1, 2, 3, 4, 5]).state())
         .unwrap();
@@ -64,7 +68,19 @@ async fn at_most_the_limit_run_at_once_and_the_next_starts_when_one_ends_in_list
         watch.gates.release(value);
     }
 
-    assert_eq!(driver.update().await, reduced(30, &[]));
+    assert_eq!(
+        driver.update().await,
+        reduced(
+            0,
+            &[
+                "1:Some(2)",
+                "2:Some(4)",
+                "3:Some(6)",
+                "4:Some(8)",
+                "5:Some(10)"
+            ]
+        )
+    );
     assert_eq!(watch.max_live(), 2);
     assert_eq!(watch.values_in_creation_order(), vec![1, 2, 3, 4, 5]);
 }

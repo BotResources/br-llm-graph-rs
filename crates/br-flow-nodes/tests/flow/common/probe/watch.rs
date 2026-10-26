@@ -6,6 +6,9 @@ use br_graph_contract::{CancelHandle, CancelView, InstanceId};
 use tokio::sync::Notify;
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use super::order::Log;
+use crate::common::BOUND;
+
 #[derive(Default)]
 pub struct Gates {
     map: Mutex<HashMap<u32, Arc<Notify>>>,
@@ -40,6 +43,7 @@ pub struct Watch {
     pub started: UnboundedReceiver<u32>,
     pub dropped: UnboundedReceiver<usize>,
     pub gates: Arc<Gates>,
+    pub log: Arc<Log>,
     pub(super) stats: Arc<Stats>,
     pub(super) outer: Arc<Mutex<Option<CancelHandle>>>,
 }
@@ -85,7 +89,10 @@ impl Watch {
     pub async fn started_values(&mut self, count: usize) -> Vec<u32> {
         let mut values = Vec::new();
         for _ in 0..count {
-            values.push(self.started.recv().await.expect("a started child"));
+            let started = tokio::time::timeout(BOUND, self.started.recv())
+                .await
+                .expect("a started child within the bound");
+            values.push(started.expect("a started child"));
         }
         values
     }
@@ -93,10 +100,24 @@ impl Watch {
     pub async fn dropped_positions(&mut self, count: usize) -> Vec<usize> {
         let mut values = Vec::new();
         for _ in 0..count {
-            values.push(self.dropped.recv().await.expect("a dropped child"));
+            let dropped = tokio::time::timeout(BOUND, self.dropped.recv())
+                .await
+                .expect("a dropped child within the bound");
+            values.push(dropped.expect("a dropped child"));
         }
         values.sort_unstable();
         values
+    }
+
+    pub async fn created_at_least(&self, count: usize) {
+        let reached = async {
+            while self.created() < count {
+                tokio::task::yield_now().await;
+            }
+        };
+        tokio::time::timeout(BOUND, reached)
+            .await
+            .expect("the instances were created within the bound");
     }
 }
 

@@ -28,12 +28,19 @@ impl<F: Fields, G: Fields> Work<'_, F, G> {
                 cause: Box::new(error),
             })
         })?;
-        let creation = self.rules.internal_node.create(self.scope.view(), id);
-        let created = tokio::select! {
-            biased;
-            () = &mut signals.dropped => return Err(Halt::Dropped),
-            () = &mut signals.cancel => return Err(Halt::Cancel),
-            created = creation => created,
+        let rules = self.rules;
+        let mut creation = rules.internal_node.create(self.scope.view(), id);
+        let created = loop {
+            tokio::select! {
+                biased;
+                () = &mut signals.dropped => return Err(Halt::Dropped),
+                () = &mut signals.cancel => return Err(Halt::Cancel),
+                joined = self.children.join_next(), if !self.children.is_empty() => match joined {
+                    Some(Ok((finished, received))) => self.receive(finished, received)?,
+                    Some(Err(_)) | None => return Err(Halt::Dropped),
+                },
+                created = &mut creation => break created,
+            }
         };
         let instance = created.map_err(|error| {
             Halt::Fault(MapReduceError::InstanceNotCreated {

@@ -18,6 +18,8 @@ pub enum CreateMode {
     WrongId,
     CloseInput,
     Hang,
+    FailWhenReleased,
+    AnswerAndClose,
 }
 
 #[derive(Clone, Copy)]
@@ -35,4 +37,5 @@ pub enum Mode {
     IgnoreCancel,
     SlowCancel,
     TriggerThenAnswer,
+    TriggerOnApply,
 }

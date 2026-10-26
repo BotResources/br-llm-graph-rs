@@ -33,10 +33,10 @@ async fn a_silent_instance_that_has_read_inputs_still_sends_cancelled_on_cancel(
     driver.cancel.handle().trigger();
 
     assert!(matches!(driver.event().await, Event::Cancelled));
-    assert!(driver.events.recv().await.is_err());
+    assert_eq!(driver.ended().await, EventEndError::Finished);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn a_cancel_triggered_before_the_first_read_wins_over_an_accepted_input() {
     let mut driver = Driver::start(&plain()).await;
     driver
@@ -47,7 +47,7 @@ async fn a_cancel_triggered_before_the_first_read_wins_over_an_accepted_input() 
     assert!(matches!(driver.event().await, Event::Cancelled));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn dropping_both_ends_ends_the_task_of_a_silent_instance() {
     let driver = Driver::start(&plain()).await;
     driver
@@ -59,7 +59,7 @@ async fn dropping_both_ends_ends_the_task_of_a_silent_instance() {
     assert!(tasks_end().await);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn dropping_only_the_event_end_ends_the_task_and_refuses_inputs() {
     let driver = Driver::start(&plain()).await;
     let Driver { input, events, .. } = driver;
@@ -75,7 +75,7 @@ async fn dropping_only_the_event_end_ends_the_task_and_refuses_inputs() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn dropping_the_instance_before_the_task_ever_ran_ends_it_without_an_event() {
     let driver = Driver::start(&plain()).await;
 
@@ -93,10 +93,7 @@ async fn a_panic_in_the_ready_function_ends_the_instance_as_vanished() {
         .give(Report::filled(true, true, false).state())
         .unwrap();
 
-    assert_eq!(
-        driver.events.recv().await.unwrap_err(),
-        EventEndError::Vanished
-    );
+    assert_eq!(driver.ended().await, EventEndError::Vanished);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -108,8 +105,5 @@ async fn a_panic_in_the_spent_function_ends_the_instance_as_vanished() {
         .give(Report::filled(true, true, false).state())
         .unwrap();
 
-    assert_eq!(
-        driver.events.recv().await.unwrap_err(),
-        EventEndError::Vanished
-    );
+    assert_eq!(driver.ended().await, EventEndError::Vanished);
 }

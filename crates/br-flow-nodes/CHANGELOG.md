@@ -29,7 +29,8 @@ built on `br-graph-contract` 0.1.0 only.
   reduce function, with an optional internal size limit (default
   `DEFAULT_STATE_LIMIT`). It works on the state of the last input it had
   accepted, creates the internal instances one at a time in list order (at
-  most `limit` live, a fresh UUIDv7 and a child cancel token each), applies each
+  most `limit` live, a fresh UUIDv7 each and a view of the one child cancel token
+  of the outer instance), applies each
   internal `Result` to its internal state and sends the update of the reduce
   function, which receives the final states in map order.
 - `MapReduceError`: the cause of the `Failed` of a map-reduce instance, one

@@ -1,24 +1,12 @@
 use std::error::Error;
 
 use br_flow_nodes::MapReduceError;
-use br_graph_contract::{Event, InputClosed};
+use br_graph_contract::{EventEndError, InputClosed};
 
 use crate::common::{
-    BAD_VALUE, CreateMode, Driver, Mode, Probe, ProbeCause, Report, counting_fan_out, fan_out, nz,
+    BAD_VALUE, CreateMode, Driver, Mode, Probe, ProbeCause, Report, counting_fan_out, fan_out,
+    mode_at, nz,
 };
-
-async fn failure(driver: &mut Driver<Report>) -> MapReduceError {
-    match driver.event().await {
-        Event::Failed(cause) => *cause
-            .downcast::<MapReduceError>()
-            .expect("the cause is a MapReduceError"),
-        other => panic!("expected Failed, got {other:?}"),
-    }
-}
-
-fn mode_at(fault: u32, mode: Mode) -> impl Fn(u32) -> Mode + Send + Sync + 'static {
-    move |value| if value == fault { mode } else { Mode::Answer }
-}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_invalid_initial_value_fails_with_its_position_before_any_instance_is_created() {
@@ -30,7 +18,7 @@ async fn an_invalid_initial_value_fails_with_its_position_before_any_instance_is
         .unwrap();
 
     assert!(matches!(
-        failure(&mut driver).await,
+        driver.failure().await,
         MapReduceError::InvalidInitialValue { position: 2, .. }
     ));
     assert_eq!(watch.created(), 0);
@@ -45,7 +33,7 @@ async fn an_initial_value_over_the_internal_size_limit_fails_with_its_position()
     driver.give(Report::with_items(&[1]).state()).unwrap();
 
     assert!(matches!(
-        failure(&mut driver).await,
+        driver.failure().await,
         MapReduceError::InvalidInitialValue { position: 0, .. }
     ));
     assert_eq!(watch.created(), 0);
@@ -67,7 +55,7 @@ async fn an_instance_that_cannot_be_created_fails_with_its_position_and_keeps_th
 
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
-    let error = failure(&mut driver).await;
+    let error = driver.failure().await;
     assert!(error.source().is_some_and(|cause| cause.is::<ProbeCause>()));
     assert!(matches!(
         error,
@@ -91,7 +79,7 @@ async fn an_instance_with_another_instance_id_than_the_one_given_fails_with_its_
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
-    match failure(&mut driver).await {
+    match driver.failure().await {
         MapReduceError::InstanceIdMismatch {
             position: 0,
             expected,
@@ -118,7 +106,7 @@ async fn an_instance_that_refuses_its_one_input_fails_with_its_position() {
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
     assert!(matches!(
-        failure(&mut driver).await,
+        driver.failure().await,
         MapReduceError::InputRefused { position: 2 }
     ));
 }
@@ -133,7 +121,7 @@ async fn an_internal_failed_fails_with_its_position_and_keeps_the_opaque_cause_a
         .give(Report::with_items(&[1, 2, 3, 4]).state())
         .unwrap();
 
-    match failure(&mut driver).await {
+    match driver.failure().await {
         MapReduceError::InternalFailed { position: 2, cause } => {
             assert!(cause.is::<ProbeCause>());
         }
@@ -149,7 +137,7 @@ async fn an_internal_refused_fails_with_its_position_and_its_reason() {
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
-    match failure(&mut driver).await {
+    match driver.failure().await {
         MapReduceError::InternalRefused {
             position: 1,
             reason,
@@ -168,7 +156,7 @@ async fn an_internal_cancelled_while_the_child_token_is_not_triggered_is_a_fault
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
     assert!(matches!(
-        failure(&mut driver).await,
+        driver.failure().await,
         MapReduceError::InternalCancelled { position: 0 }
     ));
 }
@@ -181,7 +169,7 @@ async fn an_internal_instance_that_vanishes_is_a_fault_with_its_position() {
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
     assert!(matches!(
-        failure(&mut driver).await,
+        driver.failure().await,
         MapReduceError::InternalVanished { position: 1 }
     ));
 }
@@ -193,7 +181,7 @@ async fn an_internal_update_the_state_refuses_is_a_fault_with_its_position() {
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
-    match failure(&mut driver).await {
+    match driver.failure().await {
         MapReduceError::UpdateRejected {
             position: 1,
             reason,
@@ -211,7 +199,7 @@ async fn an_internal_update_that_gives_an_invalid_state_is_a_fault_with_its_posi
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
-    match failure(&mut driver).await {
+    match driver.failure().await {
         MapReduceError::UpdateRejected {
             position: 0,
             reason,
@@ -233,17 +221,18 @@ async fn the_first_failure_wins_the_others_are_dropped_and_never_reported_and_th
     let mut driver = Driver::start(&node).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
-    let error = failure(&mut driver).await;
+    let error = driver.failure().await;
+    let child_tokens_triggered = watch.views().iter().all(|view| view.is_triggered());
 
     assert!(matches!(
         error,
         MapReduceError::InternalFailed { position: 1, .. }
     ));
+    assert!(child_tokens_triggered);
     assert_eq!(watch.dropped_positions(3).await, vec![0, 1, 2]);
-    assert!(watch.views().iter().all(|view| view.is_triggered()));
     assert!(!driver.cancel.handle().is_triggered());
     assert_eq!(reduces.load(std::sync::atomic::Ordering::SeqCst), 0);
-    assert!(driver.events.recv().await.is_err());
+    assert_eq!(driver.ended().await, EventEndError::Finished);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -251,7 +240,7 @@ async fn after_a_failure_the_input_end_is_closed() {
     let (probe, _watch) = Probe::with_mode(mode_at(1, Mode::Fail));
     let mut driver = Driver::start(&fan_out(&probe, 1)).await;
     driver.give(Report::with_items(&[1]).state()).unwrap();
-    failure(&mut driver).await;
+    driver.failure().await;
 
     assert_eq!(
         driver.give(Report::with_items(&[1]).state()),
@@ -259,7 +248,7 @@ async fn after_a_failure_the_input_end_is_closed() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn the_error_displays_the_fault_with_its_position_and_gives_a_source_only_for_an_opaque_cause()
  {
     let (rejecting, _watch) = Probe::with_mode(mode_at(2, Mode::Reject));
@@ -269,8 +258,8 @@ async fn the_error_displays_the_fault_with_its_position_and_gives_a_source_only_
     rejected.give(Report::with_items(&[1, 2]).state()).unwrap();
     failed.give(Report::with_items(&[1]).state()).unwrap();
 
-    let rejected = failure(&mut rejected).await;
-    let failed = failure(&mut failed).await;
+    let rejected = rejected.failure().await;
+    let failed = failed.failure().await;
 
     assert_eq!(
         rejected.to_string(),

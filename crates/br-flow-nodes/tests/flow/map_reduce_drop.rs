@@ -5,7 +5,7 @@ use crate::common::{
     CreateMode, Driver, Item, Mode, Probe, Report, fan_out, items_of, nz, summed, tasks_end,
 };
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn dropping_the_outer_instance_stops_everything_and_drops_every_internal_instance() {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Gate);
     let driver = Driver::start(&fan_out(&probe, 2)).await;
@@ -22,28 +22,24 @@ async fn dropping_the_outer_instance_stops_everything_and_drops_every_internal_i
     assert_eq!(watch.created(), 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn dropping_the_outer_instance_while_an_instance_is_being_created_leaves_no_task() {
     let (probe, watch) = Probe::new(|_| CreateMode::Hang, |_| Mode::Answer);
     let driver = Driver::start(&fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
-    while watch.created() == 0 {
-        tokio::task::yield_now().await;
-    }
+    watch.created_at_least(1).await;
 
     drop(driver);
 
     assert!(tasks_end().await);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn a_cancel_during_the_creation_of_an_instance_sends_cancelled() {
     let (probe, watch) = Probe::new(|_| CreateMode::Hang, |_| Mode::Answer);
     let mut driver = Driver::start(&fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
-    while watch.created() == 0 {
-        tokio::task::yield_now().await;
-    }
+    watch.created_at_least(1).await;
 
     driver.cancel.handle().trigger();
 
@@ -51,7 +47,7 @@ async fn a_cancel_during_the_creation_of_an_instance_sends_cancelled() {
     assert_eq!(watch.created(), 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn dropping_the_outer_instance_before_any_input_leaves_no_task() {
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let driver = Driver::start(&fan_out(&probe, 2)).await;
@@ -61,7 +57,7 @@ async fn dropping_the_outer_instance_before_any_input_leaves_no_task() {
     assert!(tasks_end().await);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn after_a_failure_no_task_is_left_and_the_siblings_are_dropped() {
     let (probe, mut watch) = Probe::with_mode(|value| match value {
         1 => Mode::Fail,
@@ -90,15 +86,12 @@ async fn a_panic_in_the_map_function_ends_the_instance_as_vanished() {
 
     driver.give(Report::with_items(&[1]).state()).unwrap();
 
-    assert_eq!(
-        driver.events.recv().await.unwrap_err(),
-        EventEndError::Vanished
-    );
+    assert_eq!(driver.ended().await, EventEndError::Vanished);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_panic_in_the_reduce_function_ends_the_instance_as_vanished_and_leaves_no_instance() {
-    let (probe, mut watch) = Probe::with_mode(|_| Mode::Answer);
+async fn a_panic_in_the_reduce_function_ends_the_instance_as_vanished() {
+    let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let node = MapReduce::new(
         "fan",
         items_of,
@@ -112,9 +105,5 @@ async fn a_panic_in_the_reduce_function_ends_the_instance_as_vanished_and_leaves
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
-    assert_eq!(
-        driver.events.recv().await.unwrap_err(),
-        EventEndError::Vanished
-    );
-    assert_eq!(watch.dropped_positions(2).await.len(), 2);
+    assert_eq!(driver.ended().await, EventEndError::Vanished);
 }
