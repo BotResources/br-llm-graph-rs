@@ -14,7 +14,8 @@ async fn checkpoint_of(rig: &Rig) -> Checkpoint {
 }
 
 fn forged(checkpoint: &Checkpoint, edit: impl FnOnce(&mut Value)) -> Checkpoint {
-    let mut value: Value = serde_json::from_slice(&serde_json::to_vec(checkpoint).unwrap()).unwrap();
+    let mut value: Value =
+        serde_json::from_slice(&serde_json::to_vec(checkpoint).unwrap()).unwrap();
     edit(&mut value);
     Checkpoint::from_json_slice(&serde_json::to_vec(&value).unwrap()).unwrap()
 }
@@ -233,14 +234,16 @@ fn bytes_that_are_not_a_checkpoint_are_malformed() {
 #[tokio::test(start_paused = true)]
 async fn an_unknown_field_or_a_broken_structure_is_malformed() {
     let checkpoint = checkpoint_of(&base()).await;
-    let mut value: Value = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+    let mut value: Value =
+        serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
     value["extra"] = json!(1);
     let unknown = serde_json::to_vec(&value).unwrap();
     assert!(matches!(
         Checkpoint::from_json_slice(&unknown),
         Err(ResumeError::Malformed { .. })
     ));
-    let mut value: Value = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+    let mut value: Value =
+        serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
     value["structure"]["entries"] = json!(["zz"]);
     let broken = serde_json::to_vec(&value).unwrap();
     assert!(matches!(
@@ -258,7 +261,11 @@ async fn every_refusal_has_a_reason() {
         refusal(&chain("1", &["a"]), checkpoint.clone()).await,
         refusal(&rig, forged(&checkpoint, |v| v["nodes"] = json!([]))).await,
         refusal(&rig, forged(&checkpoint, |v| v["nodes"] = json!(["zz"]))).await,
-        refusal(&rig, forged(&checkpoint, |v| v["nodes"] = json!(["a", "a"]))).await,
+        refusal(
+            &rig,
+            forged(&checkpoint, |v| v["nodes"] = json!(["a", "a"])),
+        )
+        .await,
         refusal(&rig, forged(&checkpoint, |v| v["state"] = json!(1))).await,
         Checkpoint::from_json_slice(b"nope").unwrap_err(),
     ];

@@ -181,7 +181,10 @@ async fn an_expected_error_written_in_the_fields_is_normal_data() {
     let host = begin(&rig, state(&[]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     a.result(set("error_code", 404));
-    assert_eq!(value_of(&ended(host.outcome().await), "error_code"), Some(404));
+    assert_eq!(
+        value_of(&ended(host.outcome().await), "error_code"),
+        Some(404)
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -211,7 +214,11 @@ async fn instances_are_created_just_in_time_and_never_in_advance() {
 async fn the_final_state_holds_every_applied_update_in_order() {
     let rig = chain("1", &["a", "b", "c"]);
     let host = begin(&rig, state(&[("n", 1)]), &["a"], Setup::new());
-    for (name, update) in [("a", add("n", 10)), ("b", set("m", 5)), ("c", add("n", 100))] {
+    for (name, update) in [
+        ("a", add("n", 10)),
+        ("b", set("m", 5)),
+        ("c", add("n", 100)),
+    ] {
         let mut instance = rig.stage.instance(name).await;
         instance.result(update);
     }
@@ -226,11 +233,13 @@ async fn a_silent_instance_keeps_the_run_alive_with_no_failure_and_no_timeout() 
     tokio::time::advance(Duration::from_secs(24 * 3600)).await;
     settle().await;
     assert!(!host.is_finished());
-    assert!(!host
-        .observer
-        .log()
-        .iter()
-        .any(|o| matches!(o, Observation::Outcome(_))));
+    assert!(
+        !host
+            .observer
+            .log()
+            .iter()
+            .any(|o| matches!(o, Observation::Outcome(_)))
+    );
 }
 
 #[tokio::test(start_paused = true)]

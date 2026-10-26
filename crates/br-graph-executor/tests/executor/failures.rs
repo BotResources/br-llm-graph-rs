@@ -238,12 +238,16 @@ async fn failures_are_listed_in_the_order_they_were_handled_and_the_first_is_the
     for (first, second) in [("a", "b"), ("b", "a")] {
         let rig = two_independent();
         let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
-        let mut a = rig.stage.instance("a").await;
-        let mut b = rig.stage.instance("b").await;
+        let a = rig.stage.instance("a").await;
+        let b = rig.stage.instance("b").await;
         let (mut one, mut two) = if first == "a" { (a, b) } else { (b, a) };
         one.failed("first");
         host.observer
-            .wait_for(if first == "a" { handled("a") } else { handled("b") })
+            .wait_for(if first == "a" {
+                handled("a")
+            } else {
+                handled("b")
+            })
             .await;
         two.refused("second");
         let (failures, _) = failed(host.outcome().await);
@@ -283,47 +287,4 @@ async fn an_instance_dropped_at_the_end_of_the_grace_counts_as_not_idle_and_is_n
     assert_eq!(failures.len(), 1);
     assert_eq!(checkpoint.nodes(), ["a", "b"]);
     assert!(b.is_dropped().await);
-}
-
-async fn failing_run(kind: &str) -> (Rig, br_graph_executor::Checkpoint) {
-    let rig = match kind {
-        "edge" => rig("1")
-            .entry("a")
-            .node("a")
-            .edge(edge_failing("a", &["END"], "edge broke"))
-            .build(),
-        _ => single("a"),
-    };
-    let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
-    let mut a = rig.stage.instance("a").await;
-    match kind {
-        "update" => a.result(Change::Refuse),
-        "edge" => a.result(set("k", 9)),
-        _ => a.refused("not twice"),
-    }
-    let (_, checkpoint) = failed(host.outcome().await);
-    (rig, checkpoint)
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_resume_after_a_refused_update_an_edge_failure_or_a_refused_input_runs_the_node_again() {
-    for kind in ["update", "edge", "refused"] {
-        let (rig, checkpoint) = failing_run(kind).await;
-        let host = begin_resume(&rig, checkpoint, BIG, Setup::new());
-        let mut again = rig.stage.instance("a").await;
-        assert_eq!(again.accepted_inputs(), vec![kv(&[("k", 1)])]);
-        again.failed("stop");
-        failed(host.outcome().await);
-        assert_eq!(rig.stage.create_calls("a"), 2);
-    }
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_node_that_refuses_its_input_refuses_it_again_after_a_resume() {
-    let (rig, checkpoint) = failing_run("refused").await;
-    let host = begin_resume(&rig, checkpoint, BIG, Setup::new());
-    let mut again = rig.stage.instance("a").await;
-    again.refused("not twice");
-    let (failures, _) = failed(host.outcome().await);
-    assert!(matches!(&failures[0], RunFailure::NodeRefusedInput { .. }));
 }

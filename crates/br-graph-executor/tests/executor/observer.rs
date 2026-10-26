@@ -35,7 +35,15 @@ impl Recorder {
             let notified = self.changed.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            if self.log.lock().unwrap().iter().filter(|o| matches(o)).count() >= count {
+            if self
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|o| matches(o))
+                .count()
+                >= count
+            {
                 return;
             }
             notified.await;
@@ -43,7 +51,8 @@ impl Recorder {
     }
 
     pub async fn wait_for_outcome(&self) -> Vec<Observation> {
-        self.wait_for(|o| matches!(o, Observation::Outcome(_))).await;
+        self.wait_for(|o| matches!(o, Observation::Outcome(_)))
+            .await;
         self.log()
     }
 }

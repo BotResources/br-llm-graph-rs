@@ -88,12 +88,7 @@ pub fn begin(rig: &Rig, state: State<Kv>, nodes: &[&str], setup: Setup) -> Host 
     }
 }
 
-pub fn begin_resume(
-    rig: &Rig,
-    checkpoint: Checkpoint,
-    limit: NonZeroUsize,
-    setup: Setup,
-) -> Host {
+pub fn begin_resume(rig: &Rig, checkpoint: Checkpoint, limit: NonZeroUsize, setup: Setup) -> Host {
     let (config, cancel, observer, sink) = setup.config();
     let graph = Arc::clone(&rig.graph);
     let run = tokio::spawn(async move {

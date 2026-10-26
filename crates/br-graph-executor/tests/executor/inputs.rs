@@ -40,10 +40,7 @@ async fn an_input_refused_as_closed_waits_for_the_terminal_event_and_goes_to_a_n
     b.result(set("done", 1));
     let mut second = rig.stage.instance("b").await;
     assert_ne!(second.id, b.id);
-    assert_eq!(
-        second.accepted_inputs(),
-        vec![kv(&[("done", 1), ("k", 1)])]
-    );
+    assert_eq!(second.accepted_inputs(), vec![kv(&[("done", 1), ("k", 1)])]);
     host.observer.wait_for_count(handed("b"), 2).await;
     second.result(Change::Empty);
     let observer = host.observer.clone();

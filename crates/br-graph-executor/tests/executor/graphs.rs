@@ -154,7 +154,10 @@ pub fn single(name: &str) -> Rig {
 }
 
 pub fn fan(source: &str, branches: &[&str]) -> Rig {
-    let mut builder = rig("1").entry(source).node(source).edge(edge(source, branches));
+    let mut builder = rig("1")
+        .entry(source)
+        .node(source)
+        .edge(edge(source, branches));
     for branch in branches {
         builder = builder.node(branch).edge(edge(branch, &["END"]));
     }

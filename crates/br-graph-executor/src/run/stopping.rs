@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use br_graph_contract::Fields;
 use tokio::time::Instant;
 
@@ -18,7 +20,7 @@ impl<F: Fields> Run<F> {
     pub(super) fn begin_stopping(&mut self) {
         if !self.is_stopping() {
             self.phase = Phase::Stopping {
-                deadline: Instant::now() + self.grace,
+                deadline: deadline_after(self.grace),
             };
         }
     }
@@ -42,4 +44,13 @@ impl<F: Fields> Run<F> {
             }
         }
     }
+}
+
+const FAR_FUTURE: Duration = Duration::from_secs(60 * 60 * 24 * 365 * 30);
+
+fn deadline_after(grace: Duration) -> Instant {
+    let now = Instant::now();
+    now.checked_add(grace)
+        .or_else(|| now.checked_add(FAR_FUTURE))
+        .unwrap_or(now)
 }
