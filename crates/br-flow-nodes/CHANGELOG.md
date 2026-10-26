@@ -38,3 +38,8 @@ built on `br-graph-contract` 0.1.0 only.
   id mismatch, input refused, internal failed, internal refused, internal
   cancelled while the child token is not triggered, internal vanished, update
   rejected), each with the position of the internal state; `#[non_exhaustive]`.
+- The `Display` of `MapReduceError::InstanceNotCreated` and of `MapReduceError::InternalFailed` ends with `: {cause}`, the text of their `cause`, so the reason of a `RunFailure` built from the top-level `Display` shows the text of the internal node; the `cause` stays the `source`.
+- A panic in a function of a node (the map or reduce function of `MapReduce`, the ready or spent function of `Merger`) ends the instance with no terminal event: the executor reads `EventEndError::Vanished`, never `Failed`.
+- An internal node that closes its input end before its input is read gives `MapReduceError::InputRefused`, even after it has sent a terminal event.
+- A triggered cancel token before the first input gives `Cancelled` and closes the input end, for `MapReduce` and for `Merger`.
+- A dropped map-reduce instance (either end) triggers the child cancel token and drops its internal instances.

@@ -7,6 +7,7 @@ mod cancel_resume;
 mod checkpoint_wire;
 mod checkpoints;
 mod creation;
+mod debug_output;
 mod display_panics;
 mod failure_resume;
 mod failure_stop;

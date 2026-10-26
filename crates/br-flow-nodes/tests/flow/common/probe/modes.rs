@@ -5,7 +5,7 @@ pub struct ProbeCause;
 
 impl fmt::Display for ProbeCause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("the probe cause")
+        f.write_str("boom")
     }
 }
 

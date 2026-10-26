@@ -3,6 +3,7 @@
 mod common;
 mod map_reduce_cancel;
 mod map_reduce_creation;
+mod map_reduce_display;
 mod map_reduce_drop;
 mod map_reduce_failure;
 mod map_reduce_first_fault;

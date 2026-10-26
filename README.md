@@ -141,7 +141,7 @@ Behaviour to know:
 - An event end of an internal instance that ends because the map-reduce node dropped it is not a fault. If the task that waits for an internal instance ends in any other way (a runtime that shuts down), the outer task ends without an event, which the executor reads as `Vanished`.
 - When several internal instances fault at the same time, which fault comes first, and so the cause of `Failed`, depends on task scheduling and is not deterministic.
 - An internal node that closes its input end before it receives its one input makes the map-reduce node fail with `MapReduceError::InputRefused`, even if it has already sent a terminal event: the intent states `InputClosed` as a fault, and the node does not read the event before it gives the input.
-- `MapReduceError` is `#[non_exhaustive]`; its `Display` and `source` give the position and the opaque cause.
+- `MapReduceError` is `#[non_exhaustive]`; its `Display` and `source` give the position and the opaque cause, and the `Display` of `InstanceNotCreated` and `InternalFailed` ends with the text of that cause.
 
 Not enforced, and left to the implementer as the sealed intent states: that each function has no side effect, does no input or output and gives the same result for the same arguments (a blocking call in a function blocks a thread); that a function can be called by several runs at the same time; that the empty update of a merger shows the merge only through the update of another node, so a late input that comes before that update finds the spent function false; that the internal node meets the obligations of the contract; that the update of `reduce` stays correct on a later state and fits in the size limit of the state (a run that has done all its work then fails with a refused update, decided by the executor); that after a failure, a cancel or a resume all the elements run again with new instance ids, so effects of the internal node outside its state can happen again.
 
@@ -161,7 +161,9 @@ br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", p
 | `RunConfig` | the cancel token (new for each run: the executor triggers it on a failure) and the grace period (one whose deadline cannot be represented or is too close to the limit to be rounded up, `Duration::MAX` for instance, counts as about 30 years), both required, and the optional `CheckpointSink` (`accept` returns a `SinkFuture`, its refusal is a `SinkRefusal`) and `Observer` |
 | `Outcome` | `RunEnded` with the final state; `RunFailed` and `RunCancelled` with the failures in the order handled (the first is the reported cause) and the most current `Checkpoint` |
 | `RunFailure` | one named cause per failure, with a reason as text and the opaque cause when a node or an edge gave one (`NodeFailed` has none when the executor itself counts a `Cancelled` as a failure); `SinkRefused` carries the checkpoint the sink refused |
-| `Checkpoint` | the state, the structure of the graph and the names of the nodes that are not idle; serializable data with one wire form in which the state is a JSON string, exact through every serde door |
+| `Checkpoint` | the state (`state_json`), the structure of the graph (`structure()`) and the names of the nodes that are not idle (`nodes()`); serializable data with one wire form in which the state is a JSON string, exact through every serde door; its `Debug` shows the length of the state text, not the text |
+| `StartError` | `NoNodes` (the list is empty), `UnknownNode` (a listed node is not in the graph), `DuplicateNode` (a node is listed twice) |
+| `ResumeError` | `VersionMismatch` (the version differs), `StructureMismatch` (the node names or the edges differ), `StateRejected` (the state cannot be rebuilt: refused, over the limit, empty or panicking), `UnknownNode`, `DuplicateNode`, `NoNodes` (the checkpoint names a node the graph lacks, a node twice, or none), `Malformed` (the document cannot be read) |
 
 Behaviour to know:
 
@@ -169,6 +171,8 @@ Behaviour to know:
 - Panics are caught in the creation of an instance, in an edge, in the sink, in the observer, in the apply of the fields (an update refused), in the `Display` of a node, creation or edge error (the panic text becomes the reason), in the serialization of the state when a checkpoint is built (`CheckpointNotBuilt`, whose outcome checkpoint then holds an empty string as its state, which `resume` refuses as `StateRejected`) and in the rebuild of the state on a resume (`ResumeError::StateRejected`). A panic of `Clone` of the fields at the end of a run is not caught. A panic is caught only when unwinding is enabled.
 - The sink is called one checkpoint at a time inside the step: the run waits for it, and a cancel is read again when it answers. `Observer::observe` is synchronous and runs in a task of the host's runtime, fed without limit and never awaited by the run; it must return quickly, and an observer that blocks its thread stalls a `current_thread` runtime.
 - The public API names the types of br-graph-contract (`Fields`, `State`, `Graph`, `CancelToken`, `Cause`, `InstanceId`, `Target`, `Structure`) and `std::time::Duration`, `std::num::NonZeroUsize` and the serde traits (`Checkpoint` implements them).
+- When the host drops the future of `start` or `resume`, every live instance and the running sink call are dropped and no task of the run is left.
+- `SinkRefusal::new(reason)` makes a refusal; `Observation` is the only `#[non_exhaustive]` public type of the crate.
 - The executor retries nothing, detects no stuck run, stores no checkpoint and starts no run again: those are the host's.
 
 ## Releases
