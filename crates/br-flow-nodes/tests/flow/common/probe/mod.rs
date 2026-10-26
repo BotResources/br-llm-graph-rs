@@ -86,6 +86,7 @@ impl Node<Item> for Probe {
 
     fn create(&self, cancel: CancelView, id: InstanceId) -> CreateFuture<'_, Item> {
         let shared = Arc::clone(&self.shared);
+        shared.stats.calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(async move {
             let position = shared.stats.created.fetch_add(1, Ordering::SeqCst);
             let create_mode = (shared.create_mode)(position);
@@ -95,6 +96,9 @@ impl Node<Item> for Probe {
                 CreateMode::FailWhenReleased => {
                     shared.gates.gate(CREATION_GATE).notified().await;
                     return Err(CreateError::new(ProbeCause));
+                }
+                CreateMode::GateThenNormal => {
+                    shared.gates.gate(CREATION_GATE).notified().await;
                 }
                 _ => {}
             }

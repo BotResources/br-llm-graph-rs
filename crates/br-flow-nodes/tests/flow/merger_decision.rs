@@ -31,7 +31,8 @@ fn counting(late: LateInput) -> (Merger<Report>, Arc<AtomicUsize>, Arc<AtomicUsi
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_ready_state_gets_a_result_with_the_empty_update_and_closes_the_input_end() {
+async fn given_a_ready_state_when_an_input_is_read_then_a_result_with_the_empty_update_is_sent_and_the_input_end_is_closed()
+ {
     let mut driver = Driver::start(&plain()).await;
 
     driver
@@ -46,7 +47,7 @@ async fn a_ready_state_gets_a_result_with_the_empty_update_and_closes_the_input_
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_state_that_is_not_ready_leaves_the_instance_silent() {
+async fn given_a_state_that_is_not_ready_when_an_input_is_read_then_the_instance_stays_silent() {
     let mut driver = Driver::start(&plain()).await;
 
     driver
@@ -60,7 +61,8 @@ async fn a_state_that_is_not_ready_leaves_the_instance_silent() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn each_input_is_judged_on_its_own_state_with_no_memory_between_inputs() {
+async fn given_inputs_with_different_states_when_each_is_read_then_each_is_judged_on_its_own_state_with_no_memory()
+ {
     let mut driver = Driver::start(&plain()).await;
 
     driver
@@ -78,7 +80,8 @@ async fn each_input_is_judged_on_its_own_state_with_no_memory_between_inputs() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn after_its_result_the_instance_sends_nothing_more_and_refuses_inputs() {
+async fn given_a_result_already_sent_when_a_later_input_is_given_then_nothing_more_is_sent_and_the_input_is_refused()
+ {
     let mut driver = Driver::start(&plain()).await;
     driver
         .give(Report::filled(true, true, false).state())
@@ -93,7 +96,8 @@ async fn after_its_result_the_instance_sends_nothing_more_and_refuses_inputs() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_spent_function_is_called_first_and_a_silent_late_input_does_not_reach_ready() {
+async fn given_a_spent_input_with_the_silent_policy_when_it_is_read_then_spent_is_called_first_and_ready_is_not_reached()
+ {
     let (node, ready_calls, spent_calls) = counting(LateInput::Silent);
     let mut driver = Driver::start(&node).await;
 
@@ -107,7 +111,8 @@ async fn the_spent_function_is_called_first_and_a_silent_late_input_does_not_rea
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_late_input_policy_is_silent_when_the_runner_gives_none() {
+async fn given_no_late_input_policy_from_the_runner_when_a_spent_input_is_read_then_the_policy_is_silent()
+ {
     assert_eq!(LateInput::default(), LateInput::Silent);
     let mut driver = Driver::start(&plain()).await;
 
@@ -119,7 +124,8 @@ async fn the_late_input_policy_is_silent_when_the_runner_gives_none() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_silent_late_input_leaves_the_instance_reading_and_a_later_input_can_fire() {
+async fn given_a_silent_late_input_when_a_later_input_is_ready_then_the_instance_still_reads_and_fires()
+ {
     let mut driver = Driver::start(&plain().late_input(LateInput::Silent)).await;
 
     driver
@@ -134,7 +140,8 @@ async fn a_silent_late_input_leaves_the_instance_reading_and_a_later_input_can_f
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_fail_policy_closes_the_input_end_and_refuses_a_late_input_with_a_reason() {
+async fn given_the_fail_policy_when_a_spent_input_is_read_then_the_input_end_is_closed_and_a_refusal_with_a_reason_is_sent()
+ {
     let mut driver = Driver::start(&plain().late_input(LateInput::Fail)).await;
 
     driver
@@ -154,7 +161,7 @@ async fn the_fail_policy_closes_the_input_end_and_refuses_a_late_input_with_a_re
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_fail_policy_leaves_an_input_that_is_not_spent_to_the_ready_function() {
+async fn given_the_fail_policy_when_an_input_that_is_not_spent_is_read_then_ready_decides() {
     let mut driver = Driver::start(&plain().late_input(LateInput::Fail)).await;
 
     driver
@@ -165,7 +172,7 @@ async fn the_fail_policy_leaves_an_input_that_is_not_spent_to_the_ready_function
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_fire_again_policy_goes_on_to_the_ready_function_when_the_input_is_spent() {
+async fn given_the_fire_again_policy_when_a_spent_input_is_read_then_ready_decides() {
     let (node, ready_calls, _) = counting(LateInput::FireAgain);
     let mut driver = Driver::start(&node).await;
 
@@ -178,7 +185,8 @@ async fn the_fire_again_policy_goes_on_to_the_ready_function_when_the_input_is_s
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_fire_again_policy_stays_silent_when_a_spent_input_is_not_ready() {
+async fn given_the_fire_again_policy_when_a_spent_input_is_not_ready_then_the_instance_stays_silent()
+ {
     let mut driver = Driver::start(&plain().late_input(LateInput::FireAgain)).await;
 
     driver
@@ -189,7 +197,8 @@ async fn the_fire_again_policy_stays_silent_when_a_spent_input_is_not_ready() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn inputs_read_after_the_close_are_not_judged_by_spent_and_one_result_answers_them_all() {
+async fn given_inputs_read_after_the_close_when_the_result_is_sent_then_spent_does_not_judge_them_and_one_result_answers_them_all()
+ {
     let (node, ready_calls, spent_calls) = counting(LateInput::Fail);
     let mut driver = Driver::start(&node).await;
 
@@ -210,7 +219,8 @@ async fn inputs_read_after_the_close_are_not_judged_by_spent_and_one_result_answ
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn the_fail_policy_sends_one_refusal_for_all_the_accepted_inputs() {
+async fn given_the_fail_policy_and_several_accepted_inputs_when_they_are_spent_then_one_refusal_answers_them_all()
+ {
     let mut driver = Driver::start(&plain().late_input(LateInput::Fail)).await;
 
     driver
@@ -225,7 +235,7 @@ async fn the_fail_policy_sends_one_refusal_for_all_the_accepted_inputs() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn two_instances_of_one_node_decide_alone_from_their_own_inputs() {
+async fn given_two_instances_of_one_node_when_each_reads_its_inputs_then_each_decides_alone() {
     let node = Arc::new(plain());
     let mut first = Driver::start(&*node as &dyn Node<Report>).await;
     let mut second = Driver::start(&*node as &dyn Node<Report>).await;

@@ -1,21 +1,12 @@
 use br_flow_nodes::MapReduceError;
 
 use crate::common::{
-    CREATION_GATE, CreateMode, Driver, Mark, Mode, Probe, Report, fan_out, mode_at,
+    CREATION_GATE, CreateMode, Driver, Mark, Mode, Probe, Report, creation_at, fan_out, mode_at,
 };
 
-fn creation_at(slow: usize, create: CreateMode) -> impl Fn(usize) -> CreateMode + Send + Sync {
-    move |position| {
-        if position == slow {
-            create
-        } else {
-            CreateMode::Normal
-        }
-    }
-}
-
 #[tokio::test(start_paused = true)]
-async fn a_failure_of_a_sibling_is_seen_while_the_next_instance_is_being_created() {
+async fn given_a_creation_pending_when_a_sibling_fails_then_the_failure_is_seen_before_the_creation_ends()
+ {
     let (probe, watch) = Probe::new(creation_at(1, CreateMode::Hang), mode_at(1, Mode::Fail));
     let mut driver = Driver::start(&fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
@@ -30,7 +21,8 @@ async fn a_failure_of_a_sibling_is_seen_while_the_next_instance_is_being_created
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_result_of_a_sibling_is_applied_while_the_next_instance_is_being_created() {
+async fn given_a_creation_pending_when_a_sibling_result_is_refused_by_the_state_then_the_node_fails_before_the_creation_ends()
+ {
     let (probe, _watch) = Probe::new(creation_at(1, CreateMode::Hang), mode_at(1, Mode::Reject));
     let mut driver = Driver::start(&fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
@@ -44,7 +36,8 @@ async fn a_result_of_a_sibling_is_applied_while_the_next_instance_is_being_creat
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_creation_that_fails_after_a_sibling_failed_reports_the_sibling_not_the_creation() {
+async fn given_a_sibling_failure_read_during_a_creation_when_the_creation_would_fail_later_then_the_node_reports_the_sibling_and_not_the_creation()
+ {
     let (probe, mut watch) = Probe::new(
         creation_at(1, CreateMode::FailWhenReleased),
         mode_at(1, Mode::Fail),
@@ -63,7 +56,8 @@ async fn a_creation_that_fails_after_a_sibling_failed_reports_the_sibling_not_th
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_fault_that_is_already_known_stops_the_start_of_the_next_instance() {
+async fn given_a_fault_already_known_when_the_next_start_is_due_then_no_further_instance_is_created()
+ {
     let (probe, watch) = Probe::with_mode(|value| match value {
         1 => Mode::Answer,
         _ => Mode::Fail,
@@ -81,7 +75,7 @@ async fn a_fault_that_is_already_known_stops_the_start_of_the_next_instance() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn on_the_first_failure_the_other_instances_are_triggered_then_dropped_before_the_failure_is_readable()
+async fn given_live_siblings_when_one_fails_then_the_others_are_triggered_then_dropped_before_the_failure_is_readable()
  {
     let (probe, watch) = Probe::with_mode(|value| match value {
         2 => Mode::Fail,
@@ -114,7 +108,8 @@ async fn on_the_first_failure_the_other_instances_are_triggered_then_dropped_bef
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn an_instance_that_closed_its_input_end_after_a_terminal_event_still_refuses_its_input() {
+async fn given_an_instance_that_closed_its_input_end_after_a_terminal_event_when_its_input_is_given_then_the_node_fails_with_input_refused()
+ {
     let (probe, _watch) = Probe::new(creation_at(0, CreateMode::AnswerAndClose), |_| Mode::Answer);
     let mut driver = Driver::start(&fan_out(&probe, 1)).await;
 

@@ -42,7 +42,8 @@ impl Edge<Report> for Onward {
 fn is_send_sync_static<T: Send + Sync + 'static>() {}
 
 #[test]
-fn the_merger_is_a_programmatic_node_with_the_subkind_merger_and_the_given_name() {
+fn given_a_merger_built_with_a_name_when_its_shape_is_read_then_it_is_programmatic_with_the_subkind_merger_and_that_name()
+ {
     let node: Merger<Report> = Merger::new("join_reports", both_filled, merged);
 
     assert_eq!(node.name(), "join_reports");
@@ -51,7 +52,8 @@ fn the_merger_is_a_programmatic_node_with_the_subkind_merger_and_the_given_name(
 }
 
 #[test]
-fn the_late_input_policy_does_not_change_the_kind_or_the_subkind() {
+fn given_a_late_input_policy_when_the_merger_shape_is_read_then_the_kind_and_the_subkind_do_not_change()
+ {
     let node: Merger<Report> = Merger::new("join", both_filled, merged).late_input(LateInput::Fail);
 
     assert_eq!(node.kind(), PROGRAMMATIC);
@@ -59,7 +61,8 @@ fn the_late_input_policy_does_not_change_the_kind_or_the_subkind() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn the_map_reduce_is_a_programmatic_node_with_the_subkind_map_reduce_and_the_given_name() {
+async fn given_a_map_reduce_built_with_a_name_when_its_shape_is_read_then_it_is_programmatic_with_the_subkind_map_reduce_and_that_name()
+ {
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let node: MapReduce<Report, Item> = fan_out(&probe, 2);
 
@@ -69,7 +72,7 @@ async fn the_map_reduce_is_a_programmatic_node_with_the_subkind_map_reduce_and_t
 }
 
 #[test]
-fn the_nodes_and_the_error_can_be_shared_and_sent_between_threads() {
+fn given_the_nodes_and_the_error_when_shared_between_threads_then_they_are_send_and_sync() {
     is_send_sync_static::<Merger<Report>>();
     is_send_sync_static::<MapReduce<Report, Item>>();
     is_send_sync_static::<MapReduceError>();
@@ -77,7 +80,7 @@ fn the_nodes_and_the_error_can_be_shared_and_sent_between_threads() {
 }
 
 #[test]
-fn a_merger_and_a_map_reduce_node_build_into_a_graph_that_shows_their_kinds_and_not_the_internal_node()
+fn given_a_merger_and_a_map_reduce_node_when_a_graph_is_built_then_it_shows_their_kinds_and_not_the_internal_node()
  {
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let merger: Arc<dyn Node<Report>> = Arc::new(Merger::new("join", both_filled, merged));

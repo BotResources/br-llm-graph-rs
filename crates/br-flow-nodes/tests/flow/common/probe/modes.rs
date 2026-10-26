@@ -20,6 +20,7 @@ pub enum CreateMode {
     Hang,
     FailWhenReleased,
     AnswerAndClose,
+    GateThenNormal,
 }
 
 #[derive(Clone, Copy)]

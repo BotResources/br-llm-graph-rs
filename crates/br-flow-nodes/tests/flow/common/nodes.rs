@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use br_flow_nodes::MapReduce;
 use br_graph_contract::State;
 
-use super::{Item, Mode, Probe, Report, ReportUpdate};
+use super::{CreateMode, Item, Mode, Probe, Report, ReportUpdate};
 
 pub fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).expect("a positive number")
@@ -41,6 +41,19 @@ pub fn ordered(probe: &Arc<Probe>, limit: usize) -> MapReduce<Report, Item> {
 
 pub fn mode_at(fault: u32, mode: Mode) -> impl Fn(u32) -> Mode + Send + Sync + 'static {
     move |value| if value == fault { mode } else { Mode::Answer }
+}
+
+pub fn creation_at(
+    position: usize,
+    create: CreateMode,
+) -> impl Fn(usize) -> CreateMode + Send + Sync + 'static {
+    move |created| {
+        if created == position {
+            create
+        } else {
+            CreateMode::Normal
+        }
+    }
 }
 
 pub fn fan_out(probe: &Arc<Probe>, limit: usize) -> MapReduce<Report, Item> {

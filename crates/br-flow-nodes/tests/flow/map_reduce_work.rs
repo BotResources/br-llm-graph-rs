@@ -16,7 +16,8 @@ fn reduced(sum: u32, errors: &[&str]) -> ReportUpdate {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn each_element_runs_through_the_internal_node_and_reduce_joins_the_results() {
+async fn given_a_list_of_elements_when_the_node_works_then_each_runs_through_the_internal_node_and_reduce_joins_the_results()
+ {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Answer);
     let mut driver = Driver::start(&ordered(&probe, 2)).await;
 
@@ -32,7 +33,8 @@ async fn each_element_runs_through_the_internal_node_and_reduce_joins_the_result
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn reduce_gets_the_states_in_map_order_whatever_the_order_the_instances_end() {
+async fn given_instances_that_end_in_reverse_order_when_reduce_runs_then_it_gets_the_states_in_map_order()
+ {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Gate);
     let mut driver = Driver::start(&ordered(&probe, 3)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
@@ -50,7 +52,8 @@ async fn reduce_gets_the_states_in_map_order_whatever_the_order_the_instances_en
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn at_most_the_limit_run_at_once_and_the_next_starts_when_one_ends_in_list_order() {
+async fn given_a_limit_below_the_number_of_elements_when_the_node_works_then_at_most_the_limit_run_at_once_and_the_next_starts_in_list_order_when_one_ends()
+ {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Gate);
     let mut driver = Driver::start(&ordered(&probe, 2)).await;
     driver
@@ -86,7 +89,7 @@ async fn at_most_the_limit_run_at_once_and_the_next_starts_when_one_ends_in_list
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_limit_above_the_number_of_elements_runs_them_all_at_once() {
+async fn given_a_limit_above_the_number_of_elements_when_the_node_works_then_all_run_at_once() {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Gate);
     let mut driver = Driver::start(&fan_out(&probe, 10)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
@@ -101,7 +104,7 @@ async fn a_limit_above_the_number_of_elements_runs_them_all_at_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_limit_of_one_runs_the_elements_one_after_the_other() {
+async fn given_a_limit_of_one_when_the_node_works_then_the_elements_run_one_after_the_other() {
     let (probe, watch) = Probe::with_mode(|_| Mode::Answer);
     let mut driver = Driver::start(&fan_out(&probe, 1)).await;
 
@@ -113,7 +116,8 @@ async fn a_limit_of_one_runs_the_elements_one_after_the_other() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_empty_list_calls_reduce_with_an_empty_list_and_creates_no_instance() {
+async fn given_an_empty_list_when_the_node_works_then_reduce_gets_an_empty_list_and_no_instance_is_created()
+ {
     let (probe, watch) = Probe::with_mode(|_| Mode::Answer);
     let (node, maps, reduces) = counting_fan_out(&probe, 3);
     let mut driver = Driver::start(&node).await;
@@ -127,7 +131,8 @@ async fn an_empty_list_calls_reduce_with_an_empty_list_and_creates_no_instance()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn reduce_is_called_once_after_every_internal_state_is_final() {
+async fn given_several_elements_when_the_node_works_then_reduce_is_called_once_after_every_internal_state_is_final()
+ {
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let (node, _maps, reduces) = counting_fan_out(&probe, 2);
     let mut driver = Driver::start(&node).await;
@@ -141,7 +146,8 @@ async fn reduce_is_called_once_after_every_internal_state_is_final() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn every_internal_instance_gets_a_fresh_uuid_v7_never_reused_across_elements_and_runs() {
+async fn given_several_elements_and_runs_when_instances_are_created_then_each_gets_a_fresh_uuid_v7_never_reused()
+ {
     let (probe, watch) = Probe::with_mode(|_| Mode::Answer);
     let node = fan_out(&probe, 2);
 
@@ -158,7 +164,8 @@ async fn every_internal_instance_gets_a_fresh_uuid_v7_never_reused_across_elemen
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_expected_error_of_an_element_is_a_result_the_reduce_function_receives() {
+async fn given_an_element_with_an_expected_error_when_it_answers_then_the_error_is_a_result_the_reduce_function_receives()
+ {
     let (probe, _watch) = Probe::with_mode(|value| {
         if value == 2 {
             Mode::Record
@@ -174,7 +181,7 @@ async fn an_expected_error_of_an_element_is_a_result_the_reduce_function_receive
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_internal_state_is_created_with_the_internal_size_limit_that_defaults_to_the_contract_one()
+async fn given_an_internal_size_limit_that_defaults_to_the_contract_one_when_internal_states_are_created_then_it_is_the_limit_they_are_created_with()
  {
     let big = "x".repeat(140_000);
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
@@ -205,7 +212,8 @@ async fn the_internal_state_is_created_with_the_internal_size_limit_that_default
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn several_runs_of_one_node_at_the_same_time_do_not_interfere() {
+async fn given_several_runs_of_one_node_at_the_same_time_when_they_work_then_they_do_not_interfere()
+{
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let node = fan_out(&probe, 2);
     let mut first = Driver::start(&node).await;

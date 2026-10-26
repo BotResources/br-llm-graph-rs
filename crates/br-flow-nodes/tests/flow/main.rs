@@ -2,10 +2,12 @@
 
 mod common;
 mod map_reduce_cancel;
+mod map_reduce_creation;
 mod map_reduce_drop;
 mod map_reduce_failure;
 mod map_reduce_first_fault;
 mod map_reduce_input;
+mod map_reduce_listener_panic;
 mod map_reduce_work;
 mod merger_decision;
 mod merger_lifecycle;

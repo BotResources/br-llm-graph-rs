@@ -30,6 +30,7 @@ impl Gates {
 
 #[derive(Default)]
 pub(super) struct Stats {
+    pub(super) calls: AtomicUsize,
     pub(super) created: AtomicUsize,
     pub(super) live: AtomicUsize,
     pub(super) max_live: AtomicUsize,
@@ -49,6 +50,10 @@ pub struct Watch {
 }
 
 impl Watch {
+    pub fn create_calls(&self) -> usize {
+        self.stats.calls.load(Ordering::SeqCst)
+    }
+
     pub fn created(&self) -> usize {
         self.stats.created.load(Ordering::SeqCst)
     }

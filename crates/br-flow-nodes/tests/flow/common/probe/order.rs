@@ -25,6 +25,13 @@ impl Log {
     fn record(&self, mark: Mark) {
         locked(&self.marks).push(mark);
     }
+
+    fn record_if_absent(&self, mark: Mark) {
+        let mut marks = locked(&self.marks);
+        if !marks.contains(&mark) {
+            marks.push(mark);
+        }
+    }
 }
 
 struct Notice {
@@ -70,6 +77,10 @@ impl<Fut: Future + Unpin> Future for Witness<Fut> {
             waker: cx.waker().clone(),
         }));
         let mut witnessed = Context::from_waker(&waker);
-        Pin::new(&mut self.inner).poll(&mut witnessed)
+        let polled = Pin::new(&mut self.inner).poll(&mut witnessed);
+        if polled.is_ready() {
+            self.log.record_if_absent(self.mark);
+        }
+        polled
     }
 }

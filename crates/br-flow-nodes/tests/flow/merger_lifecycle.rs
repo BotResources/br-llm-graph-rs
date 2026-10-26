@@ -8,7 +8,8 @@ fn plain() -> Merger<Report> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_triggered_cancel_token_closes_the_input_end_and_sends_cancelled() {
+async fn given_a_triggered_cancel_token_when_the_instance_runs_then_the_input_end_is_closed_and_cancelled_is_sent()
+ {
     let mut driver = Driver::start(&plain()).await;
 
     driver.cancel.handle().trigger();
@@ -21,7 +22,8 @@ async fn a_triggered_cancel_token_closes_the_input_end_and_sends_cancelled() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_silent_instance_that_has_read_inputs_still_sends_cancelled_on_cancel() {
+async fn given_a_silent_instance_that_has_read_inputs_when_the_host_cancels_then_cancelled_is_sent()
+{
     let mut driver = Driver::start(&plain()).await;
     driver
         .give(Report::filled(true, false, false).state())
@@ -37,7 +39,8 @@ async fn a_silent_instance_that_has_read_inputs_still_sends_cancelled_on_cancel(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_cancel_triggered_before_the_first_read_wins_over_an_accepted_input() {
+async fn given_a_cancel_triggered_before_the_first_read_when_an_input_is_accepted_then_cancelled_wins()
+ {
     let mut driver = Driver::start(&plain()).await;
     driver
         .give(Report::filled(true, true, false).state())
@@ -48,7 +51,7 @@ async fn a_cancel_triggered_before_the_first_read_wins_over_an_accepted_input() 
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn dropping_both_ends_ends_the_task_of_a_silent_instance() {
+async fn given_a_silent_instance_when_both_ends_are_dropped_then_its_task_ends() {
     let driver = Driver::start(&plain()).await;
     driver
         .give(Report::filled(true, false, false).state())
@@ -60,7 +63,8 @@ async fn dropping_both_ends_ends_the_task_of_a_silent_instance() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn dropping_only_the_event_end_ends_the_task_and_refuses_inputs() {
+async fn given_a_silent_instance_when_only_the_event_end_is_dropped_then_its_task_ends_and_inputs_are_refused()
+ {
     let driver = Driver::start(&plain()).await;
     let Driver { input, events, .. } = driver;
 
@@ -76,7 +80,7 @@ async fn dropping_only_the_event_end_ends_the_task_and_refuses_inputs() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn dropping_the_instance_before_the_task_ever_ran_ends_it_without_an_event() {
+async fn given_an_instance_that_never_ran_when_it_is_dropped_then_its_task_ends_without_an_event() {
     let driver = Driver::start(&plain()).await;
 
     drop(driver);
@@ -85,7 +89,8 @@ async fn dropping_the_instance_before_the_task_ever_ran_ends_it_without_an_event
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_panic_in_the_ready_function_ends_the_instance_as_vanished() {
+async fn given_a_ready_function_that_panics_when_an_input_is_read_then_the_instance_ends_as_vanished()
+ {
     let node = Merger::new("join", |_| -> bool { panic!("ready blew up") }, merged);
     let mut driver = Driver::start(&node).await;
 
@@ -97,7 +102,8 @@ async fn a_panic_in_the_ready_function_ends_the_instance_as_vanished() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_panic_in_the_spent_function_ends_the_instance_as_vanished() {
+async fn given_a_spent_function_that_panics_when_an_input_is_read_then_the_instance_ends_as_vanished()
+ {
     let node = Merger::new("join", both_filled, |_| -> bool { panic!("spent blew up") });
     let mut driver = Driver::start(&node).await;
 

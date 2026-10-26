@@ -5,7 +5,7 @@ use br_graph_contract::InputClosed;
 use crate::common::{Driver, Mode, Probe, Report, ReportUpdate, counting_fan_out};
 
 #[tokio::test(start_paused = true)]
-async fn the_instance_waits_for_its_first_input_before_it_calls_the_map_function() {
+async fn given_no_input_yet_when_the_instance_waits_then_the_map_function_is_not_called() {
     let (probe, watch) = Probe::with_mode(|_| Mode::Answer);
     let (node, maps, _reduces) = counting_fan_out(&probe, 2);
     let mut driver = Driver::start(&node).await;
@@ -25,7 +25,8 @@ async fn the_instance_waits_for_its_first_input_before_it_calls_the_map_function
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn it_works_on_the_state_of_the_last_input_it_had_already_accepted() {
+async fn given_several_accepted_inputs_when_the_node_starts_to_work_then_it_works_on_the_state_of_the_last()
+ {
     let (probe, watch) = Probe::with_mode(|_| Mode::Answer);
     let (node, maps, reduces) = counting_fan_out(&probe, 2);
     let mut driver = Driver::start(&node).await;
@@ -47,7 +48,8 @@ async fn it_works_on_the_state_of_the_last_input_it_had_already_accepted() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn once_it_works_the_input_end_is_closed_and_a_later_input_is_refused() {
+async fn given_a_node_at_work_when_a_later_input_is_given_then_the_input_end_is_closed_and_it_is_refused()
+ {
     let (probe, mut watch) = Probe::with_mode(|_| Mode::Gate);
     let (node, _maps, _reduces) = counting_fan_out(&probe, 1);
     let mut driver = Driver::start(&node).await;
@@ -71,7 +73,8 @@ async fn once_it_works_the_input_end_is_closed_and_a_later_input_is_refused() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_new_instance_after_the_result_works_from_the_newer_state() {
+async fn given_a_result_already_sent_when_a_new_instance_gets_a_newer_state_then_it_works_from_that_state()
+ {
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let (node, _maps, _reduces) = counting_fan_out(&probe, 2);
     let mut first = Driver::start(&node).await;
