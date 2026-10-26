@@ -105,7 +105,7 @@ async fn given_a_state_panicking_in_validation_when_resumed_then_it_is_refused_a
     let refused = within(resume(rig.graph.clone(), checkpoint, BIG, config)).await;
     match refused {
         Err(ResumeError::StateRejected { reason }) => {
-            assert!(reason.contains("validation panics"), "{reason}");
+            assert_eq!(reason, "validation panics");
         }
         other => panic!("expected StateRejected, got {other:?}"),
     }

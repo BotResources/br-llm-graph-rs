@@ -1,24 +1,31 @@
-use br_graph_executor::RunFailure;
+use br_graph_executor::{Checkpoint, RunFailure};
 
 use crate::graphs::*;
 use crate::host::*;
 use crate::kv::*;
 
-async fn failing_run(kind: &str) -> (Rig, br_graph_executor::Checkpoint) {
-    let rig = match kind {
-        "edge" => rig("1")
+#[derive(Clone, Copy)]
+enum Failing {
+    RefusedUpdate,
+    EdgeFailure,
+    RefusedInput,
+}
+
+async fn failing_run(failing: Failing) -> (Rig, Checkpoint) {
+    let rig = match failing {
+        Failing::EdgeFailure => rig("1")
             .entry("a")
             .node("a")
             .edge(edge_failing("a", &["END"], "edge broke"))
             .build(),
-        _ => single("a"),
+        Failing::RefusedUpdate | Failing::RefusedInput => single("a"),
     };
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
-    match kind {
-        "update" => a.result(Change::Refuse),
-        "edge" => a.result(set("k", 9)),
-        _ => a.refused("not twice"),
+    match failing {
+        Failing::RefusedUpdate => a.result(Change::Refuse),
+        Failing::EdgeFailure => a.result(set("k", 9)),
+        Failing::RefusedInput => a.refused("not twice"),
     }
     let (_, checkpoint) = failed(host.outcome().await);
     (rig, checkpoint)
@@ -27,8 +34,12 @@ async fn failing_run(kind: &str) -> (Rig, br_graph_executor::Checkpoint) {
 #[tokio::test(start_paused = true)]
 async fn given_a_refused_update_an_edge_failure_or_a_refused_input_when_resumed_then_the_node_runs_again()
  {
-    for kind in ["update", "edge", "refused"] {
-        let (rig, checkpoint) = failing_run(kind).await;
+    for failing in [
+        Failing::RefusedUpdate,
+        Failing::EdgeFailure,
+        Failing::RefusedInput,
+    ] {
+        let (rig, checkpoint) = failing_run(failing).await;
         let host = begin_resume(&rig, checkpoint, BIG, Setup::new());
         let mut again = rig.stage.instance("a").await;
         assert_eq!(again.accepted_inputs(), vec![kv(&[("k", 1)])]);
@@ -40,7 +51,7 @@ async fn given_a_refused_update_an_edge_failure_or_a_refused_input_when_resumed_
 
 #[tokio::test(start_paused = true)]
 async fn given_a_refused_input_when_the_run_is_resumed_then_the_node_refuses_it_again() {
-    let (rig, checkpoint) = failing_run("refused").await;
+    let (rig, checkpoint) = failing_run(Failing::RefusedInput).await;
     let host = begin_resume(&rig, checkpoint, BIG, Setup::new());
     let mut again = rig.stage.instance("a").await;
     again.refused("not twice");

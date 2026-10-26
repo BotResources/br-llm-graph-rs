@@ -134,7 +134,7 @@ async fn given_a_creation_error_when_created_then_the_run_fails_with_its_cause_a
             cause: Some(cause),
         } => {
             assert_eq!(node, "a");
-            assert!(reason.contains("no model"));
+            assert_eq!(reason, "no model");
             assert_eq!(cause.downcast_ref::<TestError>().unwrap().0, "no model");
         }
         other => panic!("unexpected failure {other:?}"),
@@ -168,7 +168,7 @@ async fn given_a_creation_panicking_with_a_text_when_created_then_the_failure_ca
                 cause: None,
             } => {
                 assert_eq!(node, "a");
-                assert!(reason.contains("model missing"));
+                assert_eq!(reason, "model missing");
             }
             other => panic!("unexpected failure {other:?}"),
         }

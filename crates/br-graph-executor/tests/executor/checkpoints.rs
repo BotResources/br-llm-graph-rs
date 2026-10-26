@@ -78,46 +78,69 @@ async fn given_a_checkpoint_naming_nodes_when_resumed_then_each_gets_a_new_insta
 }
 
 #[test]
-fn given_each_kind_of_failure_when_displayed_then_the_text_names_its_cause() {
+fn given_each_kind_of_failure_when_displayed_then_the_text_names_the_node_and_the_reason() {
     use br_graph_executor::RunFailure;
     let failures = [
-        RunFailure::NodeFailed {
-            node: "n".into(),
-            reason: "why".into(),
-            cause: "c".into(),
-        },
-        RunFailure::NodeRefusedInput {
-            node: "n".into(),
-            reason: "why".into(),
-        },
-        RunFailure::NodeCouldNotStart {
-            node: "n".into(),
-            reason: "why".into(),
-            cause: None,
-        },
-        RunFailure::NodeVanished {
-            node: "n".into(),
-            reason: "why".into(),
-        },
-        RunFailure::UpdateRefused {
-            node: "n".into(),
-            reason: "why".into(),
-        },
-        RunFailure::EdgeFailed {
-            node: "n".into(),
-            reason: "why".into(),
-            cause: None,
-        },
-        RunFailure::SinkRefused {
-            reason: "why".into(),
-            checkpoint: handwritten_checkpoint(&single("n"), "{}", &["n"]),
-        },
-        RunFailure::CheckpointNotBuilt {
-            reason: "why".into(),
-        },
+        (
+            RunFailure::NodeFailed {
+                node: "n".into(),
+                reason: "why".into(),
+                cause: "c".into(),
+            },
+            "node \"n\" failed: why",
+        ),
+        (
+            RunFailure::NodeRefusedInput {
+                node: "n".into(),
+                reason: "why".into(),
+            },
+            "node \"n\" refused its input: why",
+        ),
+        (
+            RunFailure::NodeCouldNotStart {
+                node: "n".into(),
+                reason: "why".into(),
+                cause: None,
+            },
+            "node \"n\" could not start: why",
+        ),
+        (
+            RunFailure::NodeVanished {
+                node: "n".into(),
+                reason: "why".into(),
+            },
+            "node \"n\" vanished: why",
+        ),
+        (
+            RunFailure::UpdateRefused {
+                node: "n".into(),
+                reason: "why".into(),
+            },
+            "update of node \"n\" refused: why",
+        ),
+        (
+            RunFailure::EdgeFailed {
+                node: "n".into(),
+                reason: "why".into(),
+                cause: None,
+            },
+            "edge of node \"n\" failed: why",
+        ),
+        (
+            RunFailure::SinkRefused {
+                reason: "why".into(),
+                checkpoint: handwritten_checkpoint(&single("n"), "{}", &["n"]),
+            },
+            "checkpoint sink refused: why",
+        ),
+        (
+            RunFailure::CheckpointNotBuilt {
+                reason: "why".into(),
+            },
+            "checkpoint not built: why",
+        ),
     ];
-    for failure in failures {
-        let text = failure.to_string();
-        assert!(text.contains("why"));
+    for (failure, text) in failures {
+        assert_eq!(failure.to_string(), text);
     }
 }

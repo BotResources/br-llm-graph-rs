@@ -254,25 +254,50 @@ async fn given_an_unknown_field_or_a_broken_structure_when_read_then_the_checkpo
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_each_resume_refusal_when_displayed_then_it_has_a_reason() {
+async fn given_each_resume_refusal_when_displayed_then_the_text_names_its_reason_exactly() {
     let rig = base();
     let checkpoint = checkpoint_of(&rig).await;
-    let errors = [
-        refusal(&chain("2", &["a", "b"]), checkpoint.clone()).await,
-        refusal(&chain("1", &["a"]), checkpoint.clone()).await,
-        refusal(&rig, forged(&checkpoint, |v| v["nodes"] = json!([]))).await,
-        refusal(&rig, forged(&checkpoint, |v| v["nodes"] = json!(["zz"]))).await,
-        refusal(
-            &rig,
-            forged(&checkpoint, |v| v["nodes"] = json!(["a", "a"])),
-        )
-        .await,
-        refusal(&rig, forged(&checkpoint, |v| v["state"] = json!("1"))).await,
-        Checkpoint::from_json_slice(b"nope").unwrap_err(),
+    let exact = [
+        (
+            refusal(&chain("2", &["a", "b"]), checkpoint.clone()).await,
+            "checkpoint version \"1\" differs from graph version \"2\"",
+        ),
+        (
+            refusal(&chain("1", &["a"]), checkpoint.clone()).await,
+            "checkpoint structure differs from the graph: the node names differ",
+        ),
+        (
+            refusal(&rig, forged(&checkpoint, |v| v["nodes"] = json!([]))).await,
+            "checkpoint names no node",
+        ),
+        (
+            refusal(&rig, forged(&checkpoint, |v| v["nodes"] = json!(["zz"]))).await,
+            "checkpoint names node \"zz\", which the graph does not hold",
+        ),
+        (
+            refusal(
+                &rig,
+                forged(&checkpoint, |v| v["nodes"] = json!(["a", "a"])),
+            )
+            .await,
+            "checkpoint names node \"a\" twice",
+        ),
     ];
-    for error in errors {
-        assert!(!error.to_string().is_empty());
+    for (error, text) in exact {
+        assert_eq!(error.to_string(), text);
     }
+    let rejected = refusal(&rig, forged(&checkpoint, |v| v["state"] = json!("1"))).await;
+    assert!(
+        rejected
+            .to_string()
+            .starts_with("checkpoint state cannot be rebuilt: ")
+    );
+    let malformed = Checkpoint::from_json_slice(b"nope").unwrap_err();
+    assert!(
+        malformed
+            .to_string()
+            .starts_with("checkpoint cannot be rebuilt: ")
+    );
 }
 
 #[tokio::test(start_paused = true)]

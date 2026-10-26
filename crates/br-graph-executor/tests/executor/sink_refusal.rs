@@ -22,7 +22,7 @@ async fn given_a_refusing_sink_when_the_run_fails_then_the_failure_carries_the_r
     let (failures, outcome_checkpoint) = failed(host.outcome().await);
     match &failures[0] {
         RunFailure::SinkRefused { reason, checkpoint } => {
-            assert!(reason.contains("disk full"));
+            assert_eq!(reason, "disk full");
             assert_eq!(checkpoint, &sink.received()[0]);
             assert_eq!(checkpoint.nodes(), ["b"]);
             assert_eq!(state_of(checkpoint), kv(&[("k", 1)]));
@@ -82,7 +82,7 @@ async fn given_a_cancel_in_the_sink_call_when_the_sink_refuses_then_the_run_is_c
             reason,
             checkpoint: refused,
         } => {
-            assert!(reason.contains("disk full"));
+            assert_eq!(reason, "disk full");
             assert_eq!(refused, &sink.received()[0]);
         }
         other => panic!("unexpected failure {other:?}"),

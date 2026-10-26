@@ -36,10 +36,19 @@ async fn given_a_name_listed_twice_when_started_then_the_start_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_each_start_refusal_when_displayed_then_the_reason_names_the_node() {
-    assert!(!refusal(&[]).await.to_string().is_empty());
-    assert!(refusal(&["zz"]).await.to_string().contains("zz"));
-    assert!(refusal(&["b", "b"]).await.to_string().contains('b'));
+async fn given_each_start_refusal_when_displayed_then_the_text_names_the_reason_and_the_node() {
+    assert_eq!(
+        refusal(&[]).await.to_string(),
+        "no node to start: the list of nodes is empty"
+    );
+    assert_eq!(
+        refusal(&["zz"]).await.to_string(),
+        "cannot start node \"zz\": the graph holds no such node"
+    );
+    assert_eq!(
+        refusal(&["b", "b"]).await.to_string(),
+        "cannot start node \"b\": it is listed twice"
+    );
 }
 
 #[tokio::test(start_paused = true)]

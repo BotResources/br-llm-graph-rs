@@ -52,7 +52,7 @@ async fn given_an_update_over_the_size_limit_when_applied_then_it_is_refused() {
 async fn given_fields_that_panic_when_an_update_is_applied_then_the_update_is_refused() {
     let (failure, checkpoint, _) = undone_result(Change::Boom).await;
     match failure {
-        RunFailure::UpdateRefused { reason, .. } => assert!(reason.contains("the fields panic")),
+        RunFailure::UpdateRefused { reason, .. } => assert_eq!(reason, "the fields panic"),
         other => panic!("unexpected failure {other:?}"),
     }
     assert_eq!(state_of(&checkpoint), kv(&[("k", 1)]));
@@ -126,7 +126,7 @@ async fn given_an_edge_that_panics_when_evaluated_then_it_is_an_edge_failure_wit
             reason,
             cause: None,
             ..
-        } => assert!(reason.contains("the edge panics")),
+        } => assert_eq!(reason, "the edge panics"),
         other => panic!("unexpected failure {other:?}"),
     }
 }
@@ -158,19 +158,20 @@ async fn given_a_target_repeated_by_an_edge_when_handed_over_then_one_input_is_g
 
 #[tokio::test(start_paused = true)]
 async fn given_results_from_two_nodes_when_handled_then_updates_are_applied_in_handling_order() {
-    for (first, second, expected) in [("a", "b", 20), ("b", "a", 10)] {
+    for (first, second, value_of_first, value_of_second) in [("a", "b", 10, 20), ("b", "a", 20, 10)]
+    {
         let rig = two_independent();
         let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
-        let a = rig.stage.instance("a").await;
-        let b = rig.stage.instance("b").await;
-        let (mut one, mut two) = if first == "a" { (a, b) } else { (b, a) };
-        let value_of_first = if first == "a" { 10 } else { 20 };
-        let value_of_second = 30 - value_of_first;
+        let mut one = rig.stage.instance(first).await;
+        let mut two = rig.stage.instance(second).await;
         one.result(set("k", value_of_first));
         host.observer.wait_for(update_applied(first)).await;
         two.result(set("k", value_of_second));
         host.observer.wait_for(update_applied(second)).await;
-        assert_eq!(value_of(&ended(host.outcome().await), "k"), Some(expected));
+        assert_eq!(
+            value_of(&ended(host.outcome().await), "k"),
+            Some(value_of_second)
+        );
     }
 }
 

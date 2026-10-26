@@ -150,10 +150,13 @@ async fn given_a_refusing_sink_when_called_then_the_run_fails_and_the_outcome_ho
     a.result(set("k", 1));
     let (failures, checkpoint) = failed(host.outcome().await);
     match &failures[0] {
-        RunFailure::SinkRefused { reason, .. } => assert!(reason.contains("disk full")),
+        RunFailure::SinkRefused { reason, .. } => assert_eq!(reason, "disk full"),
         other => panic!("unexpected failure {other:?}"),
     }
-    assert!(failures[0].to_string().contains("disk full"));
+    assert_eq!(
+        failures[0].to_string(),
+        "checkpoint sink refused: disk full"
+    );
     assert_eq!(checkpoint, sink.received()[0]);
     assert_eq!(rig.stage.create_calls("b"), 0);
     assert_eq!(checkpoint.nodes(), ["b"]);
@@ -168,7 +171,7 @@ async fn given_a_sink_that_panics_when_called_then_it_counts_as_a_refusal() {
     a.result(Change::Empty);
     let (failures, _) = failed(host.outcome().await);
     match &failures[0] {
-        RunFailure::SinkRefused { reason, .. } => assert!(reason.contains("the sink panics")),
+        RunFailure::SinkRefused { reason, .. } => assert_eq!(reason, "the sink panics"),
         other => panic!("unexpected failure {other:?}"),
     }
 }

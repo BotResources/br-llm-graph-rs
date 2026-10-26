@@ -9,6 +9,7 @@ mod checkpoints;
 mod creation;
 mod display_panics;
 mod failure_resume;
+mod failure_stop;
 mod failures;
 mod fields_panics;
 mod flaky_fields;
