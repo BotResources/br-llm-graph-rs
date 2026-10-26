@@ -23,7 +23,7 @@ fn a_then_b_with_c_alone() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_steps_applying_updates_when_the_run_goes_on_then_the_sink_gets_a_checkpoint_in_each_but_the_last()
+async fn given_steps_with_updates_when_the_run_goes_on_then_the_sink_gets_all_but_the_last_checkpoint()
  {
     let rig = chain("1", &["a", "b", "c", "d"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
@@ -61,7 +61,7 @@ async fn given_a_step_without_an_applied_update_when_handled_then_the_sink_is_no
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_step_when_its_checkpoint_is_built_then_it_names_targets_and_live_nodes_and_holds_every_update()
+async fn given_a_step_when_its_checkpoint_is_built_then_it_names_targets_and_live_nodes_with_every_update()
  {
     let rig = a_then_b_with_c_alone();
     let host = begin(&rig, state(&[]), &["a", "c"], Setup::new().sink());
@@ -114,8 +114,7 @@ async fn given_a_sink_that_works_when_events_arrive_then_none_is_handled_until_i
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_cancel_during_the_sink_call_when_the_sink_answers_then_the_cancel_is_seen_and_nothing_is_handed_over()
- {
+async fn given_a_cancel_in_the_sink_call_when_the_sink_answers_then_nothing_is_handed_over() {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -154,7 +153,7 @@ async fn given_a_run_ended_when_the_last_stored_checkpoint_is_resumed_then_the_l
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_sink_that_refuses_when_called_then_the_run_fails_and_the_outcome_holds_the_refused_checkpoint()
+async fn given_a_refusing_sink_when_called_then_the_run_fails_and_the_outcome_holds_the_refused_checkpoint()
  {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
@@ -188,7 +187,7 @@ async fn given_a_sink_that_panics_when_called_then_it_counts_as_a_refusal() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_refusal_when_a_result_is_applied_in_the_grace_then_the_outcome_checkpoint_is_the_most_current()
+async fn given_a_refusal_when_a_result_is_applied_in_grace_then_the_outcome_checkpoint_is_the_newest()
  {
     let rig = rig("1")
         .entry("p")

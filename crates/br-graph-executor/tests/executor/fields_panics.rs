@@ -94,8 +94,7 @@ impl Edge<Fragile> for ToEnd {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_checkpoint_whose_state_panics_in_validation_when_resumed_then_it_is_refused_as_state_rejected()
- {
+async fn given_a_state_panicking_in_validation_when_resumed_then_it_is_refused_as_state_rejected() {
     let rig = single("a");
     let checkpoint = handwritten_checkpoint(
         &rig,

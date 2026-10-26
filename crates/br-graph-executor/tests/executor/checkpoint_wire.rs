@@ -119,7 +119,7 @@ async fn given_a_deserialized_checkpoint_when_resumed_then_the_run_reaches_the_s
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_state_with_a_number_beyond_64_bits_when_written_and_read_by_the_checked_door_then_the_resumed_state_is_equal()
+async fn given_a_number_beyond_64_bits_when_read_by_the_checked_door_then_the_resumed_state_is_equal()
  {
     let rig = a_then_b();
     let host = begin(&rig, state(&[]), &["a"], Setup::new());

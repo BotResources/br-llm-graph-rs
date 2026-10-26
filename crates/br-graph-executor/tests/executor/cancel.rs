@@ -52,7 +52,7 @@ async fn given_an_instance_ignoring_the_token_when_the_grace_ends_then_it_is_dro
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_cancel_request_when_the_instance_answers_cancelled_then_it_is_no_failure_and_the_node_stays_not_idle()
+async fn given_a_cancel_when_an_instance_answers_cancelled_then_it_is_no_failure_and_stays_not_idle()
  {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());

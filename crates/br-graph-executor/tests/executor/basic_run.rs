@@ -135,8 +135,7 @@ async fn given_a_long_loop_when_it_runs_then_the_number_of_events_is_not_limited
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_an_instance_with_three_accepted_inputs_when_it_sends_one_result_then_the_edge_is_evaluated_once()
- {
+async fn given_three_accepted_inputs_when_one_result_is_sent_then_the_edge_is_evaluated_once() {
     let rig = rig("1")
         .entry("a")
         .entry("p")

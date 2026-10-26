@@ -15,8 +15,7 @@ fn triggered_token() -> CancelToken {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_token_already_triggered_when_a_run_starts_then_it_is_cancelled_at_once_with_the_started_nodes()
- {
+async fn given_a_triggered_token_when_a_run_starts_then_it_is_cancelled_with_the_started_nodes() {
     let rig = chain("1", &["a", "b"]);
     let setup = Setup::new()
         .grace(Duration::from_secs(3600))

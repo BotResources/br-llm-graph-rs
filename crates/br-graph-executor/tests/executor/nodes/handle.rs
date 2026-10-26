@@ -81,6 +81,10 @@ impl Handle {
         });
     }
 
+    pub async fn wait_dropped(&mut self) {
+        within(&mut self.dropped).await;
+    }
+
     pub async fn is_dropped(&mut self) -> bool {
         tokio::select! {
             biased;

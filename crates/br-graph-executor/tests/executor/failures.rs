@@ -20,7 +20,7 @@ fn two_independent() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_failing_instance_when_it_sends_failed_then_the_run_fails_with_its_cause_and_the_node_stays_not_idle()
+async fn given_a_failing_instance_when_it_sends_failed_then_the_run_fails_and_the_node_stays_not_idle()
  {
     let rig = single("a");
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
@@ -106,8 +106,7 @@ async fn given_no_cancel_request_when_an_instance_answers_cancelled_then_it_coun
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_failure_that_triggered_the_token_when_an_instance_answers_cancelled_then_it_is_no_new_failure()
- {
+async fn given_a_failure_when_an_instance_answers_cancelled_then_it_is_no_new_failure() {
     let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -214,7 +213,7 @@ async fn given_a_failure_when_another_instance_stays_live_then_it_gets_the_whole
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_the_host_triggered_the_token_when_a_node_fails_then_the_outcome_is_a_cancel_with_the_failure_listed()
+async fn given_a_host_cancel_when_a_node_fails_then_the_outcome_is_a_cancel_with_the_failure_listed()
  {
     let rig = single("a");
     let host = begin(&rig, state(&[]), &["a"], Setup::new());

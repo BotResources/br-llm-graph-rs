@@ -175,8 +175,8 @@ async fn given_several_live_instances_when_one_ends_then_no_other_instance_is_dr
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_first_input_refused_as_closed_when_the_instance_ends_then_a_new_instance_gets_it_and_it_is_reported_once()
- {
+async fn given_a_first_input_refused_as_closed_when_the_instance_ends_then_a_new_one_gets_it_once()
+{
     let rig = chain("1", &["a"]);
     rig.stage.script("a", Creation::InputClosedAtBirth);
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());

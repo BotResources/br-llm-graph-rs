@@ -22,7 +22,7 @@ fn two_sources_into_b() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_slow_creation_when_it_ends_then_the_first_input_has_the_old_state_and_the_held_one_the_current_state()
+async fn given_a_slow_creation_when_it_ends_then_the_first_input_is_old_and_the_held_one_is_current()
  {
     let rig = two_sources_into_b();
     let gate = Gate::default();
@@ -135,7 +135,7 @@ async fn given_an_instance_with_another_id_when_created_then_the_run_fails() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_creation_error_when_the_node_is_created_then_the_run_fails_with_its_cause_and_the_input_stays_held()
+async fn given_a_creation_error_when_created_then_the_run_fails_with_its_cause_and_the_input_stays_held()
  {
     let rig = single("a");
     rig.stage.script("a", Creation::Fail("no model"));
@@ -199,7 +199,7 @@ async fn given_a_creation_panicking_without_a_text_when_created_then_it_is_still
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_creation_ending_after_a_cancel_when_handled_then_it_keeps_its_first_input_and_is_dropped_at_the_grace_end()
+async fn given_a_cancel_when_a_creation_ends_then_it_keeps_its_first_input_and_is_dropped_at_the_grace_end()
  {
     let rig = two_sources_into_b();
     let gate = Gate::default();

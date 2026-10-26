@@ -201,8 +201,7 @@ async fn failed_run_with_exhausted_serialization(panics: bool) -> (Vec<RunFailur
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_state_that_stops_serializing_when_the_run_stops_then_the_failure_is_listed_and_the_checkpoint_state_is_null()
- {
+async fn given_an_unserializable_state_when_the_run_stops_then_the_checkpoint_state_is_null() {
     let (failures, state_json) = failed_run_with_exhausted_serialization(false).await;
     assert!(matches!(failures[0], RunFailure::NodeFailed { .. }));
     assert!(matches!(failures[1], RunFailure::CheckpointNotBuilt { .. }));
@@ -222,7 +221,7 @@ async fn given_a_state_that_panics_when_serialized_then_the_checkpoint_failure_i
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_sink_step_whose_checkpoint_cannot_be_built_when_the_other_node_ends_during_the_grace_then_the_run_is_failed_not_ended()
+async fn given_an_unbuildable_sink_checkpoint_when_the_other_node_ends_in_the_grace_then_the_run_is_failed()
  {
     plan(
         &[Answer::Succeed, Answer::Succeed, Answer::Fail],

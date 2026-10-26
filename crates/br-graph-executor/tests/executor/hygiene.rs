@@ -32,8 +32,7 @@ async fn given_a_run_that_ended_when_it_returns_then_no_task_of_the_run_is_left(
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_failure_with_a_live_sibling_when_the_run_returns_then_the_sibling_is_dropped_and_no_task_is_left()
- {
+async fn given_a_failure_with_a_live_sibling_when_the_run_returns_then_no_task_is_left() {
     let baseline = alive_tasks();
     let rig = two_independent_nodes_to_end();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
@@ -63,8 +62,7 @@ async fn given_a_run_blocked_in_the_sink_when_it_is_dropped_then_the_sink_call_a
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_run_with_live_instances_when_it_is_dropped_then_the_instances_are_dropped_and_no_task_is_left()
- {
+async fn given_live_instances_when_the_run_is_dropped_then_they_are_dropped_and_no_task_is_left() {
     let baseline = alive_tasks();
     let rig = two_independent_nodes_to_end();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
@@ -72,12 +70,8 @@ async fn given_a_run_with_live_instances_when_it_is_dropped_then_the_instances_a
     let mut b = rig.stage.instance("b").await;
     assert!(!a.is_dropped().await);
     host.drop_the_run();
-    within(async {
-        while !a.is_dropped().await || !b.is_dropped().await {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await;
+    a.wait_dropped().await;
+    b.wait_dropped().await;
     assert_eq!(tasks_back_to(baseline).await, baseline);
 }
 
@@ -109,7 +103,7 @@ async fn given_a_long_loop_when_it_runs_then_the_number_of_tasks_stays_bounded()
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_an_event_sent_while_the_executor_is_busy_when_the_node_checks_then_it_does_not_see_dropped_until_the_event_is_handled()
+async fn given_a_busy_executor_when_a_node_sent_its_event_then_it_does_not_see_dropped_until_it_is_handled()
  {
     let rig = rig("1")
         .entry("a")

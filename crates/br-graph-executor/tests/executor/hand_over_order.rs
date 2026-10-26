@@ -75,8 +75,7 @@ async fn given_targets_and_a_held_node_when_handing_over_then_the_held_node_foll
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_checkpoint_naming_three_nodes_out_of_order_when_resumed_then_they_are_created_in_the_order_of_their_names()
- {
+async fn given_nodes_named_out_of_order_when_resumed_then_instances_are_created_in_name_order() {
     let rig = rig("1")
         .entry("a")
         .entry("b")

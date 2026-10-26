@@ -22,8 +22,8 @@ fn two_independent_nodes_to_end() -> Rig {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_sink_that_refuses_when_the_run_fails_then_the_failure_carries_the_checkpoint_the_sink_received()
- {
+async fn given_a_refusing_sink_when_the_run_fails_then_the_failure_carries_the_refused_checkpoint()
+{
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
@@ -44,7 +44,7 @@ async fn given_a_sink_that_refuses_when_the_run_fails_then_the_failure_carries_t
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_sink_that_refuses_when_the_other_node_ends_during_the_grace_then_the_run_is_failed_not_ended()
+async fn given_a_refusing_sink_when_the_other_node_ends_in_the_grace_then_the_run_is_failed_not_ended()
  {
     let rig = two_independent_nodes_to_end();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new().sink());
@@ -73,7 +73,7 @@ async fn given_a_sink_that_refuses_when_the_other_node_ends_during_the_grace_the
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_cancel_during_the_sink_call_when_the_sink_then_refuses_then_the_run_is_cancelled_with_the_failure_listed()
+async fn given_a_cancel_in_the_sink_call_when_the_sink_refuses_then_the_run_is_cancelled_with_the_failure()
  {
     let rig = chain("1", &["a", "b"]);
     let host = begin(&rig, state(&[]), &["a"], Setup::new().sink());

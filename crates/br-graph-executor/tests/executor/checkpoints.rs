@@ -5,8 +5,8 @@ use crate::host::*;
 use crate::kv::*;
 
 #[tokio::test(start_paused = true)]
-async fn given_a_failed_run_when_its_checkpoint_is_read_then_it_holds_the_serialized_state_and_the_graph_structure()
- {
+async fn given_a_failed_run_when_its_checkpoint_is_read_then_it_holds_the_state_and_the_structure()
+{
     let rig = single("a");
     let host = begin(&rig, state(&[("k", 1)]), &["a"], Setup::new());
     let mut a = rig.stage.instance("a").await;
@@ -57,8 +57,8 @@ async fn given_a_resume_limit_when_an_update_exceeds_it_then_the_update_is_refus
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_checkpoint_naming_nodes_when_resumed_then_each_gets_a_new_instance_with_one_input_of_its_state()
- {
+async fn given_a_checkpoint_naming_nodes_when_resumed_then_each_gets_a_new_instance_and_one_input()
+{
     let rig = fan("x", &["b", "c"]);
     let host = begin(&rig, state(&[("k", 5)]), &["b", "c"], Setup::new());
     let mut b = rig.stage.instance("b").await;
