@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/br-graph-contract", "crates/br-llm-graph", "crates/br-flow-nodes"]
+members = ["crates/br-graph-contract", "crates/br-graph-executor", "crates/br-llm-graph", "crates/br-flow-nodes"]
 
 [workspace.package]
 edition = "2024"
