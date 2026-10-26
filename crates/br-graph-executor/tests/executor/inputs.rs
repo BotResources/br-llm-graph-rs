@@ -8,24 +8,10 @@ use crate::kv::*;
 use crate::nodes::*;
 use crate::observer::*;
 
-fn two_sources_into_b() -> Rig {
-    rig("1")
-        .entry("a")
-        .entry("b")
-        .entry("c")
-        .node("a")
-        .node("b")
-        .node("c")
-        .edge(edge("a", &["b"]))
-        .edge(edge("c", &["b"]))
-        .edge(edge("b", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_an_input_refused_as_closed_when_the_terminal_event_is_handled_then_a_new_instance_gets_it()
  {
-    let rig = two_sources_into_b();
+    let rig = a_and_c_into_b();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;
@@ -62,7 +48,7 @@ async fn given_an_input_refused_as_closed_when_the_terminal_event_is_handled_the
 
 #[tokio::test(start_paused = true)]
 async fn given_a_held_input_when_a_second_input_is_refused_then_nothing_is_added_to_it() {
-    let rig = two_sources_into_b();
+    let rig = a_and_c_into_b();
     let host = begin(&rig, state(&[]), &["a", "b", "c"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;
@@ -85,7 +71,7 @@ async fn given_a_held_input_when_a_second_input_is_refused_then_nothing_is_added
 
 #[tokio::test(start_paused = true)]
 async fn given_an_instance_ending_when_an_input_is_given_then_the_input_is_never_lost() {
-    let rig = two_sources_into_b();
+    let rig = a_and_c_into_b();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;
@@ -101,7 +87,7 @@ async fn given_an_instance_ending_when_an_input_is_given_then_the_input_is_never
 
 #[tokio::test(start_paused = true)]
 async fn given_a_held_input_when_the_old_instance_fails_then_the_input_is_never_given() {
-    let rig = two_sources_into_b();
+    let rig = a_and_c_into_b();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;

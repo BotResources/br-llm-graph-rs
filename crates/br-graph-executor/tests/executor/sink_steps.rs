@@ -9,19 +9,6 @@ use crate::kv::*;
 use crate::observer::*;
 use crate::sink::SinkBehavior;
 
-fn a_then_b_with_c_alone() -> Rig {
-    rig("1")
-        .entry("a")
-        .entry("c")
-        .node("a")
-        .node("b")
-        .node("c")
-        .edge(edge("a", &["b"]))
-        .edge(edge("b", &["END"]))
-        .edge(edge("c", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_steps_with_updates_when_the_run_goes_on_then_the_sink_gets_all_but_the_last_checkpoint()
  {
@@ -189,16 +176,7 @@ async fn given_a_sink_that_panics_when_called_then_it_counts_as_a_refusal() {
 #[tokio::test(start_paused = true)]
 async fn given_a_refusal_when_a_result_is_applied_in_grace_then_the_outcome_checkpoint_is_the_newest()
  {
-    let rig = rig("1")
-        .entry("p")
-        .entry("f")
-        .node("p")
-        .node("q")
-        .node("f")
-        .edge(edge("p", &["q"]))
-        .edge(edge("q", &["END"]))
-        .edge(edge("f", &["END"]))
-        .build();
+    let rig = p_then_q_with_f_alone();
     let host = begin(&rig, state(&[]), &["p", "f"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
     sink.script(SinkBehavior::Refuse("disk full"));
@@ -228,16 +206,7 @@ async fn given_a_refusal_when_a_result_is_applied_in_grace_then_the_outcome_chec
 
 #[tokio::test(start_paused = true)]
 async fn given_a_failure_when_a_result_is_applied_in_the_grace_then_the_sink_is_not_called_again() {
-    let rig = rig("1")
-        .entry("p")
-        .entry("f")
-        .node("p")
-        .node("q")
-        .node("f")
-        .edge(edge("p", &["q"]))
-        .edge(edge("q", &["END"]))
-        .edge(edge("f", &["END"]))
-        .build();
+    let rig = p_then_q_with_f_alone();
     let host = begin(&rig, state(&[]), &["p", "f"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
     let mut p = rig.stage.instance("p").await;

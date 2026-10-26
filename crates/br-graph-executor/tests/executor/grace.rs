@@ -2,20 +2,9 @@ use crate::graphs::*;
 use crate::host::*;
 use crate::kv::*;
 
-fn two_independent_nodes_to_end() -> Rig {
-    rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .edge(edge("a", &["END"]))
-        .edge(edge("b", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_results_queued_when_the_grace_ends_then_both_are_applied_and_the_run_ended() {
-    let rig = two_independent_nodes_to_end();
+    let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;

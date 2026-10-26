@@ -77,16 +77,7 @@ async fn given_a_paused_run_when_resumed_then_the_dropped_node_starts_from_nothi
 #[tokio::test(start_paused = true)]
 async fn given_a_checkpoint_later_than_the_input_a_node_saw_when_resumed_then_the_node_gets_the_later_state()
  {
-    let rig = rig("1")
-        .entry("a")
-        .entry("c")
-        .node("a")
-        .node("b")
-        .node("c")
-        .edge(edge("a", &["b"]))
-        .edge(edge("b", &["END"]))
-        .edge(edge("c", &["END"]))
-        .build();
+    let rig = a_then_b_with_c_alone();
     let host = begin(&rig, state(&[]), &["a", "c"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut c = rig.stage.instance("c").await;

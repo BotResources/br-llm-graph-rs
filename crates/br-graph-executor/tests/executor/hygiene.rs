@@ -7,17 +7,6 @@ use crate::host::*;
 use crate::kv::*;
 use crate::sink::SinkBehavior;
 
-fn two_independent_nodes_to_end() -> Rig {
-    rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .edge(edge("a", &["END"]))
-        .edge(edge("b", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_a_run_that_ended_when_it_returns_then_no_task_of_the_run_is_left() {
     let baseline = alive_tasks();
@@ -34,7 +23,7 @@ async fn given_a_run_that_ended_when_it_returns_then_no_task_of_the_run_is_left(
 #[tokio::test(start_paused = true)]
 async fn given_a_failure_with_a_live_sibling_when_the_run_returns_then_no_task_is_left() {
     let baseline = alive_tasks();
-    let rig = two_independent_nodes_to_end();
+    let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;
@@ -64,7 +53,7 @@ async fn given_a_run_blocked_in_the_sink_when_it_is_dropped_then_the_sink_call_a
 #[tokio::test(start_paused = true)]
 async fn given_live_instances_when_the_run_is_dropped_then_they_are_dropped_and_no_task_is_left() {
     let baseline = alive_tasks();
-    let rig = two_independent_nodes_to_end();
+    let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;

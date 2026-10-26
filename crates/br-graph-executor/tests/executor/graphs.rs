@@ -173,3 +173,68 @@ pub fn fan(source: &str, branches: &[&str]) -> Rig {
     }
     builder.build()
 }
+
+pub fn two_independent() -> Rig {
+    rig("1")
+        .entry("a")
+        .entry("b")
+        .node("a")
+        .node("b")
+        .edge(edge("a", &["END"]))
+        .edge(edge("b", &["END"]))
+        .build()
+}
+
+pub fn a_then_b_with_c_alone() -> Rig {
+    rig("1")
+        .entry("a")
+        .entry("c")
+        .node("a")
+        .node("b")
+        .node("c")
+        .edge(edge("a", &["b"]))
+        .edge(edge("b", &["END"]))
+        .edge(edge("c", &["END"]))
+        .build()
+}
+
+pub fn p_then_q_with_f_alone() -> Rig {
+    rig("1")
+        .entry("p")
+        .entry("f")
+        .node("p")
+        .node("q")
+        .node("f")
+        .edge(edge("p", &["q"]))
+        .edge(edge("q", &["END"]))
+        .edge(edge("f", &["END"]))
+        .build()
+}
+
+pub fn x_and_y_into_b() -> Rig {
+    rig("1")
+        .entry("x")
+        .entry("y")
+        .entry("b")
+        .node("x")
+        .node("y")
+        .node("b")
+        .edge(edge("x", &["b"]))
+        .edge(edge("y", &["b"]))
+        .edge(edge("b", &["END"]))
+        .build()
+}
+
+pub fn a_and_c_into_b() -> Rig {
+    rig("1")
+        .entry("a")
+        .entry("b")
+        .entry("c")
+        .node("a")
+        .node("b")
+        .node("c")
+        .edge(edge("a", &["b"]))
+        .edge(edge("c", &["b"]))
+        .edge(edge("b", &["END"]))
+        .build()
+}

@@ -10,17 +10,6 @@ use crate::kv::*;
 use crate::observer::*;
 use crate::sink::SinkBehavior;
 
-fn two_independent_nodes_to_end() -> Rig {
-    rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .edge(edge("a", &["END"]))
-        .edge(edge("b", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_a_refusing_sink_when_the_run_fails_then_the_failure_carries_the_refused_checkpoint()
 {
@@ -46,7 +35,7 @@ async fn given_a_refusing_sink_when_the_run_fails_then_the_failure_carries_the_r
 #[tokio::test(start_paused = true)]
 async fn given_a_refusing_sink_when_the_other_node_ends_in_the_grace_then_the_run_is_failed_not_ended()
  {
-    let rig = two_independent_nodes_to_end();
+    let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new().sink());
     let sink = host.sink.clone().unwrap();
     sink.script(SinkBehavior::Refuse("disk full"));

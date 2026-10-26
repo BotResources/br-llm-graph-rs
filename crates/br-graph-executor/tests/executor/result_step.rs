@@ -159,14 +159,7 @@ async fn given_a_target_repeated_by_an_edge_when_handed_over_then_one_input_is_g
 #[tokio::test(start_paused = true)]
 async fn given_results_from_two_nodes_when_handled_then_updates_are_applied_in_handling_order() {
     for (first, second, expected) in [("a", "b", 20), ("b", "a", 10)] {
-        let rig = rig("1")
-            .entry("a")
-            .entry("b")
-            .node("a")
-            .node("b")
-            .edge(edge("a", &["END"]))
-            .edge(edge("b", &["END"]))
-            .build();
+        let rig = two_independent();
         let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
         let a = rig.stage.instance("a").await;
         let b = rig.stage.instance("b").await;

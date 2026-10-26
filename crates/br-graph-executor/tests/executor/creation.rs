@@ -7,24 +7,10 @@ use crate::nodes::*;
 use crate::observer::*;
 use crate::sink::SinkBehavior;
 
-fn two_sources_into_b() -> Rig {
-    rig("1")
-        .entry("x")
-        .entry("y")
-        .entry("b")
-        .node("x")
-        .node("y")
-        .node("b")
-        .edge(edge("x", &["b"]))
-        .edge(edge("y", &["b"]))
-        .edge(edge("b", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_a_slow_creation_when_it_ends_then_the_first_input_is_old_and_the_held_one_is_current()
  {
-    let rig = two_sources_into_b();
+    let rig = x_and_y_into_b();
     let gate = Gate::default();
     rig.stage.script("b", Creation::Gated(gate.clone()));
     let host = begin(&rig, state(&[]), &["x", "y"], Setup::new());
@@ -53,7 +39,7 @@ async fn given_a_slow_creation_when_it_ends_then_the_first_input_is_old_and_the_
 
 #[tokio::test(start_paused = true)]
 async fn given_a_slow_creation_when_other_events_arrive_then_they_are_handled_meanwhile() {
-    let rig = two_sources_into_b();
+    let rig = x_and_y_into_b();
     let gate = Gate::default();
     rig.stage.script("b", Creation::Gated(gate.clone()));
     let host = begin(&rig, state(&[]), &["x", "y"], Setup::new());
@@ -201,7 +187,7 @@ async fn given_a_creation_panicking_without_a_text_when_created_then_it_is_still
 #[tokio::test(start_paused = true)]
 async fn given_a_cancel_when_a_creation_ends_then_it_keeps_its_first_input_and_is_dropped_at_the_grace_end()
  {
-    let rig = two_sources_into_b();
+    let rig = x_and_y_into_b();
     let gate = Gate::default();
     rig.stage.script("b", Creation::Gated(gate.clone()));
     let host = begin(&rig, state(&[]), &["x", "y"], Setup::new());

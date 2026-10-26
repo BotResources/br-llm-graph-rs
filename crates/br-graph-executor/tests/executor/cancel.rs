@@ -7,17 +7,6 @@ use crate::host::*;
 use crate::kv::*;
 use crate::observer::*;
 
-fn two_independent() -> Rig {
-    rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .edge(edge("a", &["END"]))
-        .edge(edge("b", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_a_live_instance_when_the_host_cancels_then_the_run_ends_after_the_grace_with_a_checkpoint()
  {

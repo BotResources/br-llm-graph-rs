@@ -8,17 +8,6 @@ use crate::kv::*;
 use crate::nodes::*;
 use crate::observer::*;
 
-fn two_independent() -> Rig {
-    rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .edge(edge("a", &["END"]))
-        .edge(edge("b", &["END"]))
-        .build()
-}
-
 #[tokio::test(start_paused = true)]
 async fn given_a_failing_instance_when_it_sends_failed_then_the_run_fails_and_the_node_stays_not_idle()
  {

@@ -199,14 +199,7 @@ async fn given_an_instance_when_observed_then_the_order_is_created_then_inputs_t
 #[tokio::test(start_paused = true)]
 async fn given_events_reaching_the_executor_in_an_order_when_handled_then_the_observer_sees_that_order()
  {
-    let rig = rig("1")
-        .entry("a")
-        .entry("b")
-        .node("a")
-        .node("b")
-        .edge(edge("a", &["END"]))
-        .edge(edge("b", &["END"]))
-        .build();
+    let rig = two_independent();
     let host = begin(&rig, state(&[]), &["a", "b"], Setup::new());
     let mut a = rig.stage.instance("a").await;
     let mut b = rig.stage.instance("b").await;
