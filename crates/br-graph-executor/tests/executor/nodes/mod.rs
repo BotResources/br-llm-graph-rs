@@ -5,4 +5,4 @@ mod test_node;
 
 pub use gates::{DropFlag, Gate};
 pub use stage::Stage;
-pub use test_node::{Creation, TestError, TestNode};
+pub use test_node::{Creation, PanickingDisplay, TestError, TestNode};

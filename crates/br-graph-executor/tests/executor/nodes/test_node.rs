@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use br_graph_contract::{CancelView, CreateError, CreateFuture, Instance, InstanceId, Node};
@@ -12,6 +13,7 @@ use super::stage::Stage;
 pub enum Creation {
     Gated(Gate),
     Fail(&'static str),
+    FailPanickingDisplay(&'static str),
     PanicText(&'static str),
     PanicString(String),
     PanicOther,
@@ -23,6 +25,17 @@ pub enum Creation {
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct TestError(pub String);
+
+#[derive(Debug)]
+pub struct PanickingDisplay(pub &'static str);
+
+impl fmt::Display for PanickingDisplay {
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        panic!("{}", self.0)
+    }
+}
+
+impl std::error::Error for PanickingDisplay {}
 
 pub struct TestNode {
     pub name: String,
@@ -65,6 +78,9 @@ impl Node<Kv> for TestNode {
                 Some(Creation::Gated(gate)) => gate.passed().await,
                 Some(Creation::Fail(message)) => {
                     return Err(CreateError::new(TestError(message.to_owned())));
+                }
+                Some(Creation::FailPanickingDisplay(message)) => {
+                    return Err(CreateError::new(PanickingDisplay(message)));
                 }
                 Some(Creation::PanicText(message)) => panic!("{message}"),
                 Some(Creation::PanicString(message)) => panic!("{}", message),

@@ -3,7 +3,7 @@ use br_graph_contract::{CancelView, Dropped, Event, EventSender, InputReader, In
 use crate::host::within;
 use crate::kv::{Change, Kv};
 
-use super::test_node::TestError;
+use super::test_node::{PanickingDisplay, TestError};
 
 pub struct Handle {
     pub node: String,
@@ -59,6 +59,10 @@ impl Handle {
 
     pub fn failed(&mut self, message: &str) {
         self.finish(Event::failed(TestError(message.to_owned())));
+    }
+
+    pub fn failed_panicking_display(&mut self, text: &'static str) {
+        self.finish(Event::failed(PanickingDisplay(text)));
     }
 
     pub fn refused(&mut self, reason: &str) {

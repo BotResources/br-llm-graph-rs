@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use super::guard::AbortGuard;
 use super::message::{CreationFailure, Message};
-use crate::panic_text::panic_reason;
+use crate::panic_text::{display_of, panic_reason};
 
 pub(super) fn mint_id() -> Result<InstanceId, String> {
     InstanceId::new(Uuid::now_v7()).map_err(|error| error.to_string())
@@ -25,7 +25,7 @@ pub(super) fn spawn_creation<F: Fields>(
         let result = match creating.await {
             Ok(Ok(instance)) => Ok(instance),
             Ok(Err(error)) => Err(CreationFailure {
-                reason: error.cause().to_string(),
+                reason: display_of(&**error.cause()),
                 cause: Some(error.into_cause()),
             }),
             Err(error) if error.is_panic() => Err(CreationFailure {

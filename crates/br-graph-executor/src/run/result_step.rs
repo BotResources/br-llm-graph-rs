@@ -4,7 +4,7 @@ use std::sync::Arc;
 use br_graph_contract::{EdgeError, Fields, Target};
 
 use super::Run;
-use crate::panic_text::panic_reason;
+use crate::panic_text::{display_of, panic_reason};
 use crate::{Observation, RunFailure};
 
 impl<F: Fields> Run<F> {
@@ -29,7 +29,7 @@ impl<F: Fields> Run<F> {
             Ok(Err(EdgeError::Failed(cause))) => {
                 let failure = RunFailure::EdgeFailed {
                     node: node.clone(),
-                    reason: cause.to_string(),
+                    reason: display_of(&*cause),
                     cause: Some(cause),
                 };
                 self.undo(&node, failure);

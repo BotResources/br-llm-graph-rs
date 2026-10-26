@@ -2,6 +2,7 @@ use br_graph_contract::{Cause, Event, EventEndError, Fields, InstanceId};
 
 use super::Run;
 use super::slot::Live;
+use crate::panic_text::display_of;
 use crate::{Observation, ObservedEvent, RunFailure};
 
 impl<F: Fields> Run<F> {
@@ -25,7 +26,7 @@ impl<F: Fields> Run<F> {
             }
             Ok(Event::Failed(cause)) => {
                 self.report_event(&node, id, ObservedEvent::Failed);
-                let reason = cause.to_string();
+                let reason = display_of(&*cause);
                 self.leave_untaken(&node);
                 self.fail(RunFailure::NodeFailed {
                     node,

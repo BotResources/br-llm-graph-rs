@@ -3,7 +3,7 @@ use std::sync::Arc;
 use br_graph_contract::{Cause, Edge, Graph, GraphBuilder, Node, State, Target};
 
 use crate::kv::Kv;
-use crate::nodes::{Stage, TestError, TestNode};
+use crate::nodes::{PanickingDisplay, Stage, TestError, TestNode};
 
 type Behavior = dyn Fn(&State<Kv>) -> Result<Vec<Target>, Cause> + Send + Sync;
 
@@ -72,6 +72,16 @@ pub fn edge_returning(source: &str, declared: &[&str], answer: &[&str]) -> Arc<d
 pub fn edge_failing(source: &str, declared: &[&str], message: &'static str) -> Arc<dyn Edge<Kv>> {
     edge_answering(source, declared, move |_| {
         Err(Cause::from(TestError(message.to_owned())))
+    })
+}
+
+pub fn edge_failing_panicking_display(
+    source: &str,
+    declared: &[&str],
+    text: &'static str,
+) -> Arc<dyn Edge<Kv>> {
+    edge_answering(source, declared, move |_| {
+        Err(Cause::from(PanickingDisplay(text)))
     })
 }
 
