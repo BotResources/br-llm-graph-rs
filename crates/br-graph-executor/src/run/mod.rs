@@ -25,14 +25,20 @@ use message::Message;
 use observing::Observing;
 use slot::NodeSlot;
 
+#[derive(Clone, Copy)]
+enum Trigger {
+    Host,
+    Executor,
+}
+
 enum Phase {
     Running,
-    Stopping { deadline: Instant },
+    Stopping { deadline: Instant, trigger: Trigger },
 }
 
 enum Wake<F: Fields> {
     CancelRequested,
-    Message(Option<Message<F>>),
+    Message(Message<F>),
     Deadline,
 }
 
@@ -47,7 +53,6 @@ pub(crate) struct Run<F: Fields> {
     slots: BTreeMap<String, NodeSlot<F>>,
     failures: Vec<RunFailure>,
     phase: Phase,
-    executor_triggered: bool,
     sender: UnboundedSender<Message<F>>,
     receiver: UnboundedReceiver<Message<F>>,
 }
@@ -63,11 +68,14 @@ impl<F: Fields> Run<F> {
         let mut slots: BTreeMap<String, NodeSlot<F>> = structure
             .nodes()
             .iter()
-            .map(|node| {
-                (
-                    node.name.clone(),
-                    NodeSlot::new(node.kind.clone(), node.subkind.clone()),
-                )
+            .filter_map(|described| {
+                let node = graph.node(&described.name)?;
+                let slot = NodeSlot::new(
+                    Arc::clone(node),
+                    described.kind.clone(),
+                    described.subkind.clone(),
+                );
+                Some((described.name.clone(), slot))
             })
             .collect();
         for name in held {
@@ -87,7 +95,6 @@ impl<F: Fields> Run<F> {
             slots,
             failures: Vec::new(),
             phase: Phase::Running,
-            executor_triggered: false,
             sender,
             receiver,
         }
@@ -113,27 +120,27 @@ impl<F: Fields> Run<F> {
                 Phase::Running => tokio::select! {
                     biased;
                     () = &mut cancel_requested => Wake::CancelRequested,
-                    received = self.receiver.recv() => Wake::Message(received),
+                    Some(message) = self.receiver.recv() => Wake::Message(message),
                 },
-                Phase::Stopping { deadline } => {
-                    if !self.any_live() {
-                        return self.conclude(None);
-                    }
-                    if Instant::now() >= deadline {
+                Phase::Stopping { deadline, .. } => {
+                    if !self.any_live() || self.grace.is_zero() {
                         self.abandon_all_live();
                         return self.conclude(None);
                     }
                     tokio::select! {
                         biased;
-                        received = self.receiver.recv() => Wake::Message(received),
+                        Some(message) = self.receiver.recv() => Wake::Message(message),
                         () = sleep_until(deadline) => Wake::Deadline,
                     }
                 }
             };
             match wake {
-                Wake::CancelRequested => self.begin_stopping(),
-                Wake::Message(Some(message)) => self.step(message).await,
-                Wake::Message(None) | Wake::Deadline => {}
+                Wake::CancelRequested => self.begin_stopping(Trigger::Host),
+                Wake::Message(message) => self.step(message).await,
+                Wake::Deadline => {
+                    self.abandon_all_live();
+                    return self.conclude(None);
+                }
             }
         }
     }

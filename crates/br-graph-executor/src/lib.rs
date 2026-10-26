@@ -1,6 +1,7 @@
 mod checkpoint;
 mod config;
 mod errors;
+mod node_names;
 mod observe;
 mod outcome;
 mod panic_text;

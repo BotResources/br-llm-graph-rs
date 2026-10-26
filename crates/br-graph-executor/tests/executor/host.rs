@@ -123,6 +123,13 @@ pub async fn settle() {
     }
 }
 
+pub fn handwritten_checkpoint(rig: &Rig, state_json: &str, nodes: &[&str]) -> Checkpoint {
+    let structure = serde_json::to_string(&rig.graph.structure()).unwrap();
+    let names = serde_json::to_string(nodes).unwrap();
+    let document = format!(r#"{{"state":{state_json},"structure":{structure},"nodes":{names}}}"#);
+    Checkpoint::from_json_slice(document.as_bytes()).unwrap()
+}
+
 pub fn state_of(checkpoint: &Checkpoint) -> Kv {
     State::<Kv>::rebuild_with_limit(checkpoint.state_json().as_bytes(), BIG)
         .unwrap()

@@ -3,7 +3,7 @@ use std::time::Duration;
 use br_graph_contract::Fields;
 use tokio::time::Instant;
 
-use super::{Phase, Run};
+use super::{Phase, Run, Trigger};
 use crate::RunFailure;
 
 impl<F: Fields> Run<F> {
@@ -11,16 +11,27 @@ impl<F: Fields> Run<F> {
         matches!(self.phase, Phase::Stopping { .. })
     }
 
+    pub(super) fn stopped_by_executor(&self) -> bool {
+        matches!(
+            self.phase,
+            Phase::Stopping {
+                trigger: Trigger::Executor,
+                ..
+            }
+        )
+    }
+
     pub(super) fn read_token(&mut self) {
         if !self.is_stopping() && self.cancel.handle().is_triggered() {
-            self.begin_stopping();
+            self.begin_stopping(Trigger::Host);
         }
     }
 
-    pub(super) fn begin_stopping(&mut self) {
+    pub(super) fn begin_stopping(&mut self, trigger: Trigger) {
         if !self.is_stopping() {
             self.phase = Phase::Stopping {
                 deadline: deadline_after(self.grace),
+                trigger,
             };
         }
     }
@@ -29,11 +40,13 @@ impl<F: Fields> Run<F> {
         self.failures.push(failure);
         if !self.is_stopping() {
             let handle = self.cancel.handle();
-            if !handle.is_triggered() {
+            let trigger = if handle.is_triggered() {
+                Trigger::Host
+            } else {
                 handle.trigger();
-                self.executor_triggered = true;
-            }
-            self.begin_stopping();
+                Trigger::Executor
+            };
+            self.begin_stopping(trigger);
         }
     }
 

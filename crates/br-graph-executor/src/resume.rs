@@ -1,11 +1,12 @@
-use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
 use br_graph_contract::{Fields, Graph, State};
 
+use crate::panic_text::panic_reason;
 use crate::run::Run;
-use crate::{Checkpoint, Outcome, ResumeError, RunConfig};
+use crate::{Checkpoint, Outcome, ResumeError, RunConfig, node_names};
 
 pub async fn resume<F: Fields>(
     graph: Arc<Graph<F>>,
@@ -13,32 +14,30 @@ pub async fn resume<F: Fields>(
     limit: NonZeroUsize,
     config: RunConfig,
 ) -> Result<Outcome<F>, ResumeError> {
-    check_nodes(&graph, &checkpoint)?;
+    node_names::check(&graph, checkpoint.nodes())?;
     check_structure(&graph, &checkpoint)?;
-    let state = State::<F>::rebuild_with_limit(checkpoint.state_json().as_bytes(), limit).map_err(
-        |error| ResumeError::StateRejected {
-            reason: error.to_string(),
-        },
-    )?;
+    let state = rebuild_state::<F>(&checkpoint, limit)?;
     let nodes = checkpoint.nodes().to_vec();
     let run = Run::new(graph, Arc::new(state), &nodes, config);
     Ok(run.drive(Vec::new(), Some(checkpoint)).await)
 }
 
-fn check_nodes<F: Fields>(graph: &Graph<F>, checkpoint: &Checkpoint) -> Result<(), ResumeError> {
-    if checkpoint.nodes().is_empty() {
-        return Err(ResumeError::NoNodes);
+fn rebuild_state<F: Fields>(
+    checkpoint: &Checkpoint,
+    limit: NonZeroUsize,
+) -> Result<State<F>, ResumeError> {
+    let rebuilt = catch_unwind(AssertUnwindSafe(|| {
+        State::<F>::rebuild_with_limit(checkpoint.state_json().as_bytes(), limit)
+    }));
+    match rebuilt {
+        Ok(Ok(state)) => Ok(state),
+        Ok(Err(error)) => Err(ResumeError::StateRejected {
+            reason: error.to_string(),
+        }),
+        Err(payload) => Err(ResumeError::StateRejected {
+            reason: panic_reason(&*payload),
+        }),
     }
-    let mut seen = HashSet::new();
-    for name in checkpoint.nodes() {
-        if !seen.insert(name.as_str()) {
-            return Err(ResumeError::DuplicateNode { name: name.clone() });
-        }
-        if graph.node(name).is_none() {
-            return Err(ResumeError::UnknownNode { name: name.clone() });
-        }
-    }
-    Ok(())
 }
 
 fn check_structure<F: Fields>(

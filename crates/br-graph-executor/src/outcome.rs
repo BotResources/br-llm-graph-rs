@@ -69,7 +69,10 @@ pub enum RunFailure {
         cause: Option<Cause>,
     },
     #[error("checkpoint sink refused: {reason}")]
-    SinkRefused { reason: String },
+    SinkRefused {
+        reason: String,
+        checkpoint: Checkpoint,
+    },
     #[error("checkpoint not built: {reason}")]
     CheckpointNotBuilt { reason: String },
 }

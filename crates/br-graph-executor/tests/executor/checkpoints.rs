@@ -126,6 +126,7 @@ fn every_failure_names_its_cause_in_its_display() {
         },
         RunFailure::SinkRefused {
             reason: "why".into(),
+            checkpoint: handwritten_checkpoint(&single("n"), "{}", &["n"]),
         },
         RunFailure::CheckpointNotBuilt {
             reason: "why".into(),

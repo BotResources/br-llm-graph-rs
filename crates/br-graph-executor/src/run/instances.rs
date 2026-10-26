@@ -4,7 +4,7 @@ use br_graph_contract::{CancelView, EventEnd, Fields, InstanceId, Node};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-use super::guard::{AbortGuard, AbortOnDrop};
+use super::guard::AbortGuard;
 use super::message::{CreationFailure, Message};
 use crate::panic_text::panic_reason;
 
@@ -20,8 +20,9 @@ pub(super) fn spawn_creation<F: Fields>(
     sender: UnboundedSender<Message<F>>,
 ) -> AbortGuard {
     let task = tokio::spawn(async move {
-        let mut creating = AbortOnDrop(tokio::spawn(async move { node.create(view, id).await }));
-        let result = match (&mut creating.0).await {
+        let creating = tokio::spawn(async move { node.create(view, id).await });
+        let _abort_with_this_task = AbortGuard::new(creating.abort_handle());
+        let result = match creating.await {
             Ok(Ok(instance)) => Ok(instance),
             Ok(Err(error)) => Err(CreationFailure {
                 reason: error.cause().to_string(),

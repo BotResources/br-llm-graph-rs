@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use br_graph_contract::{Fields, Input, State};
+use br_graph_contract::{Fields, Input, Node, State};
 
 use super::Run;
 use super::guard::AbortGuard;
@@ -10,12 +10,7 @@ use crate::{Observation, RunFailure};
 
 impl<F: Fields> Run<F> {
     pub(super) fn hand_over(&mut self, targets: &[String]) {
-        let mut order: Vec<String> = Vec::new();
-        for name in targets {
-            if !order.contains(name) {
-                order.push(name.clone());
-            }
-        }
+        let mut order: Vec<String> = targets.to_vec();
         for (name, slot) in &self.slots {
             if slot.held && !order.contains(name) {
                 order.push(name.clone());
@@ -31,7 +26,7 @@ impl<F: Fields> Run<F> {
 
     fn hand_to(&mut self, name: &str) {
         let state = Arc::clone(&self.state);
-        let Some(slot) = self.slots.get_mut(name) else {
+        let Some(slot) = self.slots.get(name) else {
             return;
         };
         if !slot.held {
@@ -45,8 +40,9 @@ impl<F: Fields> Run<F> {
                 }
             }
             Live::Absent => {
+                let node = Arc::clone(&slot.node);
                 self.clear_held(name);
-                self.begin_creation(name, state);
+                self.begin_creation(name, node, state);
             }
         }
     }
@@ -75,11 +71,7 @@ impl<F: Fields> Run<F> {
         true
     }
 
-    fn begin_creation(&mut self, name: &str, first_input: Arc<State<F>>) {
-        let Some(node) = self.graph.node(name).cloned() else {
-            self.creation_impossible(name, "the graph holds no such node".to_owned());
-            return;
-        };
+    fn begin_creation(&mut self, name: &str, node: Arc<dyn Node<F>>, first_input: Arc<State<F>>) {
         let id = match mint_id() {
             Ok(id) => id,
             Err(reason) => {

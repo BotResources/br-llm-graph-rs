@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use br_graph_contract::{Fields, InputEnd, InstanceId, State};
+use br_graph_contract::{Fields, InputEnd, InstanceId, Node, State};
 
 use super::guard::AbortGuard;
 
@@ -19,6 +19,7 @@ pub(super) enum Live<F: Fields> {
 }
 
 pub(super) struct NodeSlot<F: Fields> {
+    pub(super) node: Arc<dyn Node<F>>,
     pub(super) kind: String,
     pub(super) subkind: String,
     pub(super) live: Live<F>,
@@ -27,8 +28,9 @@ pub(super) struct NodeSlot<F: Fields> {
 }
 
 impl<F: Fields> NodeSlot<F> {
-    pub(super) fn new(kind: String, subkind: String) -> Self {
+    pub(super) fn new(node: Arc<dyn Node<F>>, kind: String, subkind: String) -> Self {
         Self {
+            node,
             kind,
             subkind,
             live: Live::Absent,
