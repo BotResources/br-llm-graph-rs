@@ -21,13 +21,13 @@ built on `br-graph-contract` 0.1.0 only.
   ready function gives true it closes its input end, reads the inputs it had
   accepted and sends one `Result` with the empty update. A triggered cancel
   token closes the input end and sends `Cancelled`.
-- `LateInput` (`Silent` by default, `Fail`, `FireAgain`): what a merger does
+- `Merger::late_input(LateInput)` sets the policy; `LateInput` (`Silent` by default, `Fail`, `FireAgain`): what a merger does
   with an input that the spent function calls spent; `Fail` closes the input
   end and sends `Refused` with a reason.
 - `MapReduce`: a node of kind `programmatic` and subkind `map_reduce`, made
   from a name, a map function, an internal node, a limit (`NonZeroUsize`) and a
-  reduce function, with an optional internal size limit (default
-  `DEFAULT_STATE_LIMIT`). It works on the state of the last input it had
+  reduce function, with an optional internal size limit set by
+  `MapReduce::internal_size_limit` (default `DEFAULT_STATE_LIMIT`). It works on the state of the last input it had
   accepted, creates the internal instances one at a time in list order (at
   most `limit` live, a fresh UUIDv7 each and a view of the one child cancel token
   of the outer instance), applies each

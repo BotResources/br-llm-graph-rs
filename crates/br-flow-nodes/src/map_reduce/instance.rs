@@ -10,7 +10,7 @@ use crate::signals::{Awaited, Signals};
 
 pub(super) async fn run<F: Fields, G: Fields>(
     rules: Arc<Rules<F, G>>,
-    internal_limit: NonZeroUsize,
+    internal_size_limit: NonZeroUsize,
     mut reader: InputReader<F>,
     sender: EventSender<F>,
     cancel: CancelView,
@@ -23,7 +23,14 @@ pub(super) async fn run<F: Fields, G: Fields>(
     };
     reader.close();
     let last = reader.drain().pop().unwrap_or(first);
-    let outcome = work::run(&rules, internal_limit, last.state(), &cancel, &mut signals).await;
+    let outcome = work::run(
+        &rules,
+        internal_size_limit,
+        last.state(),
+        &cancel,
+        &mut signals,
+    )
+    .await;
     match outcome {
         Outcome::Result(update) => settle(&mut reader, sender, Event::Result(update)),
         Outcome::Cancelled => settle(&mut reader, sender, Event::Cancelled),

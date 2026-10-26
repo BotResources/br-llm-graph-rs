@@ -185,7 +185,7 @@ async fn given_an_internal_size_limit_that_defaults_to_the_contract_one_when_int
  {
     let big = "x".repeat(140_000);
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
-    let node = |internal_limit: Option<usize>| {
+    let node = |internal_size_limit: Option<usize>| {
         let node = MapReduce::new(
             "fan",
             {
@@ -196,8 +196,8 @@ async fn given_an_internal_size_limit_that_defaults_to_the_contract_one_when_int
             nz(1),
             summed,
         );
-        match internal_limit {
-            Some(limit) => node.internal_limit(nz(limit)),
+        match internal_size_limit {
+            Some(limit) => node.internal_size_limit(nz(limit)),
             None => node,
         }
     };

@@ -34,12 +34,12 @@ pub(super) struct Work<'a, F: Fields, G: Fields> {
 
 pub(super) async fn run<F: Fields, G: Fields>(
     rules: &Rules<F, G>,
-    internal_limit: NonZeroUsize,
+    internal_size_limit: NonZeroUsize,
     state: &State<F>,
     cancel: &CancelView,
     signals: &mut Signals,
 ) -> Outcome<F> {
-    let states = match initial::states(rules, internal_limit, state) {
+    let states = match initial::states(rules, internal_size_limit, state) {
         Ok(states) => states,
         Err(error) => return Outcome::Failed(error),
     };

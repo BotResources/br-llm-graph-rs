@@ -28,7 +28,7 @@ struct Rules<F: Fields, G: Fields> {
 
 pub struct MapReduce<F: Fields, G: Fields> {
     rules: Arc<Rules<F, G>>,
-    internal_limit: NonZeroUsize,
+    internal_size_limit: NonZeroUsize,
 }
 
 impl<F: Fields, G: Fields> MapReduce<F, G> {
@@ -47,13 +47,13 @@ impl<F: Fields, G: Fields> MapReduce<F, G> {
                 limit,
                 reduce: Box::new(reduce),
             }),
-            internal_limit: DEFAULT_STATE_LIMIT,
+            internal_size_limit: DEFAULT_STATE_LIMIT,
         }
     }
 
     #[must_use]
-    pub fn internal_limit(mut self, internal_limit: NonZeroUsize) -> Self {
-        self.internal_limit = internal_limit;
+    pub fn internal_size_limit(mut self, internal_size_limit: NonZeroUsize) -> Self {
+        self.internal_size_limit = internal_size_limit;
         self
     }
 }
@@ -73,10 +73,16 @@ impl<F: Fields, G: Fields> Node<F> for MapReduce<F, G> {
 
     fn create(&self, cancel: CancelView, id: InstanceId) -> CreateFuture<'_, F> {
         let rules = Arc::clone(&self.rules);
-        let internal_limit = self.internal_limit;
+        let internal_size_limit = self.internal_size_limit;
         Box::pin(async move {
             let (instance, reader, sender) = Instance::channel(id);
-            tokio::spawn(instance::run(rules, internal_limit, reader, sender, cancel));
+            tokio::spawn(instance::run(
+                rules,
+                internal_size_limit,
+                reader,
+                sender,
+                cancel,
+            ));
             Ok(instance)
         })
     }

@@ -29,7 +29,7 @@ async fn given_an_invalid_initial_value_when_the_node_works_then_it_fails_with_i
 async fn given_an_initial_value_over_the_internal_size_limit_when_the_node_works_then_it_fails_with_its_position()
  {
     let (probe, watch) = Probe::with_mode(|_| Mode::Answer);
-    let node = fan_out(&probe, 2).internal_limit(nz(10));
+    let node = fan_out(&probe, 2).internal_size_limit(nz(10));
     let mut driver = Driver::start(&node).await;
 
     driver.give(Report::with_items(&[1]).state()).unwrap();
