@@ -2,6 +2,7 @@ use br_agentic_contract::{Opened, Session, ThreadAccess, cancelled, failed, resu
 use br_graph_contract::{Event, Instance};
 
 use crate::common::*;
+use crate::flaky::Flaky;
 
 async fn open_two(
     world: &World,

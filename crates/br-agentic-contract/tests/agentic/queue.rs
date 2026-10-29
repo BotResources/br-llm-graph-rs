@@ -4,6 +4,7 @@ use br_agentic_contract::{
 use br_llm_messages::{ClosureReason, EntryView, IncomingEntry, Turn, TurnClosure};
 
 use crate::common::*;
+use crate::flaky::Flaky;
 
 async fn queue_all(world: &World, queue: &mut Queue) {
     let batch = world
