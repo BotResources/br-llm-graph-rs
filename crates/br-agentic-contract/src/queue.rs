@@ -1,8 +1,8 @@
-use br_llm_messages::{EntryId, ProjectedThread, Turn, TurnId};
+use br_llm_messages::{EntryId, IncomingEntry, InputTurn, ProjectedThread, Turn, TurnId};
 
 use crate::fault::{PortFault, ThreadError};
 use crate::inbox::{InboxContext, InboxItem, InboxPort};
-use crate::thread_access::{Incoming, ThreadAccess, TurnTarget};
+use crate::thread_access::{Incoming, Stored, ThreadAccess, TurnTarget};
 
 #[derive(Debug, Default)]
 pub struct Queue {
@@ -42,11 +42,18 @@ pub struct Boundary {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum BoundaryError {
+pub enum BoundaryFault {
     #[error(transparent)]
     Thread(#[from] ThreadError),
     #[error(transparent)]
     Port(#[from] PortFault),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{fault}")]
+pub struct BoundaryError {
+    pub fault: BoundaryFault,
+    pub done: Boundary,
 }
 
 enum Placement {
@@ -68,9 +75,20 @@ fn placement_of(projected: &ProjectedThread, new_turn: TurnId) -> Placement {
         });
     }
     match projected.turns().last() {
-        Some(Turn::InputTurn(input)) => Placement::Open(TurnTarget::Input(input.id())),
+        Some(Turn::InputTurn(input)) if !projects_agent_output(input) => {
+            Placement::Open(TurnTarget::Input(input.id()))
+        }
         _ => Placement::NewInput(new_turn),
     }
+}
+
+fn projects_agent_output(input: &InputTurn) -> bool {
+    input.entries().iter().any(|entry| {
+        matches!(
+            entry,
+            IncomingEntry::AgentOutput(_) | IncomingEntry::PartialAgentOutput(_)
+        )
+    })
 }
 
 pub async fn store_at_boundary(
@@ -80,7 +98,13 @@ pub async fn store_at_boundary(
     queue: &mut Queue,
     new_turn: TurnId,
 ) -> Result<Boundary, BoundaryError> {
-    let projected = access.load(&context.thread, context.agent).await?;
+    let projected = access
+        .load(&context.thread, context.agent)
+        .await
+        .map_err(|fault| BoundaryError {
+            fault: fault.into(),
+            done: Boundary::default(),
+        })?;
     let mut placement = placement_of(&projected, new_turn);
     let mut report = Boundary::default();
     let mut pending = std::mem::take(&mut queue.items).into_iter();
@@ -95,10 +119,13 @@ pub async fn store_at_boundary(
             &mut report,
         )
         .await;
-        if let Err(error) = outcome {
+        if let Err(fault) = outcome {
             queue.items.push(item);
             queue.items.extend(pending);
-            return Err(error);
+            return Err(BoundaryError {
+                fault,
+                done: report,
+            });
         }
     }
     Ok(report)
@@ -112,7 +139,7 @@ async fn store_one(
     placement: &mut Placement,
     item: &InboxItem,
     report: &mut Boundary,
-) -> Result<(), BoundaryError> {
+) -> Result<(), BoundaryFault> {
     let id = item.id();
     if projected.entry(&id).is_ok() {
         mark_if_mail(inbox, context, item).await?;
@@ -123,22 +150,26 @@ async fn store_one(
         InboxItem::Mail(mail) => Incoming::Mail(mail.clone()),
         InboxItem::Entry(entry) => Incoming::Entry(entry.clone()),
     };
-    match placement {
+    let stored = match placement {
         Placement::NewInput(turn) => {
             let turn = *turn;
-            access
+            let stored = access
                 .add_input_turn(&context.thread, context.agent, turn, vec![incoming])
                 .await?;
             *placement = Placement::Open(TurnTarget::Input(turn));
+            stored
         }
         Placement::Open(target) => {
             access
                 .add_incoming(&context.thread, context.agent, target.clone(), incoming)
-                .await?;
+                .await?
         }
-    }
+    };
     mark_if_mail(inbox, context, item).await?;
-    report.stored.push(id);
+    match stored {
+        Stored::Added => report.stored.push(id),
+        Stored::Held => report.skipped.push(id),
+    }
     Ok(())
 }
 

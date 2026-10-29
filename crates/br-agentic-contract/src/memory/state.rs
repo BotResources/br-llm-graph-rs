@@ -44,6 +44,7 @@ pub(super) struct State {
     pub deltas: HashMap<EntryId, Arc<Mutex<Vec<ResponseDelta>>>>,
     pub fragments: HashMap<EntryId, Arc<Mutex<Vec<String>>>>,
     pub next_seq: u64,
+    pub given: HashMap<AgentId, u64>,
 }
 
 impl State {

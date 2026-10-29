@@ -9,6 +9,7 @@ mod mail_send;
 mod objects;
 mod queue;
 mod results;
+mod shared;
 mod thread_access;
 mod tools;
 mod values;

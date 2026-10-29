@@ -122,12 +122,17 @@ async fn given_open_objects_when_the_instance_ends_with_failed_then_they_are_dis
     let world = World::new();
     let mut session = Session::new(&world.access, world.thread, world.agent);
     let (response, result_entry) = open_two(&world, &mut session).await;
-    let (_instance, reader, _sender) = Instance::<Doc>::channel(instance_id());
+    let (instance, reader, _sender) = Instance::<Doc>::channel(instance_id());
+    let (input_end, _event_end) = instance.into_parts();
 
     let event = failed(&reader, &mut session, "tool fault").await;
 
     assert!(matches!(event, Event::Failed(cause) if cause.to_string() == "tool fault"));
     assert!(!world.hub.is_open(response) && !world.hub.is_open(result_entry));
+    let input = br_graph_contract::Input::new(std::sync::Arc::new(
+        br_graph_contract::State::create(Doc { n: 1 }).unwrap(),
+    ));
+    assert!(input_end.give(input).is_err());
 }
 
 #[tokio::test]
@@ -141,11 +146,18 @@ async fn given_open_objects_and_a_discard_that_fails_when_the_instance_is_cancel
     };
     let mut session = Session::new(&flaky, world.thread, world.agent);
     open_two(&world, &mut session).await;
-    let (_instance, reader, _sender) = Instance::<Doc>::channel(instance_id());
+    let (instance, reader, _sender) = Instance::<Doc>::channel(instance_id());
+    let (input_end, _event_end) = instance.into_parts();
+    let before = world.hub.conversation(&world.thread).unwrap();
 
     let event = cancelled(&reader, &mut session).await;
 
     assert!(matches!(event, Event::Cancelled));
+    assert_eq!(world.hub.conversation(&world.thread).unwrap(), before);
+    let input = br_graph_contract::Input::new(std::sync::Arc::new(
+        br_graph_contract::State::create(Doc { n: 1 }).unwrap(),
+    ));
+    assert!(input_end.give(input).is_err());
 }
 
 #[tokio::test]

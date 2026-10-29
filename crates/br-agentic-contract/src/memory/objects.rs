@@ -8,7 +8,7 @@ use br_llm_messages::{
     RuntimeToolResult, RuntimeToolResults, Turn, TurnEntry,
 };
 
-use super::additions::{append, holds_entry};
+use super::additions::{append, check_target, holds_entry};
 use super::build::refused;
 use super::state::{MemoryHub, OpenObject};
 use crate::fault::ThreadError;
@@ -75,9 +75,13 @@ fn refuse(text: &str) -> ThreadError {
     ThreadError::Refused(Reason::new(text))
 }
 
-fn check_open_state(conversation: &Conversation, target: &TurnTarget) -> Result<(), ThreadError> {
+fn check_open_state(
+    conversation: &Conversation,
+    agent: AgentId,
+    target: &TurnTarget,
+) -> Result<(), ThreadError> {
     match conversation.turn(&target.id()) {
-        Ok(Turn::AITurn(ai)) if !ai.is_closed() => Ok(()),
+        Ok(turn @ Turn::AITurn(ai)) if !ai.is_closed() => check_target(turn, agent, target),
         Ok(Turn::AITurn(_)) => Err(refuse("the AI turn is closed")),
         Ok(Turn::InputTurn(_)) => Err(refuse("the turn is an input turn")),
         Err(_) => match target {
@@ -113,16 +117,18 @@ impl MemoryHub {
     pub(super) fn open_response(
         &self,
         thread: &ThreadRef,
+        agent: AgentId,
         target: &TurnTarget,
         entry: EntryId,
     ) -> Result<Opened<ResponseStream, ModelResponse>, ThreadError> {
         let conversation = self.lock().conversation(thread)?.clone();
         if holds_entry(&conversation, entry) {
+            self.end_open(entry);
             return held_response(&conversation, entry)
                 .map(Opened::Held)
                 .ok_or_else(|| wrong_object(entry));
         }
-        check_open_state(&conversation, target)?;
+        check_open_state(&conversation, agent, target)?;
         let alive = self.begin_open(entry);
         let log = Arc::new(Mutex::new(Vec::new()));
         self.lock().deltas.insert(entry, log.clone());
@@ -143,9 +149,10 @@ impl MemoryHub {
         let mut state = self.lock();
         let conversation = state.conversation(thread)?;
         if holds_entry(conversation, entry) {
-            return held_response(conversation, entry)
-                .map(Completed::Held)
-                .ok_or_else(|| wrong_object(entry));
+            let held = held_response(conversation, entry);
+            drop(state);
+            self.end_open(entry);
+            return held.map(Completed::Held).ok_or_else(|| wrong_object(entry));
         }
         let mut next = conversation.clone();
         append(&mut next, agent, target, TurnEntry::from(response))?;
@@ -162,19 +169,24 @@ impl MemoryHub {
     pub(super) fn open_result(
         &self,
         thread: &ThreadRef,
+        agent: AgentId,
         target: &TurnTarget,
         entry: EntryId,
         call: BlockId,
     ) -> Result<Opened<ResultStreamBox, RuntimeToolResults>, ThreadError> {
         let conversation = self.lock().conversation(thread)?.clone();
         if holds_entry(&conversation, entry) {
+            self.end_open(entry);
             return held_results(&conversation, entry)
                 .map(Opened::Held)
                 .ok_or_else(|| wrong_object(entry));
         }
         match conversation.turn(&target.id()) {
-            Ok(Turn::AITurn(ai))
-                if !ai.is_closed() && ai.state().outstanding_runtime_calls().contains(&call) => {}
+            Ok(turn @ Turn::AITurn(ai))
+                if !ai.is_closed() && ai.state().outstanding_runtime_calls().contains(&call) =>
+            {
+                check_target(turn, agent, target)?;
+            }
             _ => return Err(refuse("the tool call is not pending")),
         }
         let alive = self.begin_open(entry);
@@ -194,9 +206,10 @@ impl MemoryHub {
         let mut state = self.lock();
         let conversation = state.conversation(thread)?;
         if holds_entry(conversation, entry) {
-            return held_results(conversation, entry)
-                .map(Completed::Held)
-                .ok_or_else(|| wrong_object(entry));
+            let held = held_results(conversation, entry);
+            drop(state);
+            self.end_open(entry);
+            return held.map(Completed::Held).ok_or_else(|| wrong_object(entry));
         }
         let results = RuntimeToolResults::new(entry, vec![result]).map_err(refused)?;
         let mut next = conversation.clone();

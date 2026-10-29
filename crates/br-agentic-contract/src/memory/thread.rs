@@ -61,21 +61,21 @@ impl ThreadAccess for MemoryThreadAccess {
     fn close_turn<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        _agent: AgentId,
+        agent: AgentId,
         turn: TurnId,
         closure: TurnClosure,
     ) -> BoxFuture<'a, Result<Stored, ThreadError>> {
-        Box::pin(async move { self.hub.close_turn(thread, turn, closure) })
+        Box::pin(async move { self.hub.close_turn(thread, agent, turn, closure) })
     }
 
     fn open_response<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        _agent: AgentId,
+        agent: AgentId,
         target: TurnTarget,
         entry: EntryId,
     ) -> BoxFuture<'a, Result<Opened<ResponseStream, ModelResponse>, ThreadError>> {
-        Box::pin(async move { self.hub.open_response(thread, &target, entry) })
+        Box::pin(async move { self.hub.open_response(thread, agent, &target, entry) })
     }
 
     fn complete_response<'a>(
@@ -103,12 +103,12 @@ impl ThreadAccess for MemoryThreadAccess {
     fn open_result<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        _agent: AgentId,
+        agent: AgentId,
         target: TurnTarget,
         entry: EntryId,
         call: BlockId,
     ) -> BoxFuture<'a, Result<Opened<ResultStreamBox, RuntimeToolResults>, ThreadError>> {
-        Box::pin(async move { self.hub.open_result(thread, &target, entry, call) })
+        Box::pin(async move { self.hub.open_result(thread, agent, &target, entry, call) })
     }
 
     fn complete_result<'a>(

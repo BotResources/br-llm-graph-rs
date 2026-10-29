@@ -89,7 +89,20 @@ impl InboxPort for MemoryInbox {
     ) -> BoxFuture<'a, Result<InboxBatch, PortFault>> {
         Box::pin(async move {
             let after = position(after)?;
-            let all = listed(&self.hub.lock(), context)?;
+            let all = {
+                let mut state = self.hub.lock();
+                let all = listed(&state, context)?;
+                let given = state.given.entry(context.agent).or_insert(0);
+                let reached = all
+                    .iter()
+                    .filter(|(seq, _)| *seq > after)
+                    .take(limit.get())
+                    .map(|(seq, _)| *seq)
+                    .max()
+                    .unwrap_or(0);
+                *given = (*given).max(reached);
+                all
+            };
             let mut rest = all.into_iter().filter(|(seq, _)| *seq > after);
             let page: Vec<(u64, InboxItem)> = rest.by_ref().take(limit.get()).collect();
             let more = rest.next().is_some();
@@ -109,13 +122,15 @@ impl InboxPort for MemoryInbox {
         context: &'a InboxContext,
     ) -> BoxFuture<'a, Result<InboxItem, PortFault>> {
         let mut arrivals = self.hub.arrivals.subscribe();
-        let seen = self.hub.lock().next_seq;
         Box::pin(async move {
-            let floor = seen;
             loop {
-                let found = listed(&self.hub.lock(), context)?
-                    .into_iter()
-                    .find(|(seq, _)| *seq > floor);
+                let found = {
+                    let state = self.hub.lock();
+                    let floor = state.given.get(&context.agent).copied().unwrap_or(0);
+                    listed(&state, context)?
+                        .into_iter()
+                        .find(|(seq, _)| *seq > floor)
+                };
                 if let Some((_, item)) = found {
                     return Ok(item);
                 }

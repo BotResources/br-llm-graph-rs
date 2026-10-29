@@ -22,7 +22,7 @@ pub use inbox_entry::InboxEntry;
 pub use mail::{Attachment, DocumentRef, MailDocument, MailItem, NewMail};
 pub use node::{AGENTIC, AgenticNode, Restart};
 pub use ports::{Agent, AgentPort, ThreadPort, ToolsPort, WorkspacePort};
-pub use queue::{Boundary, BoundaryError, Queue, store_at_boundary};
+pub use queue::{Boundary, BoundaryError, BoundaryFault, Queue, store_at_boundary};
 pub use session::Session;
 pub use thread_access::{
     Completed, Incoming, Opened, ResponseStream, ResultStreamBox, Stored, ThreadAccess, TurnTarget,
