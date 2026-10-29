@@ -4,7 +4,7 @@ use br_graph_contract::Event;
 
 use crate::common::{
     CREATION_GATE, CreateMode, Driver, Mode, Probe, Report, ReportUpdate, counting_fan_out,
-    creation_at, fan_out, tasks_end,
+    creation_at, fan_out, strict_fan_out, tasks_end,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -68,7 +68,7 @@ async fn given_live_siblings_and_a_creation_pending_when_a_sibling_fails_then_th
     let (probe, mut watch) = Probe::new(creation_at(2, CreateMode::Hang), |value| {
         if value == 2 { Mode::Fail } else { Mode::Gate }
     });
-    let mut driver = Driver::start(&fan_out(&probe, 3)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 3)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
     assert!(matches!(driver.event().await, Event::Failed(_)));

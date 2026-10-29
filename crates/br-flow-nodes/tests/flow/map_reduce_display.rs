@@ -1,12 +1,14 @@
 use br_graph_contract::Event;
 
-use crate::common::{CreateMode, Driver, Mode, Probe, ProbeCause, Report, fan_out, mode_at};
+use crate::common::{
+    CreateMode, Driver, Mode, Probe, ProbeCause, Report, fan_out, mode_at, strict_fan_out,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn given_an_internal_instance_that_fails_with_boom_when_the_failed_event_is_displayed_then_the_text_shows_boom_and_the_source_is_still_the_cause()
  {
     let (probe, _watch) = Probe::with_mode(mode_at(1, Mode::Fail));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
     driver.give(Report::with_items(&[1]).state()).unwrap();
 
     let cause = match driver.event().await {

@@ -2,13 +2,14 @@ use br_flow_nodes::MapReduceError;
 
 use crate::common::{
     CREATION_GATE, CreateMode, Driver, Mark, Mode, Probe, Report, creation_at, fan_out, mode_at,
+    strict_fan_out,
 };
 
 #[tokio::test(start_paused = true)]
 async fn given_a_creation_pending_when_a_sibling_fails_then_the_failure_is_seen_before_the_creation_ends()
  {
     let (probe, watch) = Probe::new(creation_at(1, CreateMode::Hang), mode_at(1, Mode::Fail));
-    let mut driver = Driver::start(&fan_out(&probe, 2)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
     let error = driver.failure().await;
@@ -24,7 +25,7 @@ async fn given_a_creation_pending_when_a_sibling_fails_then_the_failure_is_seen_
 async fn given_a_creation_pending_when_a_sibling_result_is_refused_by_the_state_then_the_node_fails_before_the_creation_ends()
  {
     let (probe, _watch) = Probe::new(creation_at(1, CreateMode::Hang), mode_at(1, Mode::Reject));
-    let mut driver = Driver::start(&fan_out(&probe, 2)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
     let error = driver.failure().await;
@@ -42,7 +43,7 @@ async fn given_a_sibling_failure_read_during_a_creation_when_the_creation_would_
         creation_at(1, CreateMode::FailWhenReleased),
         mode_at(1, Mode::Fail),
     );
-    let mut driver = Driver::start(&fan_out(&probe, 2)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
     watch.dropped_positions(1).await;
     watch.gates.release(CREATION_GATE);
@@ -62,7 +63,7 @@ async fn given_a_fault_already_known_when_the_next_start_is_due_then_no_further_
         1 => Mode::Answer,
         _ => Mode::Fail,
     });
-    let mut driver = Driver::start(&fan_out(&probe, 2)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 2)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
     let error = driver.failure().await;
@@ -81,7 +82,7 @@ async fn given_live_siblings_when_one_fails_then_the_others_are_triggered_then_d
         2 => Mode::Fail,
         _ => Mode::Gate,
     });
-    let mut driver = Driver::start(&fan_out(&probe, 3)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 3)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
     let error = driver.failure_marked(&watch.log).await;

@@ -1,11 +1,11 @@
 use std::error::Error;
 
-use br_flow_nodes::MapReduceError;
+use br_flow_nodes::{FaultMode, MapReduceError};
 use br_graph_contract::{EventEndError, InputClosed};
 
 use crate::common::{
     BAD_VALUE, CreateMode, Driver, Mode, Probe, ProbeCause, Report, counting_fan_out, fan_out,
-    mode_at, nz,
+    mode_at, nz, strict_fan_out,
 };
 
 #[tokio::test(flavor = "multi_thread")]
@@ -120,7 +120,7 @@ async fn given_an_instance_that_refuses_its_one_input_when_the_input_is_given_th
 async fn given_an_internal_instance_that_fails_when_the_node_reads_it_then_it_fails_with_its_position_and_the_opaque_cause_and_starts_no_later_element()
  {
     let (probe, watch) = Probe::with_mode(mode_at(3, Mode::Fail));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
 
     driver
         .give(Report::with_items(&[1, 2, 3, 4]).state())
@@ -139,7 +139,7 @@ async fn given_an_internal_instance_that_fails_when_the_node_reads_it_then_it_fa
 async fn given_an_internal_instance_that_refuses_when_the_node_reads_it_then_it_fails_with_its_position_and_the_reason()
  {
     let (probe, _watch) = Probe::with_mode(mode_at(2, Mode::Refuse));
-    let mut driver = Driver::start(&fan_out(&probe, 2)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 2)).await;
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
@@ -158,7 +158,7 @@ async fn given_an_internal_instance_that_refuses_when_the_node_reads_it_then_it_
 async fn given_an_internal_instance_that_cancels_alone_when_the_child_token_is_not_triggered_then_the_node_fails_with_its_position()
  {
     let (probe, _watch) = Probe::with_mode(mode_at(1, Mode::CancelAlone));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
@@ -172,7 +172,7 @@ async fn given_an_internal_instance_that_cancels_alone_when_the_child_token_is_n
 async fn given_an_internal_instance_that_vanishes_when_the_node_reads_it_then_it_fails_with_its_position()
  {
     let (probe, _watch) = Probe::with_mode(mode_at(2, Mode::Vanish));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
@@ -186,7 +186,7 @@ async fn given_an_internal_instance_that_vanishes_when_the_node_reads_it_then_it
 async fn given_an_internal_update_the_state_refuses_when_it_is_applied_then_the_node_fails_with_its_position()
  {
     let (probe, _watch) = Probe::with_mode(mode_at(2, Mode::Reject));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
@@ -205,7 +205,7 @@ async fn given_an_internal_update_the_state_refuses_when_it_is_applied_then_the_
 async fn given_an_internal_update_that_gives_an_invalid_state_when_it_is_applied_then_the_node_fails_with_its_position()
  {
     let (probe, _watch) = Probe::with_mode(mode_at(1, Mode::Invalidate));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 
@@ -228,6 +228,7 @@ async fn given_a_failing_instance_among_live_siblings_when_the_node_fails_then_t
         _ => Mode::Gate,
     });
     let (node, _maps, reduces) = counting_fan_out(&probe, 3);
+    let node = node.fault_mode(FaultMode::Strict);
     let mut driver = Driver::start(&node).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
@@ -253,7 +254,7 @@ async fn given_a_failing_instance_among_live_siblings_when_the_node_fails_then_t
 #[tokio::test(flavor = "multi_thread")]
 async fn given_a_failed_node_when_a_later_input_is_given_then_it_is_refused_as_input_closed() {
     let (probe, _watch) = Probe::with_mode(mode_at(1, Mode::Fail));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
     driver.give(Report::with_items(&[1]).state()).unwrap();
     driver.failure().await;
 
@@ -268,8 +269,8 @@ async fn given_the_errors_of_a_rejected_update_and_of_a_failed_instance_when_dis
  {
     let (rejecting, _watch) = Probe::with_mode(mode_at(2, Mode::Reject));
     let (failing, _watch) = Probe::with_mode(mode_at(1, Mode::Fail));
-    let mut rejected = Driver::start(&fan_out(&rejecting, 1)).await;
-    let mut failed = Driver::start(&fan_out(&failing, 1)).await;
+    let mut rejected = Driver::start(&strict_fan_out(&rejecting, 1)).await;
+    let mut failed = Driver::start(&strict_fan_out(&failing, 1)).await;
     rejected.give(Report::with_items(&[1, 2]).state()).unwrap();
     failed.give(Report::with_items(&[1]).state()).unwrap();
 

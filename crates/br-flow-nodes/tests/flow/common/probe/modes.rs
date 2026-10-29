@@ -53,6 +53,7 @@ pub enum Mode {
     IgnoreCancel,
     SlowCancel,
     TriggerThenAnswer,
+    TriggerThenFail,
     TriggerOnApply,
     PanicOnApply,
     PanicWork,

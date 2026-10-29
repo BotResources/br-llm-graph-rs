@@ -3,7 +3,7 @@ use br_graph_contract::EventEndError;
 
 use crate::common::{
     APPLY_PANIC, CREATE_PANIC, CreateMode, Driver, EXPLODING_VALUE, Mode, Probe, Report,
-    VALIDATE_PANIC, creation_at, fan_out, mode_at, tasks_end,
+    VALIDATE_PANIC, creation_at, fan_out, mode_at, strict_fan_out, tasks_end,
 };
 
 #[tokio::test(flavor = "multi_thread")]
@@ -97,7 +97,7 @@ async fn given_an_internal_state_whose_apply_panics_when_an_update_is_applied_th
         2 => Mode::PanicOnApply,
         _ => Mode::Gate,
     });
-    let mut driver = Driver::start(&fan_out(&probe, 3)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 3)).await;
 
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
@@ -141,7 +141,7 @@ async fn given_an_initial_internal_state_whose_validate_panics_when_the_node_wor
 async fn given_the_work_of_an_internal_instance_that_panics_when_the_node_reads_it_then_the_node_fails_as_internal_vanished()
  {
     let (probe, _watch) = Probe::with_mode(mode_at(2, Mode::PanicWork));
-    let mut driver = Driver::start(&fan_out(&probe, 1)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 1)).await;
 
     driver.give(Report::with_items(&[1, 2]).state()).unwrap();
 

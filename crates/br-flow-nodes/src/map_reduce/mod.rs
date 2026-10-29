@@ -1,8 +1,10 @@
 mod child;
 mod creation;
 mod error;
+mod fault_mode;
 mod initial;
 mod instance;
+mod outcome;
 mod scope;
 mod work;
 
@@ -15,9 +17,11 @@ use br_graph_contract::{
 };
 
 pub use self::error::MapReduceError;
+pub use self::fault_mode::FaultMode;
+pub use self::outcome::ElementOutcome;
 
 type Map<F, G> = Box<dyn Fn(&State<F>) -> Vec<G> + Send + Sync>;
-type Reduce<F, G> = Box<dyn Fn(&[State<G>]) -> <F as Fields>::Update + Send + Sync>;
+type Reduce<F, G> = Box<dyn Fn(&[ElementOutcome<G>]) -> <F as Fields>::Update + Send + Sync>;
 
 struct Rules<F: Fields, G: Fields> {
     name: String,
@@ -30,6 +34,7 @@ struct Rules<F: Fields, G: Fields> {
 pub struct MapReduce<F: Fields, G: Fields> {
     rules: Arc<Rules<F, G>>,
     internal_size_limit: NonZeroUsize,
+    fault_mode: FaultMode,
 }
 
 impl<F: Fields, G: Fields> MapReduce<F, G> {
@@ -38,7 +43,7 @@ impl<F: Fields, G: Fields> MapReduce<F, G> {
         map: impl Fn(&State<F>) -> Vec<G> + Send + Sync + 'static,
         internal_node: Arc<dyn Node<G>>,
         limit: NonZeroUsize,
-        reduce: impl Fn(&[State<G>]) -> F::Update + Send + Sync + 'static,
+        reduce: impl Fn(&[ElementOutcome<G>]) -> F::Update + Send + Sync + 'static,
     ) -> Self {
         Self {
             rules: Arc::new(Rules {
@@ -49,7 +54,14 @@ impl<F: Fields, G: Fields> MapReduce<F, G> {
                 reduce: Box::new(reduce),
             }),
             internal_size_limit: DEFAULT_STATE_LIMIT,
+            fault_mode: FaultMode::default(),
         }
+    }
+
+    #[must_use]
+    pub fn fault_mode(mut self, fault_mode: FaultMode) -> Self {
+        self.fault_mode = fault_mode;
+        self
     }
 
     #[must_use]
@@ -75,11 +87,13 @@ impl<F: Fields, G: Fields> Node<F> for MapReduce<F, G> {
     fn create(&self, cancel: CancelView, id: InstanceId) -> CreateFuture<'_, F> {
         let rules = Arc::clone(&self.rules);
         let internal_size_limit = self.internal_size_limit;
+        let fault_mode = self.fault_mode;
         Box::pin(async move {
             let (instance, reader, sender) = Instance::channel(id);
             tokio::spawn(instance::run(
                 rules,
                 internal_size_limit,
+                fault_mode,
                 reader,
                 sender,
                 cancel,

@@ -5,9 +5,9 @@ use br_graph_contract::{
 };
 use uuid::Uuid;
 
-use super::MapReduceError;
 use super::creation::Creation;
 use super::work::{ChildEnd, Halt, Work};
+use super::{FaultMode, MapReduceError};
 use crate::panic_text::caught;
 use crate::signals::Signals;
 
@@ -76,6 +76,20 @@ impl<F: Fields, G: Fields> Work<'_, F, G> {
     }
 
     pub(super) fn receive(
+        &mut self,
+        position: usize,
+        received: Result<Event<G>, EventEndError>,
+    ) -> Result<(), Halt> {
+        match self.element_end(position, received) {
+            Err(Halt::Fault(error)) if self.fault_mode == FaultMode::NonStrict => {
+                self.failures[position] = Some(error.to_string());
+                Ok(())
+            }
+            ended => ended,
+        }
+    }
+
+    fn element_end(
         &mut self,
         position: usize,
         received: Result<Event<G>, EventEndError>,

@@ -1,8 +1,9 @@
-use br_flow_nodes::MapReduce;
+use br_flow_nodes::{ElementOutcome, MapReduce};
 use br_graph_contract::{Event, EventEndError, State};
 
 use crate::common::{
-    CreateMode, Driver, Item, Mode, Probe, Report, fan_out, items_of, nz, summed, tasks_end,
+    CreateMode, Driver, Item, Mode, Probe, Report, fan_out, items_of, nz, strict_fan_out, summed,
+    tasks_end,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -65,7 +66,7 @@ async fn given_a_failing_instance_among_live_siblings_when_the_node_fails_then_t
         1 => Mode::Fail,
         _ => Mode::Gate,
     });
-    let mut driver = Driver::start(&fan_out(&probe, 3)).await;
+    let mut driver = Driver::start(&strict_fan_out(&probe, 3)).await;
     driver.give(Report::with_items(&[1, 2, 3]).state()).unwrap();
 
     assert!(matches!(driver.event().await, Event::Failed(_)));
@@ -98,7 +99,7 @@ async fn given_a_map_function_that_panics_when_an_input_arrives_then_the_instanc
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn given_a_reduce_function_that_panics_when_every_state_is_final_then_the_instance_ends_as_vanished()
+async fn given_a_reduce_function_that_panics_when_every_element_has_ended_then_the_instance_ends_as_vanished()
  {
     let (probe, _watch) = Probe::with_mode(|_| Mode::Answer);
     let node = MapReduce::new(
@@ -106,7 +107,7 @@ async fn given_a_reduce_function_that_panics_when_every_state_is_final_then_the_
         items_of,
         probe,
         nz(2),
-        |_: &[State<Item>]| -> <Report as br_graph_contract::Fields>::Update {
+        |_: &[ElementOutcome<Item>]| -> <Report as br_graph_contract::Fields>::Update {
             panic!("reduce blew up")
         },
     );
