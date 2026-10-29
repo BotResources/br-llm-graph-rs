@@ -290,6 +290,8 @@ Behaviour to know:
 - A tool call over its timeout, or for a tool the node does not hold, ends with a result that has the error flag set; a tool fault or panic fails the instance.
 - A client that should think is declared by the runner with `ModelClient::expecting_thinking`; `br-llm-clients-core` carries no such report on a model response.
 - A `ToolCode` gets only its arguments, a cancel view and a result stream, so a tool cannot reach the `FileSystem` or the `WebGuard` of the node. The node loads the files at the start and saves them before `Result`. This crate does not enforce the web access on what a tool does; that is the runner's.
+- `GeneratorCritic::with_critic_thinking_field` adds a required `thinking` string to the structured answer of the critic, before `is_validated` and `message`; its value is never stored and never read.
+- In a generator-critic the round counter goes back to 0 whenever a drain stores items, also a drain inside a pass; the critic of that round keeps the ladder entry read at the start of the pass.
 - In a generator-critic the critic request is added at the end of the projected thread of the critic for each call and is never stored. A message of the critic that does not validate is stored as an agent mail from the critic; nothing is stored when it validates.
 
 ## Releases

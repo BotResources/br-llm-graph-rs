@@ -6,7 +6,9 @@ use br_agentic_contract::{
 };
 use br_graph_contract::CancelView;
 use br_llm_clients_core::{BoxFuture, Parameter, ParameterKind, Parameters, ToolSpec};
-use br_llm_messages::{AgentId, EntryId, OpaqueJson, PlainBlock, TextBlock, ToolName};
+use br_llm_messages::{
+    AgentId, EntryId, EntryView, IncomingEntry, OpaqueJson, PlainBlock, TextBlock, ToolName,
+};
 use serde::Deserialize;
 
 use crate::fault::Fault;
@@ -247,7 +249,11 @@ impl ToolCode for GetMailFiles {
                 .load(&self.context.thread, self.context.agent)
                 .await
                 .map_err(ToolFault::new)?;
-            if projected.entry(&entry).is_err() {
+            let holds_mail = matches!(
+                projected.entry(&entry),
+                Ok(EntryView::Incoming(IncomingEntry::AgentMail(_)))
+            );
+            if !holds_mail {
                 return text(
                     format!("the mail {entry} is not in your thread: you cannot get its files"),
                     true,

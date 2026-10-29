@@ -22,6 +22,7 @@ pub struct Worker<'a> {
     pub(crate) steps: Steps,
     pub(crate) timeouts: Timeouts,
     pub(crate) cancel: CancelView,
+    pub(crate) stored_items: usize,
 }
 
 pub struct WorkerParts<'a> {
@@ -51,6 +52,7 @@ impl<'a> Worker<'a> {
             steps: Steps::new(parts.step_limit),
             timeouts: parts.timeouts,
             cancel: parts.cancel,
+            stored_items: 0,
         }
     }
 

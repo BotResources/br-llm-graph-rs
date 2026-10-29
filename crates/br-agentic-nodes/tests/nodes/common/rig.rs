@@ -13,7 +13,6 @@ use br_agentic_nodes::{
     CriticRequest, CriticRequestSource, FallbackList, GeneratorCritic, GeneratorCriticSpec, Ladder,
     ModelClient, Ports, PromptPort, ReactAgent, RoundLimit, Settings, StepLimit, Timeouts,
 };
-use br_graph_contract::InstanceId;
 use br_llm_clients_core::BoxFuture;
 use br_llm_messages::{AgentId, HumanId, HumanMessage, IncomingEntry, PlainText, TurnId};
 
@@ -219,10 +218,6 @@ impl Rig {
             InboxEntry::new(IncomingEntry::from(message)).unwrap(),
         );
         id
-    }
-
-    pub fn instance(&self) -> InstanceId {
-        instance_id()
     }
 }
 

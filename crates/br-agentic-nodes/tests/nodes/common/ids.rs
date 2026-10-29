@@ -1,8 +1,6 @@
 use br_agentic_contract::MailId;
 use br_graph_contract::InstanceId;
-use br_llm_messages::{
-    AgentId, Author, BlockId, EntryId, HumanId, PlainBlock, TextBlock, TurnId, Uuid,
-};
+use br_llm_messages::{Author, BlockId, EntryId, HumanId, PlainBlock, TextBlock, TurnId, Uuid};
 
 pub fn uuid() -> Uuid {
     Uuid::now_v7()
@@ -18,10 +16,6 @@ pub fn turn_id() -> TurnId {
 
 pub fn block_id() -> BlockId {
     BlockId::from_uuid(uuid()).unwrap()
-}
-
-pub fn agent_id() -> AgentId {
-    AgentId::from_uuid(uuid()).unwrap()
 }
 
 pub fn human_id() -> HumanId {

@@ -170,6 +170,33 @@ async fn given_a_mail_the_thread_does_not_hold_when_the_model_gets_its_files_the
 }
 
 #[tokio::test(start_paused = true)]
+async fn given_an_entry_of_the_thread_that_is_not_a_mail_when_the_model_gets_its_files_then_the_result_is_an_error()
+ {
+    let rig = Rig::new().with_inbox();
+    let agent = rig.agent("agent").await;
+    rig.start_as(agent, "go").await;
+    let note = rig.deliver_human(agent, "a plain human note");
+    let arguments = format!("{{\"mail_id\":\"{note}\"}}");
+    let model = Scripted::new(vec![
+        Reply::call_with("get_mail_files", &arguments),
+        Reply::text("tried"),
+    ]);
+    let node = rig.react(&[&model]);
+
+    Driver::result(&node).await;
+
+    assert!(history_text(&model.requests()[0]).contains("a plain human note"));
+    let conversation = conversation(&rig.hub, &rig.thread);
+    let stored = texts_of_results(ai_turns(&conversation)[0]);
+    assert!(stored[0].0, "{}", stored[0].1);
+    assert!(
+        stored[0].1.contains("not in your thread"),
+        "{}",
+        stored[0].1
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn given_a_mail_without_documents_when_the_model_gets_its_files_then_the_result_says_so() {
     let rig = Rig::new().with_inbox();
     let agent = rig.agent("agent").await;

@@ -20,7 +20,6 @@ pub enum Reply {
     Continuation,
     Fail(ClientError),
     Hang,
-    Slow(Duration, Box<Reply>),
     Thinking(Box<Reply>),
 }
 
@@ -50,10 +49,6 @@ impl Reply {
         Reply::Structured(format!(
             "{{\"is_validated\":{validated},\"message\":{message:?}}}"
         ))
-    }
-
-    pub fn slow(delay: Duration, reply: Reply) -> Self {
-        Reply::Slow(delay, Box::new(reply))
     }
 
     pub fn thinking(reply: Reply) -> Self {
@@ -95,10 +90,6 @@ impl Scripted {
 
     pub fn calls(&self) -> usize {
         self.requests.lock().unwrap().len()
-    }
-
-    pub fn remaining(&self) -> usize {
-        self.replies.lock().unwrap().len()
     }
 }
 
@@ -146,7 +137,6 @@ fn response(request: &ClientRequest, reply: &Reply) -> ModelResponse {
             );
             (blocks, ending)
         }
-        Reply::Slow(_, inner) => parts(request, inner),
         Reply::Fail(_) | Reply::Hang => (Vec::new(), ResponseEnding::finished()),
     };
     ModelResponse::new(
@@ -163,25 +153,12 @@ fn parts(request: &ClientRequest, reply: &Reply) -> (Vec<ContentBlock>, Response
     (built.blocks().to_vec(), built.ending().clone())
 }
 
-async fn serve(request: &ClientRequest, mut reply: Reply) -> CallOutcome {
-    loop {
-        match reply {
-            Reply::Slow(delay, inner) => {
-                tokio::time::sleep(delay).await;
-                reply = *inner;
-            }
-            Reply::Hang => std::future::pending::<()>().await,
-            Reply::Fail(error) => {
-                return CallOutcome::failure(CallReport::new(Duration::ZERO), error);
-            }
-            other => {
-                return CallOutcome::success(
-                    CallReport::new(Duration::ZERO),
-                    response(request, &other),
-                )
-                .unwrap();
-            }
-        }
+async fn serve(request: &ClientRequest, reply: Reply) -> CallOutcome {
+    match reply {
+        Reply::Hang => std::future::pending::<CallOutcome>().await,
+        Reply::Fail(error) => CallOutcome::failure(CallReport::new(Duration::ZERO), error),
+        other => CallOutcome::success(CallReport::new(Duration::ZERO), response(request, &other))
+            .unwrap(),
     }
 }
 

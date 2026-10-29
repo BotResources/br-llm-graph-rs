@@ -25,4 +25,6 @@ First release: the agent nodes and their building blocks. It builds on `br-agent
 - A client that should think is declared by the runner (`ModelClient::expecting_thinking`): `br-llm-clients-core` 0.5 carries no such report on a model response, so the node cannot read one.
 - `FileSystem` and `WebGuard` are values. A `ToolCode` receives only its arguments, a cancel view and a result stream, so a tool cannot reach the file system or the web guard of the node; the node loads the files at the start and saves them before `Result`, and the runner wires any tool access.
 - The critic request is added to the projected thread of the critic for one call only: into the last input turn when it shows no agent output, else in a new input turn. It is never stored.
+- In a generator-critic the round counter goes back to 0 when a drain stores items, also a drain inside a pass; the critic of that round keeps the ladder entry read at the start of the pass.
+- `get_mail_files` acts only on ids whose entry in the projected thread is an incoming agent mail; any other entry or an absent id gives a result with the error flag.
 - After a tool round the drain stores the queue into the open AI turn; at the start of a pass and after a final response it stores it where `store_at_boundary` puts it for an agent with no open AI turn (the last real input turn, else a new one).

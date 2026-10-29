@@ -118,6 +118,7 @@ pub(crate) async fn run<F: Fields, B: Body<F>>(
         steps: Steps::new(common.settings.step_limit),
         timeouts: common.settings.timeouts,
         cancel: cancel.clone(),
+        stored_items: 0,
     };
     let raced = signals
         .race(guarded(async {

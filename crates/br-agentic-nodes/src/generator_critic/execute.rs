@@ -96,7 +96,11 @@ impl<F: Fields> Body<F> for GcBody<F> {
             resume = false;
             let position = rounds.position();
             let mut slot = Slot::new(self.generator.entry(position).clone());
+            let stored_before = worker.stored_items;
             let end = worker.pass(&mut slot).await?;
+            if worker.stored_items > stored_before {
+                rounds.reset();
+            }
             let reached = end.step_limit_reached();
             let stopped_by_limit = matches!(end, PassEnd::StepLimit(_));
             let response = end.into_response();

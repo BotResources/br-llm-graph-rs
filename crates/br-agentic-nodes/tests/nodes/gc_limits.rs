@@ -262,3 +262,33 @@ async fn given_items_stored_by_a_drain_when_the_round_limit_is_two_then_the_rese
     assert_eq!(update.verdict, Some(true));
     assert_eq!(generator.calls(), 3);
 }
+
+#[tokio::test(start_paused = true)]
+async fn given_items_stored_by_a_drain_during_a_pass_when_the_round_limit_is_two_then_the_critic_of_that_round_keeps_its_entry_and_the_counter_counts_again()
+ {
+    let (search, _) = echo("search");
+    let rig = Rig::new().with_inbox().with_tools(vec![search]);
+    let agent = rig.start_gc("write").await;
+    let g1 = Scripted::new(vec![Reply::text("a")]);
+    let g2 = Scripted::new(vec![
+        Reply::call("search"),
+        Reply::text("b"),
+        Reply::text("c"),
+    ]);
+    rig.note_on_first_call(&g2, agent, "during the tool round");
+    let c1 = Scripted::new(vec![Reply::answer(false, "x")]);
+    let c2 = Scripted::new(vec![Reply::answer(false, "y"), Reply::answer(true, "z")]);
+    let node = rig.generator_critic(
+        ladder(vec![list(&[&g1]), list(&[&g2])]),
+        ladder(vec![list(&[&c1]), list(&[&c2])]),
+        2,
+    );
+
+    let update = Driver::result(&node).await;
+
+    assert_eq!(update.verdict, Some(true));
+    assert_eq!(
+        (g1.calls(), g2.calls(), c1.calls(), c2.calls()),
+        (1, 3, 1, 2)
+    );
+}

@@ -45,6 +45,8 @@ impl Worker<'_> {
             turn_id()?,
         )
         .await?;
-        Ok(boundary.stored.len())
+        let stored = boundary.stored.len();
+        self.stored_items = self.stored_items.saturating_add(stored);
+        Ok(stored)
     }
 }
