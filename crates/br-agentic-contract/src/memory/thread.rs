@@ -1,7 +1,7 @@
 use br_llm_clients_core::BoxFuture;
 use br_llm_messages::{
     AgentId, BlockId, EntryId, ModelResponse, ProjectedThread, RuntimeToolResult,
-    RuntimeToolResults, TurnId,
+    RuntimeToolResults, TurnClosure, TurnId,
 };
 
 use super::state::MemoryHub;
@@ -56,6 +56,16 @@ impl ThreadAccess for MemoryThreadAccess {
         item: Incoming,
     ) -> BoxFuture<'a, Result<Stored, ThreadError>> {
         Box::pin(async move { self.hub.add_incoming(thread, agent, &target, &item) })
+    }
+
+    fn close_turn<'a>(
+        &'a self,
+        thread: &'a ThreadRef,
+        _agent: AgentId,
+        turn: TurnId,
+        closure: TurnClosure,
+    ) -> BoxFuture<'a, Result<Stored, ThreadError>> {
+        Box::pin(async move { self.hub.close_turn(thread, turn, closure) })
     }
 
     fn open_response<'a>(

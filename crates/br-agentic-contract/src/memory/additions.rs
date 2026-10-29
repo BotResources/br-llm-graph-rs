@@ -1,5 +1,6 @@
 use br_llm_messages::{
-    AITurn, AgentId, Conversation, EntryId, IncomingEntry, InputTurn, Turn, TurnEntry, TurnId,
+    AITurn, AgentId, Conversation, EntryId, IncomingEntry, InputTurn, Turn, TurnClosure, TurnEntry,
+    TurnId,
 };
 
 use super::build::{incoming_entry, refused};
@@ -77,6 +78,24 @@ impl MemoryHub {
             TurnEntry::try_from(incoming_entry(&state, conversation, item)?).map_err(refused)?;
         let mut next = conversation.clone();
         append(&mut next, agent, target, entry)?;
+        *state.conversation_mut(thread)? = next;
+        Ok(Stored::Added)
+    }
+
+    pub(super) fn close_turn(
+        &self,
+        thread: &ThreadRef,
+        turn: TurnId,
+        closure: TurnClosure,
+    ) -> Result<Stored, ThreadError> {
+        let mut state = self.lock();
+        let conversation = state.conversation(thread)?;
+        if holds_entry(conversation, closure.id()) {
+            return Ok(Stored::Held);
+        }
+        let mut next = conversation.clone();
+        next.push_entry(&turn, TurnEntry::from(closure))
+            .map_err(refused)?;
         *state.conversation_mut(thread)? = next;
         Ok(Stored::Added)
     }

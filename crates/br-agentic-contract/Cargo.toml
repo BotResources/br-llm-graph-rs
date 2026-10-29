@@ -16,6 +16,7 @@ tokio = { version = "1", features = ["sync"] }
 uuid = { version = "1", features = ["v7"] }
 
 [dev-dependencies]
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }
 
 [lints.rust]

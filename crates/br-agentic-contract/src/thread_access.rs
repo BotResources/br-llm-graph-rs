@@ -1,7 +1,7 @@
 use br_llm_clients_core::{BoxFuture, StreamSink};
 use br_llm_messages::{
     AgentId, Author, BlockId, EntryId, ModelResponse, PlainBlock, ProjectedThread,
-    RuntimeToolResult, RuntimeToolResults, TurnId,
+    RuntimeToolResult, RuntimeToolResults, TurnClosure, TurnId,
 };
 
 use crate::fault::{PortFault, ThreadError};
@@ -91,6 +91,14 @@ pub trait ThreadAccess: Send + Sync {
         agent: AgentId,
         target: TurnTarget,
         item: Incoming,
+    ) -> BoxFuture<'a, Result<Stored, ThreadError>>;
+
+    fn close_turn<'a>(
+        &'a self,
+        thread: &'a ThreadRef,
+        agent: AgentId,
+        turn: TurnId,
+        closure: TurnClosure,
     ) -> BoxFuture<'a, Result<Stored, ThreadError>>;
 
     fn open_response<'a>(
