@@ -3,14 +3,15 @@ use std::sync::Arc;
 
 use br_graph_contract::{CancelView, Event, EventSender, Fields, InputReader};
 
-use super::Rules;
 use super::work::{self, Outcome};
+use super::{FaultMode, Rules};
 use crate::settle::settle;
 use crate::signals::{Awaited, Signals};
 
 pub(super) async fn run<F: Fields, G: Fields>(
     rules: Arc<Rules<F, G>>,
     internal_size_limit: NonZeroUsize,
+    fault_mode: FaultMode,
     mut reader: InputReader<F>,
     sender: EventSender<F>,
     cancel: CancelView,
@@ -26,6 +27,7 @@ pub(super) async fn run<F: Fields, G: Fields>(
     let outcome = work::run(
         &rules,
         internal_size_limit,
+        fault_mode,
         last.state(),
         &cancel,
         &mut signals,

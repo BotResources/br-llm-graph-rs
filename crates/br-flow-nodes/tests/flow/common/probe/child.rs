@@ -93,6 +93,12 @@ async fn decide(
             Some(handle) => Some(Event::Result(ItemUpdate::Trigger(Hook(handle.clone())))),
             None => Some(answer()),
         },
+        Mode::TriggerThenFail => {
+            if let Some(handle) = locked(&shared.outer).as_ref() {
+                handle.trigger();
+            }
+            Some(Event::failed(ProbeCause))
+        }
         Mode::TriggerThenAnswer => {
             if let Some(handle) = locked(&shared.outer).as_ref() {
                 handle.trigger();

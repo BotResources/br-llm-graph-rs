@@ -1,6 +1,6 @@
 [package]
 name = "br-flow-nodes"
-version = "0.1.0"
+version = "0.2.0"
 description = "Two generic programmatic nodes for the control of a graph: a merger node that waits for lanes that finish at different times, and a map-reduce node that runs one internal node for each element of a list, with a limit on how many run at the same time"
 edition.workspace = true
 rust-version.workspace = true

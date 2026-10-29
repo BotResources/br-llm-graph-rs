@@ -10,7 +10,10 @@ pub use fields::{
     APPLY_PANIC, BAD_VALUE, EXPLODING_VALUE, Hook, Item, ItemUpdate, Report, ReportUpdate,
     VALIDATE_PANIC, both_filled, merged,
 };
-pub use nodes::{counting_fan_out, creation_at, fan_out, items_of, mode_at, nz, ordered, summed};
+pub use nodes::{
+    capturing_fan_out, counting_fan_out, creation_at, fan_out, items_of, mode_at, nz, ordered,
+    strict_fan_out, summed,
+};
 pub use poisoned::PoisonedFirst;
 pub use probe::{CREATE_PANIC, CreateMode, Mark, Mode, Probe, ProbeCause};
 

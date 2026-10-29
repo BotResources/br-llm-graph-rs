@@ -6,7 +6,7 @@ use br_graph_contract::{CancelView, Event, EventEndError, Fields, State};
 use tokio::task::JoinSet;
 
 use super::scope::ChildScope;
-use super::{MapReduceError, Rules, initial};
+use super::{ElementOutcome, FaultMode, MapReduceError, Rules, initial};
 use crate::signals::Signals;
 
 pub(super) enum Outcome<F: Fields> {
@@ -28,6 +28,8 @@ pub(super) struct Work<'a, F: Fields, G: Fields> {
     pub(super) rules: &'a Rules<F, G>,
     pub(super) scope: ChildScope,
     pub(super) states: Vec<Arc<State<G>>>,
+    pub(super) failures: Vec<Option<String>>,
+    pub(super) fault_mode: FaultMode,
     pub(super) children: JoinSet<ChildEnd<G>>,
     pub(super) next: usize,
 }
@@ -35,6 +37,7 @@ pub(super) struct Work<'a, F: Fields, G: Fields> {
 pub(super) async fn run<F: Fields, G: Fields>(
     rules: &Rules<F, G>,
     internal_size_limit: NonZeroUsize,
+    fault_mode: FaultMode,
     state: &State<F>,
     cancel: &CancelView,
     signals: &mut Signals,
@@ -46,6 +49,8 @@ pub(super) async fn run<F: Fields, G: Fields>(
     let work = Work {
         rules,
         scope: ChildScope::new(cancel),
+        failures: vec![None; states.len()],
+        fault_mode,
         states,
         children: JoinSet::new(),
         next: 0,
@@ -95,11 +100,17 @@ impl<F: Fields, G: Fields> Work<'_, F, G> {
         if self.scope.is_triggered() {
             return Outcome::Cancelled;
         }
-        let states: Vec<State<G>> = mem::take(&mut self.states)
+        let outcomes: Vec<ElementOutcome<G>> = mem::take(&mut self.states)
             .into_iter()
-            .map(|state| Arc::try_unwrap(state).unwrap_or_else(|shared| (*shared).clone()))
+            .zip(mem::take(&mut self.failures))
+            .map(|(state, failure)| match failure {
+                Some(text) => ElementOutcome::Failed(text),
+                None => ElementOutcome::Done(
+                    Arc::try_unwrap(state).unwrap_or_else(|shared| (*shared).clone()),
+                ),
+            })
             .collect();
-        Outcome::Result((self.rules.reduce)(&states))
+        Outcome::Result((self.rules.reduce)(&outcomes))
     }
 
     async fn stop_failed(&mut self, error: MapReduceError) -> Outcome<F> {

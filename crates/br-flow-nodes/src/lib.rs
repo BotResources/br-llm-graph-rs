@@ -4,5 +4,5 @@ mod panic_text;
 mod settle;
 mod signals;
 
-pub use map_reduce::{MapReduce, MapReduceError};
+pub use map_reduce::{ElementOutcome, FaultMode, MapReduce, MapReduceError};
 pub use merger::{LateInput, Merger};

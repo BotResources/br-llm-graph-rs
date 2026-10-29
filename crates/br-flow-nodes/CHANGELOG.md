@@ -8,6 +8,21 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-29
+
+A map-reduce node has a fault mode for the fault of one element.
+
+### Added
+
+- `FaultMode` (`NonStrict` by default, `Strict`) and `MapReduce::fault_mode(FaultMode)`. In `NonStrict`, an element fault (the internal instance sends `Failed` or `Refused`, sends `Cancelled` while the child token is not triggered, has an update that is refused or gives an invalid state, a panic in the apply being one case, or has an event end that reports `Vanished`) is not a fault of the node: the internal instance of that element is dropped, a failure is recorded for it, the child token is not triggered, the other elements go on, and the slot of the failed element is free for the next element. In `Strict`, the first element fault stops the node, as in 0.1.0.
+- `ElementOutcome` (`Done(State)`, `Failed(String)`, with `state()` and `failure()`): the end of one element as the reduce function gets it. A failure holds the `Display` of the `MapReduceError` for that fault as text only, without the internal state of the element, also when its update was rejected.
+
+### Changed
+
+- BREAKING: the default fault mode of `MapReduce` is `NonStrict`; in 0.1.0 every element fault stopped the node. A runner that wants the old behavior calls `fault_mode(FaultMode::Strict)`.
+- BREAKING: the reduce function of `MapReduce::new` takes `&[ElementOutcome<G>]`, the outcomes of the elements in map order, instead of `&[State<G>]`; in `Strict` no outcome is a failure. When every element failed, the node still sends a `Result`.
+- The faults of the node (an invalid initial value, an internal instance that cannot be created or carries another instance id, an internal instance whose input end is closed when it gets its one input) stop the node in both modes; the cancel token wins over any fault in both modes.
+
 ## 0.1.0 - 2026-10-26
 
 First release: two generic programmatic nodes for the control of a graph,
