@@ -2,7 +2,7 @@ use br_llm_messages::{ClosureReason, ModelResponse, TurnId};
 
 use crate::fault::{Fault, Stop};
 use crate::slot::Slot;
-use crate::step::is_final;
+use crate::step::at_boundary;
 use crate::warning::warning_text;
 use crate::worker::Worker;
 
@@ -36,7 +36,7 @@ impl Worker<'_> {
             let response = self.step(slot, &mut turn, warning.as_deref()).await?;
             let open = turn.ok_or_else(|| Fault::Value("a step left no AI turn".to_owned()))?;
             let state = self.turn_state(open).await?;
-            if is_final(&state) {
+            if at_boundary(&state) {
                 self.close_turn(open, ClosureReason::completed()).await?;
                 return Ok(PassEnd::Final(response));
             }
@@ -50,7 +50,7 @@ impl Worker<'_> {
             if response.runtime_calls().next().is_some() {
                 self.tool_round(open, &response).await?;
                 let after = self.turn_state(open).await?;
-                if is_final(&after) {
+                if at_boundary(&after) {
                     self.drain().await?;
                 }
                 warn = true;

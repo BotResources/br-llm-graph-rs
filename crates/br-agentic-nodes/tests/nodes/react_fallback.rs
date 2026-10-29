@@ -14,7 +14,12 @@ fn thoughtful(clients: &[&Arc<Scripted>]) -> FallbackList {
     FallbackList::new(
         clients
             .iter()
-            .map(|scripted| ModelClient::new((*scripted).clone()).expecting_thinking())
+            .map(|scripted| {
+                ModelClient::new(
+                    (*scripted).clone(),
+                    br_agentic_nodes::ThinkingExpectation::Expected,
+                )
+            })
             .collect(),
     )
     .unwrap()

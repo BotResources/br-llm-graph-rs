@@ -91,6 +91,41 @@ async fn given_an_item_that_arrives_during_a_final_step_when_a_step_remains_then
 }
 
 #[tokio::test(start_paused = true)]
+async fn given_a_tool_round_that_leaves_a_provider_continuation_when_an_item_waits_then_nothing_is_stored_until_the_next_boundary()
+ {
+    let (search, _) = echo("search");
+    let rig = Rig::new().with_inbox().with_tools(vec![search]);
+    let agent = rig.agent("agent").await;
+    rig.start_as(agent, "go").await;
+    let model = Scripted::new(vec![
+        Reply::call_then_continuation("search"),
+        Reply::text("second"),
+        Reply::text("third"),
+    ]);
+    rig.note_on_first_call(&model, agent, "queued note");
+    let node = rig.react(&[&model]);
+
+    let update = Driver::result(&node).await;
+
+    assert_eq!(update.text, "third");
+    assert_eq!(model.calls(), 3);
+    assert!(!history_text(&model.requests()[1]).contains("queued note"));
+    assert!(history_text(&model.requests()[2]).contains("queued note"));
+    let conversation = conversation(&rig.hub, &rig.thread);
+    let turns = ai_turns(&conversation);
+    assert_eq!(
+        kinds(turns[0]),
+        vec![
+            "ModelResponse",
+            "RuntimeToolResults",
+            "ModelResponse",
+            "TurnClosure"
+        ]
+    );
+    assert_eq!(input_turns(&conversation).len(), 2);
+}
+
+#[tokio::test(start_paused = true)]
 async fn given_an_item_that_arrives_during_the_last_step_when_no_step_remains_then_it_stays_in_the_inbox()
  {
     let rig = Rig::new().with_inbox().with_step_limit(1);

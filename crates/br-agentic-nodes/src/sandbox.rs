@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use br_agentic_contract::{WebAccess, WorkspaceFile};
+use br_agentic_contract::WorkspaceFile;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SandboxError {
@@ -105,44 +105,4 @@ impl FileSystem {
             })
             .collect()
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WebGuard {
-    access: WebAccess,
-}
-
-impl WebGuard {
-    pub fn new(access: WebAccess) -> Self {
-        Self { access }
-    }
-
-    pub fn access(&self) -> &WebAccess {
-        &self.access
-    }
-
-    pub fn permits(&self, url: &str) -> bool {
-        match &self.access {
-            WebAccess::Full => true,
-            WebAccess::None => false,
-            WebAccess::Whitelist(sites) => host_of(url).is_some_and(|host| {
-                sites
-                    .iter()
-                    .any(|site| host_of(site.as_str()).as_deref() == Some(host.as_str()))
-            }),
-        }
-    }
-}
-
-fn host_of(text: &str) -> Option<String> {
-    let rest = text.split_once("://").map_or(text, |(_, rest)| rest);
-    let authority = rest.split(['/', '?', '#']).next()?;
-    let authority = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_, host)| host);
-    let host = match authority.strip_prefix('[') {
-        Some(inner) => inner.split(']').next()?,
-        None => authority.split(':').next()?,
-    };
-    (!host.is_empty()).then(|| host.to_ascii_lowercase())
 }

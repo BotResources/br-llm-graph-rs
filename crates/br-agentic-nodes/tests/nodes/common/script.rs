@@ -18,6 +18,7 @@ pub enum Reply {
     Calls(Vec<(String, String)>),
     Structured(String),
     Continuation,
+    CallsThenContinuation(String),
     Fail(ClientError),
     Hang,
     Thinking(Box<Reply>),
@@ -30,6 +31,10 @@ impl Reply {
 
     pub fn call(name: &str) -> Self {
         Reply::Calls(vec![(name.to_owned(), "{}".to_owned())])
+    }
+
+    pub fn call_then_continuation(name: &str) -> Self {
+        Reply::CallsThenContinuation(name.to_owned())
     }
 
     pub fn calls(names: &[&str]) -> Self {
@@ -129,6 +134,10 @@ fn response(request: &ClientRequest, reply: &Reply) -> ModelResponse {
             )],
             ResponseEnding::provider_continuation(),
         ),
+        Reply::CallsThenContinuation(name) => {
+            let (blocks, _) = parts(request, &Reply::call(name));
+            (blocks, ResponseEnding::provider_continuation())
+        }
         Reply::Thinking(inner) => {
             let (mut blocks, ending) = parts(request, inner);
             blocks.insert(

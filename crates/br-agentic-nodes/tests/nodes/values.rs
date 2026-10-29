@@ -72,8 +72,12 @@ fn given_a_response_with_or_without_thinking_when_the_rule_is_checked_then_only_
     let silent = response(vec![text.clone()]);
     let thoughtful = response(vec![thought, text]);
     let model = Scripted::new(vec![]);
-    let plain = br_agentic_nodes::ModelClient::new(model.clone());
-    let expecting = br_agentic_nodes::ModelClient::new(model).expecting_thinking();
+    let plain = br_agentic_nodes::ModelClient::new(
+        model.clone(),
+        br_agentic_nodes::ThinkingExpectation::NotExpected,
+    );
+    let expecting =
+        br_agentic_nodes::ModelClient::new(model, br_agentic_nodes::ThinkingExpectation::Expected);
 
     assert!(!holds_thinking(&silent));
     assert!(holds_thinking(&thoughtful));

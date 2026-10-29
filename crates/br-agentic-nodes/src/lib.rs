@@ -21,7 +21,7 @@ mod tool_round;
 mod warning;
 mod worker;
 
-pub use client::{EmptyList, FallbackList, Ladder, ModelClient};
+pub use client::{EmptyList, FallbackList, Ladder, ModelClient, ThinkingExpectation};
 pub use config::{Ports, Settings};
 pub use fault::{CallFailure, Fault, Stop};
 pub use generator_critic::{
@@ -32,7 +32,7 @@ pub use limits::{InvalidLimit, RoundLimit, StepLimit, Timeouts};
 pub use mail_tools::{GET_MAIL_FILES, SEND_MAIL, mail_tools};
 pub use ports::{CriticRequest, CriticRequestPort, Outcome, OutcomePort, PromptPort};
 pub use react::{AGENT_LABEL, REACT_AGENT, ReactAgent};
-pub use sandbox::{FileSystem, SandboxError, SandboxPath, WebGuard};
+pub use sandbox::{FileSystem, SandboxError, SandboxPath};
 pub use slot::Slot;
 pub use thinking::{check_thinking, holds_thinking};
 pub use warning::{WARNING_WINDOW, warning_text};

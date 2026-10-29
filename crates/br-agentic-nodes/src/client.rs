@@ -2,24 +2,24 @@ use std::sync::Arc;
 
 use br_llm_clients_core::Client;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkingExpectation {
+    Expected,
+    NotExpected,
+}
+
 #[derive(Clone)]
 pub struct ModelClient {
     client: Arc<dyn Client>,
-    expects_thinking: bool,
+    expectation: ThinkingExpectation,
 }
 
 impl ModelClient {
-    pub fn new(client: Arc<dyn Client>) -> Self {
+    pub fn new(client: Arc<dyn Client>, expectation: ThinkingExpectation) -> Self {
         Self {
             client,
-            expects_thinking: false,
+            expectation,
         }
-    }
-
-    #[must_use]
-    pub fn expecting_thinking(mut self) -> Self {
-        self.expects_thinking = true;
-        self
     }
 
     pub fn client(&self) -> &dyn Client {
@@ -27,14 +27,14 @@ impl ModelClient {
     }
 
     pub fn should_have_thought(&self) -> bool {
-        self.expects_thinking
+        self.expectation == ThinkingExpectation::Expected
     }
 }
 
 impl std::fmt::Debug for ModelClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ModelClient")
-            .field("expects_thinking", &self.expects_thinking)
+            .field("expectation", &self.expectation)
             .finish_non_exhaustive()
     }
 }

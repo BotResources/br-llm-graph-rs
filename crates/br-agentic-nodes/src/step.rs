@@ -73,7 +73,7 @@ impl Attempt for StepAttempt<'_, '_> {
     }
 }
 
-pub(crate) fn is_final(state: &TurnState) -> bool {
+pub(crate) fn at_boundary(state: &TurnState) -> bool {
     state.outstanding_runtime_calls().is_empty()
         && state.pending_provider_executions().is_empty()
         && state.last_ending() != Some(&ResponseEnding::provider_continuation())

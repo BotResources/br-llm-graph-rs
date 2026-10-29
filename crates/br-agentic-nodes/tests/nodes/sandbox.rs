@@ -1,5 +1,5 @@
-use br_agentic_contract::{Site, WebAccess, WorkspaceFile};
-use br_agentic_nodes::{FileSystem, SandboxError, SandboxPath, WebGuard};
+use br_agentic_contract::WorkspaceFile;
+use br_agentic_nodes::{FileSystem, SandboxError, SandboxPath};
 
 #[test]
 fn given_a_relative_path_when_it_is_built_then_it_is_normalized() {
@@ -82,19 +82,4 @@ fn given_a_file_system_when_it_is_turned_into_files_then_the_content_is_kept() {
             content: b"a".to_vec()
         }]
     );
-}
-
-#[test]
-fn given_the_three_web_accesses_when_a_url_is_asked_then_each_decides_alone() {
-    let site = Site::new("https://docs.example.com").unwrap();
-    let whitelist = WebGuard::new(WebAccess::Whitelist(vec![site]));
-
-    assert!(WebGuard::new(WebAccess::Full).permits("https://anywhere.test/x"));
-    assert!(!WebGuard::new(WebAccess::None).permits("https://anywhere.test/x"));
-    assert!(whitelist.permits("https://docs.example.com/page?q=1"));
-    assert!(whitelist.permits("https://DOCS.example.com:8443/page"));
-    assert!(!whitelist.permits("https://docs.example.com.evil.test/page"));
-    assert!(!whitelist.permits("https://evil.test/https://docs.example.com"));
-    assert!(!whitelist.permits("https://docs.example.com@evil.test/page"));
-    assert!(!whitelist.permits(""));
 }

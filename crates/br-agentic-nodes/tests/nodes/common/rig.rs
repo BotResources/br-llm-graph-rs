@@ -11,7 +11,8 @@ use br_agentic_contract::{
 };
 use br_agentic_nodes::{
     CriticRequest, CriticRequestSource, FallbackList, GeneratorCritic, GeneratorCriticSpec, Ladder,
-    ModelClient, Ports, PromptPort, ReactAgent, RoundLimit, Settings, StepLimit, Timeouts,
+    ModelClient, Ports, PromptPort, ReactAgent, RoundLimit, Settings, StepLimit,
+    ThinkingExpectation, Timeouts,
 };
 use br_llm_clients_core::BoxFuture;
 use br_llm_messages::{AgentId, HumanId, HumanMessage, IncomingEntry, PlainText, TurnId};
@@ -61,7 +62,7 @@ pub struct Rig {
 }
 
 pub fn client(scripted: &Arc<Scripted>) -> ModelClient {
-    ModelClient::new(scripted.clone())
+    ModelClient::new(scripted.clone(), ThinkingExpectation::NotExpected)
 }
 
 pub fn list(clients: &[&Arc<Scripted>]) -> FallbackList {

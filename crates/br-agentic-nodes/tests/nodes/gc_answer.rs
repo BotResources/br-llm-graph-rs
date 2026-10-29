@@ -109,8 +109,14 @@ async fn given_a_critic_client_that_should_think_when_the_answer_comes_without_t
     let thinker = Scripted::new(vec![Reply::thinking(Reply::answer(true, "thought"))]);
     let critic = ladder(vec![
         br_agentic_nodes::FallbackList::new(vec![
-            br_agentic_nodes::ModelClient::new(silent.clone()).expecting_thinking(),
-            br_agentic_nodes::ModelClient::new(thinker.clone()).expecting_thinking(),
+            br_agentic_nodes::ModelClient::new(
+                silent.clone(),
+                br_agentic_nodes::ThinkingExpectation::Expected,
+            ),
+            br_agentic_nodes::ModelClient::new(
+                thinker.clone(),
+                br_agentic_nodes::ThinkingExpectation::Expected,
+            ),
         ])
         .unwrap(),
     ]);
