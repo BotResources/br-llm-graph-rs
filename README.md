@@ -256,11 +256,54 @@ Behaviour to know:
 - `result`, `failed` and `cancelled` ignore the errors of the discards. The caller stops the work still running before it calls them.
 - `FileSystemMode::Might` has a file system only when the load gives at least one file.
 
-Not enforced, and left to the implementer as the sealed intent states: that a tool is safe to call from several runs at the same time; that a tool that starts background work is given only to a node with an inbox; that the tool that gets the documents of a mail acts only on mails whose item the projected thread holds as an incoming entry; that the inbox lists every unread mail and every entry the projection does not hold; that the agent port gives another identity for another label; that the runner runs one instance at a time for one agent on one thread; that the thread access stores each addition whole or not at all, keeps the order and accepts a repeated identity without a second copy; that the implementer drops an open object when its instance ended without completing or discarding it and ignores what is sent to a stream that has ended; that the inbox sends a mail once for one mail id; that the thread, tools and workspace ports give what belongs to the run of the state snapshot; and that the web access limits everything the agent does, whatever the file system mode (this crate gives the `WebAccess` value and enforces nothing of it).
+Not enforced, and left to the implementer as the sealed intent states: that a tool is safe to call from several runs at the same time; that a tool that starts background work is given only to a node with an inbox; that the tool that gets the documents of a mail acts only on mails whose item the projected thread holds as an incoming entry; that the inbox lists every unread mail and every entry the projection does not hold; that the agent port gives another identity for another label; that the runner runs one instance at a time for one agent on one thread; that the thread access stores each addition whole or not at all, keeps the order and accepts a repeated identity without a second copy; that the implementer drops an open object when its instance ended without completing or discarding it and ignores what is sent to a stream that has ended; that the inbox sends a mail once for one mail id; and that the thread, tools and workspace ports give what belongs to the run of the state snapshot.
+
+## br-agentic-nodes
+
+The agent nodes: the ReAct agent (`ReactAgent`, subkind `react_agent`) and the generator-critic (`GeneratorCritic`, subkind `generator_critic`), and the building blocks they are made of. A ReAct agent runs its own loop in one node: it calls the model, runs the tool calls, drains its inbox and calls the model again until a final response. A generator-critic is one node with two agents on one thread: a generator that is a ReAct pass, and a critic that judges with one structured call and no tool. The models are clients that the runner built; the node never reads or changes their settings. It depends on `br-agentic-contract`, `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`. It needs a Tokio runtime. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+
+```toml
+[dependencies]
+br-agentic-nodes = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-nodes", tag = "br-agentic-nodes/v0.1.0", version = "0.1.0" }
+br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.1.0", version = "0.1.0" }
+br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
+br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-core", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
+br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", package = "br-llm-messages", tag = "br-llm-messages/v2.1.0", version = "2.1.0" }
+```
+
+The public API names types of the libraries it builds on, so pin them beside it on the same git URLs and tags: a git dependency's source is its tag, and another tag builds a second copy of these types.
+
+| Part | What the crate gives |
+|---|---|
+| `ReactAgent`, `GeneratorCritic` | the two nodes; built with `Ports`, `Settings` (step limit, `Timeouts`, web access, file system mode), a `FallbackList` (ReAct) or two `Ladder`s, a `RoundLimit`, a `CriticRequestSource` and a `StepLimitEnding` (generator-critic), and the author names unless the agent port gives them |
+| `PromptPort`, `OutcomePort`, `CriticRequestPort`, `Outcome` | what the runner gives besides the ports of the contract: the system prompt of an agent label, the update that the end of an instance gives (last response, step-limit flag, verdict), the text and the human of the critic request |
+| `FallbackList`, `Ladder`, `Slot`, `ModelClient`, `ThinkingExpectation` | the first call of a pass goes to the next client when it fails, times out or breaks the thinking rule; a client that worked is kept for the pass (the round, for the critic); one client means no retry |
+| `check_thinking`, `holds_thinking`, `warning_text`, `WARNING_WINDOW` | the thinking rule and the text that is sent with the tool results when at most 10 steps remain (never stored) |
+| `Worker`, `WorkerParts` | step, tool round, drain and turn closing, to write an agentic node of your own |
+| `mail_tools`, `SEND_MAIL`, `GET_MAIL_FILES` | the two tools of a node with an inbox; `get_mail_files` acts only on mails whose item the projected thread holds |
+| `FileSystem`, `SandboxPath` | the file system of the node, with normalized relative paths, loaded at the start and saved before `Result` |
+
+Behaviour to know:
+
+- A step is one call to the model with the fallback calls that repeat it. The step limit counts steps; a response at the limit that asks for more is stored, its tools are not run, the turn closes as `BudgetExhausted` and the flag of the outcome is set. A final response at the limit closes as `Completed`.
+- A fault (a model error the fallback does not solve, a tool fault, a port error) closes the open AI turn as `Failed`, discards the open objects and sends `Failed`; a cancel closes it as `Cancelled`. What was stored stays.
+- A tool call over its timeout, or for a tool the node does not hold, ends with a result that has the error flag set; a tool fault or panic fails the instance.
+- A client that should think is declared by the runner; `br-llm-clients-core` gives no such report. The declaration is required: `ModelClient::new` takes a `ThinkingExpectation` (`Expected` or `NotExpected`) and has no default. The node never reads the settings of a client.
+- The sealed intent asks the instance to enforce the web access and the sandbox. Version 0.1.0 holds the web access and the file system mode (`Settings`), loads the files at the start and saves them before `Result`, and enforces neither the web access nor the sandbox. A `ToolCode` gets only its arguments, a cancel view and a result stream, so no tool can reach the file system of the node. Until a later minor, the runner must give only tools that respect the web access.
+- `GeneratorCritic::with_critic_thinking_field` adds a required `thinking` string to the structured answer of the critic, before `is_validated` and `message`; its value is never stored and never read.
+- In a generator-critic the round counter goes back to 0 whenever a drain stores items, also a drain inside a pass; the critic of that round keeps the ladder entry read at the start of the pass.
+- In a generator-critic the critic request is added at the end of the projected thread of the critic for each call and is never stored. A message of the critic that does not validate is stored as an agent mail from the critic; nothing is stored when it validates.
+
+Why:
+
+| Thing | Why it is the way it is |
+|---|---|
+| drain after a tool round only at a boundary | the contract forbids an incoming entry in an open AI turn while a provider execution or continuation remains |
+| `ModelClient::new` requires a `ThinkingExpectation` | `br-llm-clients-core` gives no report that a model should have thought, so only the runner knows; a default would hide a missing declaration |
 
 ## Releases
 
-Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The crates `crates/br-llm-graph`, `crates/br-graph-contract`, `crates/br-flow-nodes`, `crates/br-graph-executor` and `crates/br-agentic-contract` are tracked, each by its own tag `{crate}/v{version}`. The pull request that bumps a crate's `Cargo.toml` (with a `## X.Y.Z - date` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/{crate}-<major>.<minor>` line) the release workflow asks the registry again, tags `{crate}/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
+Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The crates `crates/br-llm-graph`, `crates/br-graph-contract`, `crates/br-flow-nodes`, `crates/br-graph-executor`, `crates/br-agentic-contract` and `crates/br-agentic-nodes` are tracked, each by its own tag `{crate}/v{version}`. The pull request that bumps a crate's `Cargo.toml` (with a `## X.Y.Z - date` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/{crate}-<major>.<minor>` line) the release workflow asks the registry again, tags `{crate}/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
 
 Coverage: every CI run measures the test coverage with `cargo-llvm-cov` and keeps it as the `coverage` artifact (a `coverage-summary.json` per crate and per file, the lcov file and the HTML report); on a pull request the run's summary compares it with the base branch and warns when line coverage drops. Each release attaches its `coverage-summary.json` to the GitHub release and compares it with the previous release that carries one.
 
