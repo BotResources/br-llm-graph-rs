@@ -11,6 +11,7 @@ mod map_reduce_input;
 mod map_reduce_listener_panic;
 mod map_reduce_modes;
 mod map_reduce_non_strict;
+mod map_reduce_non_strict_end;
 mod map_reduce_panic;
 mod map_reduce_work;
 mod merger_decision;
