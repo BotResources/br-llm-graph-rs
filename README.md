@@ -246,11 +246,11 @@ The public API names types of the three libraries it builds on, so pin them besi
 Behaviour to know:
 
 - The in-memory ports hold a `Conversation` of `br-llm-messages` for each thread, so a refusal is a refusal of its rules.
-- `store_at_boundary` stops at the first failure: the item that failed and the items after it stay in the queue and their mails stay unread; `BoundaryError` carries the `Boundary` of what was stored or skipped before the failure. An item that the thread access answers `Stored::Held` is counted as skipped.
+- `store_at_boundary` stops at the first failure: the item that failed and the items after it stay in the queue and their mails stay unread; `BoundaryError` carries the `Boundary` of what was stored or skipped before the failure; an entry that was stored but whose mail could not be marked read is in `done` and also back in the queue, and the next boundary skips it and marks it. An item that the thread access answers `Stored::Held` is counted as skipped.
 - The boundary writes into an input turn only when it is a real input turn. An input turn of the projection that shows the AI turn of another agent is not one: when it holds an agent output, or when the thread access refuses the addition to it, the item goes into a new input turn.
 - The in-memory thread access refuses an addition, an opening or a closing on an AI turn of another agent or with another author name, and an addition to an AI turn as if it were an input turn.
-- The in-memory `wait` resolves with the first item for the agent that comes after the last item that a read of the inbox gave to that agent, so an item that arrives between a read and a `wait` is not lost. An item that a read gave and that is neither stored nor marked is not given again by `wait`.
-- An input turn added with some held entries stores the entries that are not held; with all held, or with a held turn id, it answers `Stored::Held`.
+- The in-memory `wait` resolves with the first item for the agent that comes after the last item that a read of the inbox or an earlier `wait` gave to that agent, so an item that arrives between a read and a `wait` is not lost. An item that a read gave and that is neither stored nor marked is not given again by `wait`.
+- An input turn added with some held entries stores the entries that are not held; with all entries held it answers `Stored::Held`; with a held turn id and some entry that is not held it is refused. `store_at_boundary` needs a new turn id on every call.
 - Completing or opening an object that the thread holds ends an open stream of that object.
 - On one thread shared by two agents, a mail sent to one in `to` and to the other in `cc` has the same entry id for both; the agent that stores its notice first makes the other skip the mail.
 - `result`, `failed` and `cancelled` ignore the errors of the discards. The caller stops the work still running before it calls them.
