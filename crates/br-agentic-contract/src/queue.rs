@@ -56,6 +56,11 @@ pub struct BoundaryError {
     pub done: Boundary,
 }
 
+struct Placer {
+    placement: Placement,
+    fallback: TurnId,
+}
+
 enum Placement {
     Open(TurnTarget),
     NewInput(TurnId),
@@ -105,7 +110,10 @@ pub async fn store_at_boundary(
             fault: fault.into(),
             done: Boundary::default(),
         })?;
-    let mut placement = placement_of(&projected, new_turn);
+    let mut placer = Placer {
+        placement: placement_of(&projected, new_turn),
+        fallback: new_turn,
+    };
     let mut report = Boundary::default();
     let mut pending = std::mem::take(&mut queue.items).into_iter();
     while let Some(item) = pending.next() {
@@ -114,7 +122,7 @@ pub async fn store_at_boundary(
             inbox,
             context,
             &projected,
-            &mut placement,
+            &mut placer,
             &item,
             &mut report,
         )
@@ -136,7 +144,7 @@ async fn store_one(
     inbox: &dyn InboxPort,
     context: &InboxContext,
     projected: &ProjectedThread,
-    placement: &mut Placement,
+    placer: &mut Placer,
     item: &InboxItem,
     report: &mut Boundary,
 ) -> Result<(), BoundaryFault> {
@@ -150,26 +158,47 @@ async fn store_one(
         InboxItem::Mail(mail) => Incoming::Mail(mail.clone()),
         InboxItem::Entry(entry) => Incoming::Entry(entry.clone()),
     };
-    let stored = match placement {
+    let fallback = placer.fallback;
+    let stored = match &mut placer.placement {
         Placement::NewInput(turn) => {
             let turn = *turn;
             let stored = access
                 .add_input_turn(&context.thread, context.agent, turn, vec![incoming])
                 .await?;
-            *placement = Placement::Open(TurnTarget::Input(turn));
+            if stored == Stored::Added {
+                placer.placement = Placement::Open(TurnTarget::Input(turn));
+            }
             stored
         }
         Placement::Open(target) => {
-            access
-                .add_incoming(&context.thread, context.agent, target.clone(), incoming)
-                .await?
+            let on_input = matches!(target, TurnTarget::Input(_));
+            match access
+                .add_incoming(
+                    &context.thread,
+                    context.agent,
+                    target.clone(),
+                    incoming.clone(),
+                )
+                .await
+            {
+                Err(ThreadError::Refused(_)) if on_input => {
+                    let stored = access
+                        .add_input_turn(&context.thread, context.agent, fallback, vec![incoming])
+                        .await?;
+                    if stored == Stored::Added {
+                        placer.placement = Placement::Open(TurnTarget::Input(fallback));
+                    }
+                    stored
+                }
+                other => other?,
+            }
         }
     };
-    mark_if_mail(inbox, context, item).await?;
     match stored {
         Stored::Added => report.stored.push(id),
         Stored::Held => report.skipped.push(id),
     }
+    mark_if_mail(inbox, context, item).await?;
     Ok(())
 }
 

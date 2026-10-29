@@ -161,7 +161,7 @@ async fn given_open_objects_and_a_discard_that_fails_when_the_instance_is_cancel
 }
 
 #[tokio::test]
-async fn given_the_end_of_an_instance_when_the_terminal_event_is_built_then_the_input_end_is_closed_first()
+async fn given_the_end_of_an_instance_when_the_terminal_event_is_built_then_the_input_end_is_closed()
  {
     let world = World::new();
     let mut session = Session::new(&world.access, world.thread, world.agent);

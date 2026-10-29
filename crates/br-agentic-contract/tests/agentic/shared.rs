@@ -1,6 +1,6 @@
 use br_agentic_contract::{
     InboxItem, InboxPort, Incoming, Opened, Queue, Stored, ThreadAccess, ThreadError, TurnTarget,
-    store_at_boundary,
+    WrittenEntry, store_at_boundary,
 };
 use br_llm_messages::{ClosureReason, Turn, TurnClosure};
 
@@ -285,4 +285,135 @@ async fn given_a_held_item_then_a_failing_store_when_the_boundary_runs_then_the_
     assert!(error.done.stored.is_empty());
     let kept: Vec<_> = queue.items().iter().map(InboxItem::id).collect();
     assert_eq!(kept, vec![fresh.id()]);
+}
+
+#[tokio::test]
+async fn given_a_thread_ending_with_a_turn_of_another_agent_made_only_of_a_written_mail_when_the_boundary_stores_an_item_then_a_new_input_turn_holds_it()
+ {
+    let world = World::new();
+    world.start_with_human("start").await;
+    let critic = agent_id();
+    world.hub.set_author(critic, author("critic"));
+    let foreign = turn_id();
+    world
+        .access
+        .add_incoming(
+            &world.thread,
+            critic,
+            critic_target(foreign),
+            Incoming::Written(WrittenEntry {
+                id: entry_id(),
+                sender: critic,
+                author: author("critic"),
+                content: vec![text_block("be stricter")],
+            }),
+        )
+        .await
+        .unwrap();
+    let message = human("next");
+    world.hub.deliver_entry(world.agent, message.clone());
+    let mut queue = Queue::new();
+    queue.push(InboxItem::Entry(message.clone()));
+    let new_turn = turn_id();
+
+    store_at_boundary(
+        &world.access,
+        &world.inbox,
+        &world.context(),
+        &mut queue,
+        new_turn,
+    )
+    .await
+    .unwrap();
+
+    assert!(queue.is_empty());
+    assert_eq!(ai_entry_count(&world, foreign), 1);
+    assert!(world.projected().await.entry(&message.id()).is_ok());
+}
+
+#[tokio::test]
+async fn given_a_wait_that_returned_an_item_when_the_caller_waits_again_then_the_same_item_is_not_given_again()
+ {
+    let world = World::new();
+    let first = human("first");
+    world.hub.deliver_entry(world.agent, first.clone());
+    let context = world.context();
+    let waited = world.inbox.wait(&context).await.unwrap();
+    assert_eq!(waited.id(), first.id());
+
+    let again = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        world.inbox.wait(&context),
+    )
+    .await;
+
+    assert!(again.is_err());
+    let second = human("second");
+    world.hub.deliver_entry(world.agent, second.clone());
+    let next = world.inbox.wait(&context).await.unwrap();
+    assert_eq!(next.id(), second.id());
+}
+
+#[tokio::test]
+async fn given_a_new_input_turn_whose_identity_is_held_when_the_boundary_stores_a_mail_then_it_is_refused_the_mail_stays_unread_and_queued()
+ {
+    let world = World::new();
+    let first = world.start_with_human("start").await;
+    let own = turn_id();
+    world
+        .access
+        .complete_response(
+            &world.thread,
+            world.agent,
+            world.ai(own),
+            response_text(entry_id(), "done"),
+        )
+        .await
+        .unwrap();
+    world
+        .access
+        .close_turn(
+            &world.thread,
+            world.agent,
+            own,
+            TurnClosure::new(entry_id(), ClosureReason::completed()),
+        )
+        .await
+        .unwrap();
+    let sender = agent_id();
+    world.hub.set_author(sender, author("sender"));
+    let mail = new_mail(&[world.agent], &[], "lost?");
+    world
+        .inbox
+        .send(&world.context_of(sender), mail.clone())
+        .await
+        .unwrap();
+    let mut queue = Queue::new();
+    for item in world
+        .inbox
+        .items(&world.context(), None, limit())
+        .await
+        .unwrap()
+        .items
+    {
+        queue.push(item);
+    }
+
+    let error = store_at_boundary(
+        &world.access,
+        &world.inbox,
+        &world.context(),
+        &mut queue,
+        first,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(
+        error.fault,
+        br_agentic_contract::BoundaryFault::Thread(ThreadError::Refused(_))
+    ));
+    assert!(!world.hub.is_read(world.agent, mail.id));
+    assert_eq!(queue.len(), 1);
+    assert!(world.projected().await.entry(&mail.id.entry_id()).is_err());
 }

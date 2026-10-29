@@ -42,7 +42,12 @@ pub(super) fn check_target(
             Ok(())
         }
         (Turn::AITurn(_), TurnTarget::Ai { .. }) => Err(not_theirs()),
-        (Turn::AITurn(_), TurnTarget::Input(_)) => Err(not_theirs()),
+        (Turn::AITurn(_), TurnTarget::Input(_)) => Err(ThreadError::Refused(
+            br_graph_contract::Reason::new("the turn is an AI turn, not an input turn"),
+        )),
+        (Turn::InputTurn(_), TurnTarget::Ai { .. }) => Err(ThreadError::Refused(
+            br_graph_contract::Reason::new("the turn is an input turn, not an AI turn"),
+        )),
         _ => Ok(()),
     }
 }
@@ -84,8 +89,13 @@ impl MemoryHub {
             .iter()
             .filter(|item| !holds_entry(conversation, item.id()))
             .collect();
-        if conversation.turn(&turn).is_ok() || fresh.is_empty() {
+        if fresh.is_empty() {
             return Ok(Stored::Held);
+        }
+        if conversation.turn(&turn).is_ok() {
+            return Err(ThreadError::Refused(br_graph_contract::Reason::new(
+                "the turn identity is held with other content",
+            )));
         }
         let entries = fresh
             .into_iter()

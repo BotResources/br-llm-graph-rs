@@ -125,11 +125,15 @@ impl InboxPort for MemoryInbox {
         Box::pin(async move {
             loop {
                 let found = {
-                    let state = self.hub.lock();
+                    let mut state = self.hub.lock();
                     let floor = state.given.get(&context.agent).copied().unwrap_or(0);
-                    listed(&state, context)?
+                    let found = listed(&state, context)?
                         .into_iter()
-                        .find(|(seq, _)| *seq > floor)
+                        .find(|(seq, _)| *seq > floor);
+                    if let Some((seq, _)) = &found {
+                        state.given.insert(context.agent, *seq);
+                    }
+                    found
                 };
                 if let Some((_, item)) = found {
                     return Ok(item);
