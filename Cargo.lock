@@ -3,6 +3,19 @@
 version = 4
 
 [[package]]
+name = "br-agentic-contract"
+version = "0.1.0"
+dependencies = [
+ "br-graph-contract",
+ "br-llm-clients-core 0.5.0",
+ "br-llm-messages 2.1.0",
+ "serde",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "br-flow-nodes"
 version = "0.2.0"
 dependencies = [
@@ -41,9 +54,20 @@ name = "br-llm-clients-core"
 version = "0.4.0"
 source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.4.0#d3b2c9bfe945eca799a82fb8a59b1014a63a9dd6"
 dependencies = [
- "br-llm-messages",
+ "br-llm-messages 0.5.0",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "br-llm-clients-core"
+version = "0.5.0"
+source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.5.0#337094a8cdd1d169b3e8602e2d7a4ca67eaf9f31"
+dependencies = [
+ "br-llm-messages 2.1.0",
+ "serde",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -51,8 +75,8 @@ name = "br-llm-clients-mock"
 version = "0.4.0"
 source = "git+https://github.com/BotResources/br-llm-clients-rs?tag=br-llm-clients-core%2Fv0.4.0#d3b2c9bfe945eca799a82fb8a59b1014a63a9dd6"
 dependencies = [
- "br-llm-clients-core",
- "br-llm-messages",
+ "br-llm-clients-core 0.4.0",
+ "br-llm-messages 0.5.0",
  "thiserror",
 ]
 
@@ -60,9 +84,9 @@ dependencies = [
 name = "br-llm-graph"
 version = "0.6.0"
 dependencies = [
- "br-llm-clients-core",
+ "br-llm-clients-core 0.4.0",
  "br-llm-clients-mock",
- "br-llm-messages",
+ "br-llm-messages 0.5.0",
  "futures-channel",
  "futures-util",
  "serde",
@@ -77,6 +101,16 @@ source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-mess
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "br-llm-messages"
+version = "2.1.0"
+source = "git+https://github.com/BotResources/br-llm-messages-rs?tag=br-llm-messages%2Fv2.1.0#639e011b5b925a86195a69dc52fe1f07e50da154"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
