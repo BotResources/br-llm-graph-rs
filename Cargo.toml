@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/br-graph-contract", "crates/br-graph-executor", "crates/br-llm-graph", "crates/br-flow-nodes", "crates/br-agentic-contract"]
+members = ["crates/br-graph-contract", "crates/br-graph-executor", "crates/br-llm-graph", "crates/br-flow-nodes", "crates/br-agentic-contract", "crates/br-agentic-nodes"]
 
 [workspace.package]
 edition = "2024"
@@ -10,3 +10,4 @@ repository = "https://github.com/BotResources/br-llm-graph-rs"
 
 [patch."https://github.com/BotResources/br-llm-graph-rs"]
 br-graph-contract = { path = "crates/br-graph-contract" }
+br-agentic-contract = { path = "crates/br-agentic-contract" }
