@@ -30,16 +30,27 @@ impl<A: ThreadAccess> Flaky<A> {
         }
     }
 
+    fn take_ok_add(&self) -> bool {
+        let mut current = self.ok_adds.load(Ordering::SeqCst);
+        while current > 0 {
+            match self.ok_adds.compare_exchange(
+                current,
+                current - 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return true,
+                Err(actual) => current = actual,
+            }
+        }
+        false
+    }
+
     fn fails(&self, flag: &AtomicBool) -> Option<PortError> {
         if std::ptr::eq(flag, &self.fail_adds) && self.refuse_adds.load(Ordering::SeqCst) {
             return Some(PortError::refused("refused by the thread access"));
         }
-        if std::ptr::eq(flag, &self.fail_adds)
-            && flag.load(Ordering::SeqCst)
-            && self
-                .ok_adds
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                .is_ok()
+        if std::ptr::eq(flag, &self.fail_adds) && flag.load(Ordering::SeqCst) && self.take_ok_add()
         {
             return None;
         }
