@@ -8,6 +8,36 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-30
+
+Rework of the thread access, the ports, the in-memory ports and the queue rules to the sealed intent of minor 0.2. Breaking: the 0.1 API of the thread access, the inbox, the agent port and the tool content does not compile against 0.2.
+
+### Breaking
+
+- One error type for the ports, `PortError` (`Refused(Reason)`, `Fault(Cause)`), replaces `PortFault`, `ThreadError` and `InboxError`. Only the inbox refuses (`send`, `documents`); a refusal by the thread access is a fault of the instance.
+- All port methods return `PortFuture`, a boxed `Send` future owned by this crate, instead of the `BoxFuture` of `br-llm-clients-core` (the same type behind the alias). The agent port and the inbox need no clients-core import.
+- `ThreadAccess` is rebuilt: one `read(thread)` gives the whole `Conversation`, used once at the start; the other operations receive complete additions (`add_input_turn(InputTurn)`, `add_entry(AiTurnRef, TurnEntry)`, `close_turn`, `open_response`/`open_result` giving a stream, `complete_*`, `discard_*`) and answer accepted, refused or fault. Removed: `load` of a `ProjectedThread`, the agent parameter, `Incoming`, `WrittenEntry`, `TurnTarget`, `Stored`, `Opened` and `Completed` with their `Held` answers. `open_result` no longer takes the tool call.
+- `AgentPort` gives an `AgentId`; the `Agent` type and the optional author are removed (the author is a build value of the node or a port of the node library).
+- `MailItem::To` and `NewMail` carry the author name of the sender and the source conversation; `InboxPort::mark_read` takes the `EntryId` of any item (mail, human message, runtime notification, runtime notice); `InboxPort::wait` gives nothing; `documents` refuses with a reason when the agent is not a recipient in `to`, for an unknown mail too.
+- `ThreadRef::new` is replaced by `ThreadRef::from_uuid`, which refuses a UUID that is not a v7. `AgentLabel` refuses only the empty text. `InboxEntry::new` returns `InvalidInboxEntry`.
+- `ToolContent` holds `ToolBlock`s (text, image, structured) without identity; `into_result` gives each block its identity; `ToolContent::error_text` takes no block id. `ToolCode` and `ResultStream` use `PortFuture`.
+- `Session` holds the conversation copy: `Session::start` reads once; every addition is applied to the copy under the rules of `br-llm-messages` before it is handed over; a refused completion discards the open object. Errors are `SessionError`.
+- `store_at_boundary` takes the session, a `MailEntryBuilder` (the node library builds the entry of a mail) and the id of a new input turn: items the copy holds are skipped and marked; the others go into the open AI turn of the agent after its last entry, else into one new input turn with one entry each; every kind of item is marked as read after its entry is handed over. `BoundaryError` carries a `SessionError`; `BoundaryFault` is removed.
+- `AgenticNode::restart` and `Restart` are removed.
+- The in-memory ports are rebuilt (`MemoryHub` is removed): they take one shared `Record` and keep one ordered record of every call, with what the streams take; the thread access keeps the completed additions and starts from the conversation of the test; there is no link between the in-memory inbox and the in-memory thread access; `MemoryAgentPort` takes its identities from the test; `FixedThreadPort`, `FixedToolsPort` and `MemoryWorkspace` take the record.
+
+### Added
+
+- `PortFuture`, `PortError`, `AiTurnRef`, `ToolBlock`, `SessionError`, `MailEntryBuilder`, `InvalidThreadRef`, `InvalidInboxEntry`.
+- `mail_documents` (documents only for a mail whose entry the conversation holds as an incoming entry), `Queue::read`, `ToolContent::from_port_error`, `Session::holds`, `Session::holds_incoming`, `Session::open_ai_turn`.
+- Re-exports of the types of `br-graph-contract` that the ports name: `Fields`, `InstanceId`, `Reason`, `Cause`, `CancelView`, `Event`, `InputReader`, `Node`.
+- `memory::Record` and `memory::Call`, `memory::SentMail`.
+- A crate README (the contract of the crate).
+
+### Changed
+
+- `WebAccess::reaches_nothing` is also true for an empty whitelist.
+
 ## 0.1.0 - 2026-10-29
 
 First release: the contract of the agentic nodes. It builds on `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`, and on no node library.

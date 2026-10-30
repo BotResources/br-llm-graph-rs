@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod boundary;
 mod documents;
 mod ending;
