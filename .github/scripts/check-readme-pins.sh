@@ -19,7 +19,27 @@ fi
 expected_tag="${crate}/v${version}"
 expected_pin="package = \"${crate}\", tag = \"${expected_tag}\", version = \"${version}\""
 
-if ! grep -qF "${expected_pin}" "$readme"; then
+own_snippet=$(awk -v crate="$crate" '
+  /^```toml[[:space:]]*$/ { in_block = 1; block = ""; first = ""; next }
+  /^```[[:space:]]*$/ {
+    if (in_block && first == crate) { printf "%s", block }
+    in_block = 0
+    next
+  }
+  in_block {
+    block = block $0 "\n"
+    if (first == "" && $0 ~ /^[A-Za-z0-9_-]+[[:space:]]*=/) {
+      first = $0
+      sub(/[[:space:]]*=.*$/, "", first)
+    }
+  }' "$readme")
+
+if [ -z "$own_snippet" ]; then
+  echo "::error file=${readme}::no install snippet of ${crate} found: a \`\`\`toml block whose first dependency is ${crate} is required" >&2
+  exit 1
+fi
+
+if ! grep -qF "${expected_pin}" <<<"$own_snippet"; then
   echo "::error file=${readme}::the ${crate} install pin must read ${expected_pin} (a tag-only git dep is a wildcard and cargo-deny denies it)" >&2
   exit 1
 fi
@@ -31,7 +51,7 @@ while IFS= read -r line; do
     echo "::error file=${readme}::${crate} self-pin is stale: ${line}" >&2
     fail=1
   fi
-done < <(grep -F "${repo_url}\"" "$readme" | grep -F "package = \"${crate}\"" || true)
+done < <(grep -F "${repo_url}\"" <<<"$own_snippet" | grep -F "package = \"${crate}\"" || true)
 
 if [ "$fail" -eq 0 ]; then
   echo "✓ ${readme}: ${crate} self-pin on ${expected_tag} / ${version}"

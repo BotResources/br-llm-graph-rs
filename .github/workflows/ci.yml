@@ -103,6 +103,8 @@ jobs:
           for crate in $(bash .github/scripts/workspace-crates.sh); do
             bash .github/scripts/check-changelog.sh "$crate"
           done
+      - name: README pin check reads only the own install snippet
+        run: bash .github/scripts/test-readme-pins.sh
       - name: check README tag pins are fresh
         run: |
           set -euo pipefail
