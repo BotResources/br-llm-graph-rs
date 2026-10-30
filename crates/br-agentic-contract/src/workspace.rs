@@ -1,7 +1,7 @@
 use br_graph_contract::Fields;
 
-use crate::fault::PortFault;
-use crate::ports::WorkspacePort;
+use crate::error::PortError;
+use crate::future::PortFuture;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FileSystemMode {
@@ -16,12 +16,23 @@ pub struct WorkspaceFile {
     pub content: Vec<u8>,
 }
 
+pub trait WorkspacePort<F: Fields>: Send + Sync {
+    fn load<'a>(&'a self, snapshot: &'a F)
+    -> PortFuture<'a, Result<Vec<WorkspaceFile>, PortError>>;
+
+    fn save<'a>(
+        &'a self,
+        snapshot: &'a F,
+        files: Vec<WorkspaceFile>,
+    ) -> PortFuture<'a, Result<(), PortError>>;
+}
+
 impl FileSystemMode {
     pub async fn start<F: Fields>(
         self,
         port: &dyn WorkspacePort<F>,
         snapshot: &F,
-    ) -> Result<Option<Vec<WorkspaceFile>>, PortFault> {
+    ) -> Result<Option<Vec<WorkspaceFile>>, PortError> {
         match self {
             FileSystemMode::Never => Ok(None),
             FileSystemMode::Always => port.load(snapshot).await.map(Some),
@@ -37,7 +48,7 @@ pub async fn save_files<F: Fields>(
     port: &dyn WorkspacePort<F>,
     snapshot: &F,
     files: Option<Vec<WorkspaceFile>>,
-) -> Result<(), PortFault> {
+) -> Result<(), PortError> {
     match files {
         Some(files) => port.save(snapshot, files).await,
         None => Ok(()),

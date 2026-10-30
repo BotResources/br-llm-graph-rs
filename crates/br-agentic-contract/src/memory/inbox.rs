@@ -1,82 +1,187 @@
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use br_llm_clients_core::BoxFuture;
-use tokio::sync::broadcast::error::RecvError;
+use br_llm_messages::{AgentId, EntryId};
+use tokio::sync::watch;
 
-use super::state::{MemoryHub, State, StoredMail};
-use crate::fault::{InboxError, PortFault};
+use super::record::{Call, Record};
+use crate::error::PortError;
+use crate::future::PortFuture;
 use crate::ids::MailId;
 use crate::inbox::{Cursor, InboxBatch, InboxContext, InboxItem, InboxPort};
-use crate::mail::{MailDocument, MailItem, NewMail};
+use crate::inbox_entry::InboxEntry;
+use crate::mail::{DocumentRef, MailDocument, MailItem, NewMail};
+
+#[derive(Debug, Clone)]
+pub struct SentMail {
+    pub sender: AgentId,
+    pub mail: NewMail,
+}
+
+struct Listed {
+    seq: u64,
+    agent: AgentId,
+    item: InboxItem,
+}
+
+#[derive(Default)]
+struct State {
+    next_seq: u64,
+    mails: Vec<(u64, SentMail)>,
+    entries: Vec<(u64, AgentId, InboxEntry)>,
+    documents: HashMap<DocumentRef, Vec<u8>>,
+    read: HashSet<(AgentId, EntryId)>,
+}
+
+struct Shared {
+    state: Mutex<State>,
+    arrivals: watch::Sender<u64>,
+}
 
 #[derive(Clone)]
 pub struct MemoryInbox {
-    hub: MemoryHub,
+    record: Record,
+    shared: Arc<Shared>,
 }
 
-impl MemoryHub {
-    pub fn inbox(&self) -> MemoryInbox {
-        MemoryInbox { hub: self.clone() }
-    }
-}
-
-fn mail_item(stored: &StoredMail, context: &InboxContext) -> Option<MailItem> {
-    if stored.read.contains(&context.agent) {
-        return None;
-    }
-    if stored.to.contains(&context.agent) {
+fn mail_item(sent: &SentMail, agent: AgentId) -> Option<MailItem> {
+    let mail = &sent.mail;
+    if mail.to.contains(&agent) {
         return Some(MailItem::To {
-            id: stored.id,
-            sender: stored.sender,
-            to: stored.to.clone(),
-            cc: stored.cc.clone(),
-            subject: stored.subject.clone(),
-            body: stored.body.clone(),
-            attachment_names: stored
+            id: mail.id,
+            sender: sent.sender,
+            author: mail.author.clone(),
+            source: mail.source,
+            to: mail.to.clone(),
+            cc: mail.cc.clone(),
+            subject: mail.subject.clone(),
+            body: mail.body.clone(),
+            attachment_names: mail
                 .attachments
                 .iter()
                 .map(|attachment| attachment.name().to_owned())
                 .collect(),
         });
     }
-    stored.cc.contains(&context.agent).then(|| MailItem::Cc {
-        id: stored.id,
-        subject: stored.subject.clone(),
+    mail.cc.contains(&agent).then(|| MailItem::Cc {
+        id: mail.id,
+        subject: mail.subject.clone(),
     })
 }
 
-fn listed(state: &State, context: &InboxContext) -> Result<Vec<(u64, InboxItem)>, PortFault> {
-    let conversation = state
-        .threads
-        .get(&context.thread)
-        .ok_or_else(|| PortFault::new(format!("unknown thread {}", context.thread)))?;
-    let projected = conversation.project_for(context.agent);
-    let mut items: Vec<(u64, InboxItem)> = state
-        .mails
-        .iter()
-        .filter_map(|stored| {
-            mail_item(stored, context).map(|item| (stored.seq, InboxItem::Mail(item)))
-        })
-        .collect();
-    items.extend(
-        state
-            .entries
-            .iter()
-            .filter(|stored| stored.agent == context.agent)
-            .filter(|stored| projected.entry(&stored.entry.id()).is_err())
-            .map(|stored| (stored.seq, InboxItem::Entry(stored.entry.clone()))),
-    );
-    items.sort_by_key(|(seq, _)| *seq);
-    Ok(items)
+impl State {
+    fn take_seq(&mut self) -> u64 {
+        self.next_seq += 1;
+        self.next_seq
+    }
+
+    fn listed(&self) -> Vec<Listed> {
+        let mut listed = Vec::new();
+        for (seq, sent) in &self.mails {
+            for agent in sent.mail.to.iter().chain(sent.mail.cc.iter()) {
+                if let Some(item) = mail_item(sent, *agent) {
+                    listed.push(Listed {
+                        seq: *seq,
+                        agent: *agent,
+                        item: InboxItem::Mail(item),
+                    });
+                }
+            }
+        }
+        for (seq, agent, entry) in &self.entries {
+            listed.push(Listed {
+                seq: *seq,
+                agent: *agent,
+                item: InboxItem::Entry(entry.clone()),
+            });
+        }
+        listed.sort_by_key(|listed| listed.seq);
+        listed
+    }
+
+    fn unread(&self, agent: AgentId) -> Vec<(u64, InboxItem)> {
+        self.listed()
+            .into_iter()
+            .filter(|listed| listed.agent == agent)
+            .filter(|listed| !self.read.contains(&(agent, listed.item.id())))
+            .map(|listed| (listed.seq, listed.item))
+            .collect()
+    }
 }
 
-fn position(cursor: Option<&Cursor>) -> Result<u64, PortFault> {
+impl MemoryInbox {
+    pub fn new(record: &Record) -> Self {
+        let (arrivals, _) = watch::channel(0);
+        Self {
+            record: record.clone(),
+            shared: Arc::new(Shared {
+                state: Mutex::new(State::default()),
+                arrivals,
+            }),
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn announce(&self) {
+        self.shared.arrivals.send_modify(|count| *count += 1);
+    }
+
+    pub fn deliver_entry(&self, agent: AgentId, entry: InboxEntry) {
+        {
+            let mut state = self.lock();
+            let seq = state.take_seq();
+            state.entries.push((seq, agent, entry));
+        }
+        self.announce();
+    }
+
+    pub fn deliver_mail(&self, sender: AgentId, mail: NewMail) -> Result<(), PortError> {
+        if let Some(reason) = mail.refusal() {
+            return Err(PortError::Refused(reason));
+        }
+        {
+            let mut state = self.lock();
+            if state.mails.iter().any(|(_, sent)| sent.mail.id == mail.id) {
+                return Ok(());
+            }
+            let seq = state.take_seq();
+            state.mails.push((seq, SentMail { sender, mail }));
+        }
+        self.announce();
+        Ok(())
+    }
+
+    pub fn put_document(&self, reference: DocumentRef, content: Vec<u8>) {
+        self.lock().documents.insert(reference, content);
+    }
+
+    pub fn mail(&self, id: MailId) -> Option<SentMail> {
+        self.lock()
+            .mails
+            .iter()
+            .find(|(_, sent)| sent.mail.id == id)
+            .map(|(_, sent)| sent.clone())
+    }
+
+    pub fn is_read(&self, agent: AgentId, item: EntryId) -> bool {
+        self.lock().read.contains(&(agent, item))
+    }
+}
+
+fn position(cursor: Option<&Cursor>) -> Result<u64, PortError> {
     match cursor {
         None => Ok(0),
         Some(cursor) => cursor
             .as_str()
             .parse()
-            .map_err(|_| PortFault::new("the cursor was not given by this inbox")),
+            .map_err(|_| PortError::fault("the cursor was not given by this inbox")),
     }
 }
 
@@ -86,28 +191,19 @@ impl InboxPort for MemoryInbox {
         context: &'a InboxContext,
         after: Option<&'a Cursor>,
         limit: NonZeroUsize,
-    ) -> BoxFuture<'a, Result<InboxBatch, PortFault>> {
+    ) -> PortFuture<'a, Result<InboxBatch, PortError>> {
+        self.record.push(Call::InboxItems {
+            context: *context,
+            after: after.cloned(),
+            limit,
+        });
         Box::pin(async move {
             let after = position(after)?;
-            let all = {
-                let mut state = self.hub.lock();
-                let all = listed(&state, context)?;
-                let given = state.given.entry(context.agent).or_insert(0);
-                let reached = all
-                    .iter()
-                    .filter(|(seq, _)| *seq > after)
-                    .take(limit.get())
-                    .map(|(seq, _)| *seq)
-                    .max()
-                    .unwrap_or(0);
-                *given = (*given).max(reached);
-                all
-            };
-            let mut rest = all.into_iter().filter(|(seq, _)| *seq > after);
+            let unread = self.lock().unread(context.agent);
+            let mut rest = unread.into_iter().filter(|(seq, _)| *seq > after);
             let page: Vec<(u64, InboxItem)> = rest.by_ref().take(limit.get()).collect();
-            let more = rest.next().is_some();
             let next = match page.last() {
-                Some((seq, _)) if more => Some(Cursor::new(seq.to_string())),
+                Some((seq, _)) if rest.next().is_some() => Some(Cursor::new(seq.to_string())),
                 _ => None,
             };
             Ok(InboxBatch {
@@ -117,33 +213,16 @@ impl InboxPort for MemoryInbox {
         })
     }
 
-    fn wait<'a>(
-        &'a self,
-        context: &'a InboxContext,
-    ) -> BoxFuture<'a, Result<InboxItem, PortFault>> {
-        let mut arrivals = self.hub.arrivals.subscribe();
+    fn wait<'a>(&'a self, context: &'a InboxContext) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::InboxWait { context: *context });
+        let mut arrivals = self.shared.arrivals.subscribe();
         Box::pin(async move {
             loop {
-                let found = {
-                    let mut state = self.hub.lock();
-                    let floor = state.given.get(&context.agent).copied().unwrap_or(0);
-                    let found = listed(&state, context)?
-                        .into_iter()
-                        .find(|(seq, _)| *seq > floor);
-                    if let Some((seq, _)) = &found {
-                        state.given.insert(context.agent, *seq);
-                    }
-                    found
-                };
-                if let Some((_, item)) = found {
-                    return Ok(item);
+                if !self.lock().unread(context.agent).is_empty() {
+                    return Ok(());
                 }
-                match arrivals.recv().await {
-                    Ok(agent) if agent != context.agent => {}
-                    Ok(_) | Err(RecvError::Lagged(_)) => {}
-                    Err(RecvError::Closed) => {
-                        return Err(PortFault::new("the inbox was closed"));
-                    }
+                if arrivals.changed().await.is_err() {
+                    return Err(PortError::fault("the inbox was closed"));
                 }
             }
         })
@@ -152,11 +231,20 @@ impl InboxPort for MemoryInbox {
     fn mark_read<'a>(
         &'a self,
         context: &'a InboxContext,
-        mail: MailId,
-    ) -> BoxFuture<'a, Result<(), PortFault>> {
+        item: EntryId,
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::InboxMarkRead {
+            context: *context,
+            item,
+        });
         Box::pin(async move {
-            if let Some(stored) = self.hub.lock().mails.iter_mut().find(|m| m.id == mail) {
-                stored.read.insert(context.agent);
+            let mut state = self.lock();
+            let held = state
+                .listed()
+                .iter()
+                .any(|listed| listed.agent == context.agent && listed.item.id() == item);
+            if held {
+                state.read.insert((context.agent, item));
             }
             Ok(())
         })
@@ -166,53 +254,34 @@ impl InboxPort for MemoryInbox {
         &'a self,
         context: &'a InboxContext,
         mail: NewMail,
-    ) -> BoxFuture<'a, Result<(), InboxError>> {
-        Box::pin(async move {
-            if let Some(reason) = mail.refusal() {
-                return Err(InboxError::MailRefused(reason));
-            }
-            {
-                let mut state = self.hub.lock();
-                if state.mails.iter().any(|stored| stored.id == mail.id) {
-                    return Ok(());
-                }
-                let seq = state.take_seq();
-                state.mails.push(StoredMail {
-                    seq,
-                    id: mail.id,
-                    sender: context.agent,
-                    to: mail.to.clone(),
-                    cc: mail.cc.clone(),
-                    subject: mail.subject,
-                    body: mail.body,
-                    attachments: mail.attachments,
-                    read: Default::default(),
-                });
-            }
-            for recipient in mail.to.iter().chain(mail.cc.iter()) {
-                self.hub.announce(*recipient);
-            }
-            Ok(())
-        })
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::InboxSend {
+            context: *context,
+            mail: mail.clone(),
+        });
+        Box::pin(async move { self.deliver_mail(context.agent, mail) })
     }
 
     fn documents<'a>(
         &'a self,
         context: &'a InboxContext,
         mail: MailId,
-    ) -> BoxFuture<'a, Result<Vec<MailDocument>, PortFault>> {
+    ) -> PortFuture<'a, Result<Vec<MailDocument>, PortError>> {
+        self.record.push(Call::InboxDocuments {
+            context: *context,
+            mail,
+        });
         Box::pin(async move {
-            let state = self.hub.lock();
-            let Some(stored) = state.mails.iter().find(|stored| stored.id == mail) else {
-                return Ok(Vec::new());
-            };
-            let visible = stored.sender == context.agent
-                || stored.to.contains(&context.agent)
-                || stored.cc.contains(&context.agent);
-            if !visible {
-                return Ok(Vec::new());
-            }
-            stored
+            let state = self.lock();
+            let sent = state
+                .mails
+                .iter()
+                .map(|(_, sent)| sent)
+                .find(|sent| sent.mail.id == mail && sent.mail.to.contains(&context.agent))
+                .ok_or_else(|| {
+                    PortError::refused("the agent is not a recipient in to of that mail")
+                })?;
+            sent.mail
                 .attachments
                 .iter()
                 .map(|attachment| {
@@ -223,7 +292,7 @@ impl InboxPort for MemoryInbox {
                             name: attachment.name().to_owned(),
                             content: content.clone(),
                         })
-                        .ok_or_else(|| PortFault::new("a document of the mail is unavailable"))
+                        .ok_or_else(|| PortError::fault("a document of the mail is unavailable"))
                 })
                 .collect()
         })

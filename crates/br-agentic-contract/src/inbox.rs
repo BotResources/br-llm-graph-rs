@@ -1,10 +1,10 @@
 use std::num::NonZeroUsize;
 
 use br_graph_contract::InstanceId;
-use br_llm_clients_core::BoxFuture;
 use br_llm_messages::{AgentId, EntryId};
 
-use crate::fault::{InboxError, PortFault};
+use crate::error::PortError;
+use crate::future::PortFuture;
 use crate::ids::{MailId, ThreadRef};
 use crate::inbox_entry::InboxEntry;
 use crate::mail::{MailDocument, MailItem, NewMail};
@@ -56,26 +56,25 @@ pub trait InboxPort: Send + Sync {
         context: &'a InboxContext,
         after: Option<&'a Cursor>,
         limit: NonZeroUsize,
-    ) -> BoxFuture<'a, Result<InboxBatch, PortFault>>;
+    ) -> PortFuture<'a, Result<InboxBatch, PortError>>;
 
-    fn wait<'a>(&'a self, context: &'a InboxContext)
-    -> BoxFuture<'a, Result<InboxItem, PortFault>>;
+    fn wait<'a>(&'a self, context: &'a InboxContext) -> PortFuture<'a, Result<(), PortError>>;
 
     fn mark_read<'a>(
         &'a self,
         context: &'a InboxContext,
-        mail: MailId,
-    ) -> BoxFuture<'a, Result<(), PortFault>>;
+        item: EntryId,
+    ) -> PortFuture<'a, Result<(), PortError>>;
 
     fn send<'a>(
         &'a self,
         context: &'a InboxContext,
         mail: NewMail,
-    ) -> BoxFuture<'a, Result<(), InboxError>>;
+    ) -> PortFuture<'a, Result<(), PortError>>;
 
     fn documents<'a>(
         &'a self,
         context: &'a InboxContext,
         mail: MailId,
-    ) -> BoxFuture<'a, Result<Vec<MailDocument>, PortFault>>;
+    ) -> PortFuture<'a, Result<Vec<MailDocument>, PortError>>;
 }

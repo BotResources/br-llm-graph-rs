@@ -1,8 +1,7 @@
-use br_llm_messages::{EntryId, IncomingEntry, InputTurn, ProjectedThread, Turn, TurnId};
+use std::num::NonZeroUsize;
 
-use crate::fault::{PortFault, ThreadError};
+use crate::error::PortError;
 use crate::inbox::{InboxContext, InboxItem, InboxPort};
-use crate::thread_access::{Incoming, Stored, ThreadAccess, TurnTarget};
 
 #[derive(Debug, Default)]
 pub struct Queue {
@@ -33,182 +32,34 @@ impl Queue {
     pub fn items(&self) -> &[InboxItem] {
         &self.items
     }
-}
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Boundary {
-    pub stored: Vec<EntryId>,
-    pub skipped: Vec<EntryId>,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum BoundaryFault {
-    #[error(transparent)]
-    Thread(#[from] ThreadError),
-    #[error(transparent)]
-    Port(#[from] PortFault),
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("{fault}")]
-pub struct BoundaryError {
-    pub fault: BoundaryFault,
-    pub done: Boundary,
-}
-
-struct Placer {
-    placement: Placement,
-    fallback: TurnId,
-}
-
-enum Placement {
-    Open(TurnTarget),
-    NewInput(TurnId),
-}
-
-fn placement_of(projected: &ProjectedThread, new_turn: TurnId) -> Placement {
-    let own_open = projected
-        .turns()
-        .iter()
-        .rev()
-        .find_map(Turn::as_ai)
-        .filter(|ai| !ai.is_closed());
-    if let Some(ai) = own_open {
-        return Placement::Open(TurnTarget::Ai {
-            id: ai.id(),
-            author: ai.author().clone(),
-        });
-    }
-    match projected.turns().last() {
-        Some(Turn::InputTurn(input)) if !projects_agent_output(input) => {
-            Placement::Open(TurnTarget::Input(input.id()))
-        }
-        _ => Placement::NewInput(new_turn),
-    }
-}
-
-fn projects_agent_output(input: &InputTurn) -> bool {
-    input.entries().iter().any(|entry| {
-        matches!(
-            entry,
-            IncomingEntry::AgentOutput(_) | IncomingEntry::PartialAgentOutput(_)
-        )
-    })
-}
-
-pub async fn store_at_boundary(
-    access: &dyn ThreadAccess,
-    inbox: &dyn InboxPort,
-    context: &InboxContext,
-    queue: &mut Queue,
-    new_turn: TurnId,
-) -> Result<Boundary, BoundaryError> {
-    let projected = access
-        .load(&context.thread, context.agent)
-        .await
-        .map_err(|fault| BoundaryError {
-            fault: fault.into(),
-            done: Boundary::default(),
-        })?;
-    let mut placer = Placer {
-        placement: placement_of(&projected, new_turn),
-        fallback: new_turn,
-    };
-    let mut report = Boundary::default();
-    let mut pending = std::mem::take(&mut queue.items).into_iter();
-    while let Some(item) = pending.next() {
-        let outcome = store_one(
-            access,
-            inbox,
-            context,
-            &projected,
-            &mut placer,
-            &item,
-            &mut report,
-        )
-        .await;
-        if let Err(fault) = outcome {
-            queue.items.push(item);
-            queue.items.extend(pending);
-            return Err(BoundaryError {
-                fault,
-                done: report,
-            });
-        }
-    }
-    Ok(report)
-}
-
-async fn store_one(
-    access: &dyn ThreadAccess,
-    inbox: &dyn InboxPort,
-    context: &InboxContext,
-    projected: &ProjectedThread,
-    placer: &mut Placer,
-    item: &InboxItem,
-    report: &mut Boundary,
-) -> Result<(), BoundaryFault> {
-    let id = item.id();
-    if projected.entry(&id).is_ok() {
-        mark_if_mail(inbox, context, item).await?;
-        report.skipped.push(id);
-        return Ok(());
-    }
-    let incoming = match item {
-        InboxItem::Mail(mail) => Incoming::Mail(mail.clone()),
-        InboxItem::Entry(entry) => Incoming::Entry(entry.clone()),
-    };
-    let fallback = placer.fallback;
-    let stored = match &mut placer.placement {
-        Placement::NewInput(turn) => {
-            let turn = *turn;
-            let stored = access
-                .add_input_turn(&context.thread, context.agent, turn, vec![incoming])
-                .await?;
-            if stored == Stored::Added {
-                placer.placement = Placement::Open(TurnTarget::Input(turn));
-            }
-            stored
-        }
-        Placement::Open(target) => {
-            let on_input = matches!(target, TurnTarget::Input(_));
-            match access
-                .add_incoming(
-                    &context.thread,
-                    context.agent,
-                    target.clone(),
-                    incoming.clone(),
-                )
-                .await
-            {
-                Err(ThreadError::Refused(_)) if on_input => {
-                    let stored = access
-                        .add_input_turn(&context.thread, context.agent, fallback, vec![incoming])
-                        .await?;
-                    if stored == Stored::Added {
-                        placer.placement = Placement::Open(TurnTarget::Input(fallback));
-                    }
-                    stored
-                }
-                other => other?,
+    pub async fn read(
+        &mut self,
+        inbox: &dyn InboxPort,
+        context: &InboxContext,
+        batch: NonZeroUsize,
+    ) -> Result<usize, PortError> {
+        let mut added = 0;
+        let mut after = None;
+        loop {
+            let page = inbox.items(context, after.as_ref(), batch).await?;
+            added += page
+                .items
+                .into_iter()
+                .filter(|item| self.push(item.clone()))
+                .count();
+            match page.next {
+                Some(cursor) => after = Some(cursor),
+                None => return Ok(added),
             }
         }
-    };
-    match stored {
-        Stored::Added => report.stored.push(id),
-        Stored::Held => report.skipped.push(id),
     }
-    mark_if_mail(inbox, context, item).await?;
-    Ok(())
-}
 
-async fn mark_if_mail(
-    inbox: &dyn InboxPort,
-    context: &InboxContext,
-    item: &InboxItem,
-) -> Result<(), PortFault> {
-    match item {
-        InboxItem::Mail(mail) => inbox.mark_read(context, mail.id()).await,
-        InboxItem::Entry(_) => Ok(()),
+    pub(crate) fn take(&mut self) -> Vec<InboxItem> {
+        std::mem::take(&mut self.items)
+    }
+
+    pub(crate) fn restore(&mut self, items: Vec<InboxItem>) {
+        self.items.splice(0..0, items);
     }
 }

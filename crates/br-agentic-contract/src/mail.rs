@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use br_graph_contract::Reason;
-use br_llm_messages::AgentId;
+use br_llm_messages::{AgentId, Author, ConversationId};
 
 use crate::ids::MailId;
 
@@ -50,6 +50,8 @@ pub struct MailDocument {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewMail {
     pub id: MailId,
+    pub author: Author,
+    pub source: ConversationId,
     pub to: Vec<AgentId>,
     pub cc: Vec<AgentId>,
     pub subject: String,
@@ -81,6 +83,8 @@ pub enum MailItem {
     To {
         id: MailId,
         sender: AgentId,
+        author: Author,
+        source: ConversationId,
         to: Vec<AgentId>,
         cc: Vec<AgentId>,
         subject: String,
