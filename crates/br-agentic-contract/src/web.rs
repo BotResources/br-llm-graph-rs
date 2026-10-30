@@ -36,7 +36,11 @@ pub enum WebAccess {
 
 impl WebAccess {
     pub fn reaches_nothing(&self) -> bool {
-        matches!(self, WebAccess::None)
+        match self {
+            WebAccess::None => true,
+            WebAccess::Whitelist(sites) => sites.is_empty(),
+            WebAccess::Full => false,
+        }
     }
 
     pub fn sites(&self) -> &[Site] {
