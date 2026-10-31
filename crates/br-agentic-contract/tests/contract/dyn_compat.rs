@@ -3,7 +3,8 @@ use br_agentic_contract::memory::{
     MemoryWorkspace, Record,
 };
 use br_agentic_contract::{
-    AgentPort, InboxPort, ThreadAccess, ThreadPort, ToolCode, ToolsPort, WorkspacePort,
+    AgentPort, InboxPort, Queue, ThreadAccess, ThreadPort, ToolCode, ToolsPort, WorkspacePort,
+    mail_documents, store_at_boundary,
 };
 use br_llm_messages::Conversation;
 
@@ -47,4 +48,31 @@ fn given_the_ports_then_several_instances_can_share_one_port_behind_an_arc() {
         thread_ref(),
         Conversation::new(conversation_id()),
     ));
+}
+
+fn is_send<T: Send>(_: T) {}
+
+#[test]
+fn given_the_functions_of_an_instance_then_their_futures_are_send_so_a_runner_can_spawn_an_instance()
+ {
+    let world = World::new();
+    let context = world.context();
+    is_send(async {
+        let mut session = world.session().await;
+        let mut queue = Queue::new();
+        queue.read(&world.inbox, &context, limit(1)).await.ok();
+        mail_documents(&session, &world.inbox, &context, mail_id())
+            .await
+            .ok();
+        store_at_boundary(
+            &mut session,
+            &world.inbox,
+            &context,
+            &mut queue,
+            &mail_entry,
+            turn_id(),
+        )
+        .await
+        .ok();
+    });
 }

@@ -81,6 +81,7 @@ async fn given_a_wait_when_an_item_arrives_for_another_agent_then_the_wait_goes_
         let inbox = world.inbox.clone();
         async move { inbox.wait(&context).await }
     });
+    tokio::task::yield_now().await;
 
     world
         .inbox
@@ -171,9 +172,10 @@ async fn given_an_id_that_the_inbox_does_not_hold_for_the_agent_when_it_is_marke
         .items[0]
         .id();
 
+    let unknown = entry_id();
     world
         .inbox
-        .mark_read(&world.context(), entry_id())
+        .mark_read(&world.context(), unknown)
         .await
         .unwrap();
     world
@@ -182,6 +184,7 @@ async fn given_an_id_that_the_inbox_does_not_hold_for_the_agent_when_it_is_marke
         .await
         .unwrap();
 
+    assert!(!world.inbox.is_read(world.agent, unknown));
     assert!(!world.inbox.is_read(other, theirs));
     assert_eq!(all_ids(&world.inbox, &world, 10).await, ids);
 }
@@ -213,5 +216,31 @@ async fn given_the_inbox_calls_when_the_test_reads_the_record_then_they_carry_th
     let recorded = world.record.calls();
     assert!(
         matches!(&recorded[0], Call::InboxItems { context: c, limit: l, .. } if *c == context && l.get() == 3)
+    );
+}
+
+#[tokio::test]
+async fn given_one_item_id_for_two_agents_when_one_agent_marks_it_then_it_stays_unread_for_the_other()
+ {
+    let world = World::new();
+    let other = agent_id();
+    let entry = human("shared");
+    let id = entry.id();
+    world.inbox.deliver_entry(world.agent, entry.clone());
+    world.inbox.deliver_entry(other, entry);
+
+    world.inbox.mark_read(&world.context(), id).await.unwrap();
+
+    assert!(world.inbox.is_read(world.agent, id));
+    assert!(!world.inbox.is_read(other, id));
+    let theirs = world
+        .inbox
+        .items(&world.context_of(other), None, limit(5))
+        .await
+        .unwrap();
+    assert_eq!(theirs.items.len(), 1);
+    assert_eq!(
+        all_ids(&world.inbox, &world, 5).await,
+        Vec::<EntryId>::new()
     );
 }
