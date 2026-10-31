@@ -69,6 +69,7 @@ impl InboxPort for FailingInbox<'_> {
             _ if self.stuck_cursor => {
                 let page = self.inner.items(context, None, limit);
                 Box::pin(async move {
+                    tokio::task::yield_now().await;
                     let mut batch = page.await?;
                     batch.next = Some(Cursor::new("stuck"));
                     Ok(batch)

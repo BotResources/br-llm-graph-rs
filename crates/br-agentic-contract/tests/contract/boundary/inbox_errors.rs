@@ -158,10 +158,13 @@ async fn given_an_inbox_whose_read_fails_after_a_first_batch_when_the_queue_read
     inbox.items_before_failing = Some(1);
     let mut queue = Queue::new();
 
-    let error = queue
-        .read(&inbox, &world.context(), limit(2))
-        .await
-        .unwrap_err();
+    let error = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        queue.read(&inbox, &world.context(), limit(2)),
+    )
+    .await
+    .expect("the read must end and not follow the same cursor for ever")
+    .unwrap_err();
 
     assert!(!error.is_refusal());
     assert_eq!(queue.items(), &items[..2]);
@@ -183,10 +186,13 @@ async fn given_an_inbox_that_gives_the_same_cursor_twice_when_the_queue_reads_it
     inbox.stuck_cursor = true;
     let mut queue = Queue::new();
 
-    let error = queue
-        .read(&inbox, &world.context(), limit(2))
-        .await
-        .unwrap_err();
+    let error = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        queue.read(&inbox, &world.context(), limit(2)),
+    )
+    .await
+    .expect("the read must end and not follow the same cursor for ever")
+    .unwrap_err();
 
     assert!(!error.is_refusal());
     assert_eq!(queue.items(), &items[..2]);

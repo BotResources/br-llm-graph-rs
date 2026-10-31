@@ -55,8 +55,8 @@ impl<A: ThreadAccess> Flaky<A> {
             return None;
         }
         flag.load(Ordering::SeqCst).then(|| {
-            self.failed_calls.fetch_add(1, Ordering::SeqCst);
-            PortError::fault("injected failure")
+            let call = self.failed_calls.fetch_add(1, Ordering::SeqCst);
+            PortError::fault(format!("injected failure {call}"))
         })
     }
 }
