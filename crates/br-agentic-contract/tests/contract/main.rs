@@ -6,6 +6,7 @@ mod common;
 mod dyn_compat;
 mod ending;
 mod errors;
+mod failing_inbox;
 mod flaky;
 mod inbox_items;
 mod inbox_mail;

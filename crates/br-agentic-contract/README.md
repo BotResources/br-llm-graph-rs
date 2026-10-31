@@ -40,7 +40,7 @@ impl<F: Fields> AgentPort<F> for SavedAgents {
 
 ## The ports
 
-All ports are public, object-safe (`dyn ThreadPort<F>`, `dyn InboxPort`, ... compile), `Send + Sync`, and asynchronous: a method returns a `PortFuture`, a boxed `Send` future that this crate owns, so an adapter needs no `br-llm-clients-core` import except for the response stream of the thread access. A port never retries; a failing port is a fault of the instance.
+All ports are public, object-safe (`dyn ThreadPort<F>`, `dyn InboxPort`, ... compile), `Send + Sync`, and asynchronous: a method returns a `PortFuture`, a boxed `Send` future that this crate owns, so an adapter needs no `br-llm-clients-core` import except for the response stream of the thread access. The instance never retries a call to a port. A failure of a port other than the inbox is a fault of the instance; no error of the inbox is.
 
 | Port | What it does | Refuses a request? |
 |---|---|---|
@@ -51,9 +51,9 @@ All ports are public, object-safe (`dyn ThreadPort<F>`, `dyn InboxPort`, ... com
 | `ThreadAccess` | `read` the conversation once; every other operation receives a complete addition: `add_input_turn`, `add_entry`, `close_turn`, `open_*` (gives a stream), `complete_*`, `discard_*` | never (a refusal is a fault) |
 | `InboxPort` | `items` (batches and cursor), `wait`, `mark_read`, `send`, `documents` | `send` (no recipient in `to`, a recipient twice) and `documents` (agent not a recipient in `to`) |
 
-The write path of an adapter (`add_*`, `close_turn`, `complete_*`, `discard_*`, `mark_read`, `send`, the stream sends) returns when the adapter has accepted the data; its result carries only accepted, refused or fault. The only read the node waits on is the `read` of the start, then `items`, `wait` and `documents` of the inbox.
+The write path of an adapter (`add_*`, `close_turn`, `complete_*`, `discard_*`, `mark_read`, `send`, the stream sends) returns when the adapter has accepted the data; its result carries only accepted, refused or fault. The instance waits on the `read` of the start; it calls `items`, `wait` and `documents` of the inbox when the node library chooses, and an error of any inbox call is not a fault of the instance.
 
-`PortError` is the one error of the ports: `Refused(Reason)` (a reason as text, an expected error) or `Fault(Cause)` (an opaque cause). `ToolContent::from_port_error` turns a refusal into a tool result with the error flag set and a fault into a `ToolFault`.
+`PortError` is the one error of the ports: `Refused(Reason)` (a reason as text, an expected error) or `Fault(Cause)` (an opaque cause). No error of the inbox is a fault of the instance: the mail tools of the node library give it to the agent as a tool result with the error flag set, and after a failed read, wait or mark as read the instance goes on with the items it holds. `ToolContent::from_port_error` is for the ports other than the inbox: it turns a refusal into a tool result with the error flag set and a fault into a `ToolFault`.
 
 ## Re-exports
 
@@ -64,7 +64,7 @@ The write path of an adapter (`add_*`, `close_turn`, `complete_*`, `discard_*`, 
 | Item | Rule it implements |
 |---|---|
 | `Session` | reads the conversation once (`Session::start`) and keeps the copy of the instance; every addition is applied to the copy under the rules of `br-llm-messages` first and handed to the thread access only when accepted; a refused completion discards the open object and is an error; tracks open objects |
-| `Queue`, `store_at_boundary`, `MailEntryBuilder` | the queue of unread items (an id held earlier is skipped; `Queue::read` fills it from the inbox batches); at a boundary, items the copy holds are skipped and marked, the others go into the open AI turn of the agent after its last entry, else into one new input turn with one entry each; an item is marked as read only after its entry is handed over; the node library builds the entry of a mail |
+| `Queue`, `store_at_boundary`, `MailEntryBuilder` | the queue of unread items (an id held earlier is skipped; `Queue::read` fills it from the inbox batches); the instance stores each new item of its queue at a boundary: items the copy holds are skipped and marked, the others go into the open AI turn of the agent after its last entry, else into one new input turn with one entry each; an item is marked as read only after its entry is handed over; an error of a mark stops nothing (the item counts as stored or skipped, the next items go on, `Boundary::unmarked` lists the ids); an error of `Queue::read` leaves in the queue the items it already gave; the node library builds the entry of a mail |
 | `mail_documents` | the documents of a mail only when the conversation holds an incoming entry with the mail id; else a refusal, and the inbox is not asked |
 | `result`, `failed`, `cancelled` | discard every open object (errors of the discards are ignored) and close the input end before the terminal event |
 | `FileSystemMode::start`, `save_files` | `Always`, `Might` and `Never` and when the load is called; the save of the files before `Result` |
@@ -90,6 +90,7 @@ For tests, not for production. One `Record` is shared by every in-memory port an
 | `store_at_boundary` never extends an input turn | the thread access receives complete additions only; items with no open AI turn form a new input turn |
 | `MailEntryBuilder` is a parameter | the content of a mail entry and its escaping belong to the node libraries |
 | `from_port_error` replaces a blank refusal reason by a fixed text | a refusal stays an expected error even if the adapter gave no text |
+| a failed mark is listed in `Boundary::unmarked`, not retried | an unmarked item stays unread in the inbox and the conversation holds it, so the next boundary skips and marks it; the instance never retries a call to a port |
 | `ToolContent` blocks have no identity | the instance gives every identity when it builds the `RuntimeToolResult` |
 | a send to an ended stream is not recorded | the in-memory streams take nothing after the object ended or was opened again |
 | `wait` gives nothing | the caller reads the list; an item a read already gave and nobody marked still ends the wait at once |

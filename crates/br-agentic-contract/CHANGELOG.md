@@ -29,7 +29,7 @@ Rework of the thread access, the ports, the in-memory ports and the queue rules 
 ### Added
 
 - `PortFuture`, `PortError`, `AiTurnRef`, `ToolBlock`, `SessionError`, `MailEntryBuilder`, `InvalidThreadRef`, `InvalidInboxEntry`.
-- `mail_documents` (documents only for a mail whose entry the conversation holds as an incoming entry), `Queue::read`, `ToolContent::from_port_error`, `Session::holds`, `Session::holds_incoming`, `Session::open_ai_turn`.
+- `mail_documents` (documents only for a mail whose entry the conversation holds as an incoming entry), `Queue::read`, `ToolContent::from_port_error`, `Boundary::unmarked`, `Session::holds`, `Session::holds_incoming`, `Session::open_ai_turn`.
 - Re-exports of the types of `br-graph-contract` that the ports name: `Fields`, `InstanceId`, `Reason`, `Cause`, `CancelView`, `Event`, `InputReader`, `Node`.
 - `memory::Record` and `memory::Call`, `memory::SentMail`.
 - A crate README (the contract of the crate).
@@ -37,6 +37,7 @@ Rework of the thread access, the ports, the in-memory ports and the queue rules 
 ### Changed
 
 - `WebAccess::reaches_nothing` is also true for an empty whitelist.
+- An inbox error is never a fault of the instance: mark errors no longer stop `store_at_boundary` (the item counts as stored or skipped and `Boundary::unmarked` lists the ids).
 
 ## 0.1.0 - 2026-10-29
 

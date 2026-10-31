@@ -252,3 +252,4 @@ async fn given_an_item_whose_entry_the_conversation_holds_when_the_boundary_runs
 }
 
 mod entries;
+mod inbox_errors;

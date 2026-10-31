@@ -15,6 +15,7 @@ pub type MailEntryBuilder<'a> = &'a (dyn Fn(&MailItem) -> Result<IncomingEntry, 
 pub struct Boundary {
     pub stored: Vec<EntryId>,
     pub skipped: Vec<EntryId>,
+    pub unmarked: Vec<EntryId>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -33,18 +34,18 @@ struct Run<'a, 'b> {
 }
 
 impl Run<'_, '_> {
-    async fn mark(&mut self, item: &InboxItem) -> Result<(), SessionError> {
-        self.inbox.mark_read(self.context, item.id()).await?;
+    async fn mark(&mut self, item: &InboxItem) {
         self.done.insert(item.id());
-        Ok(())
+        if self.inbox.mark_read(self.context, item.id()).await.is_err() {
+            self.report.unmarked.push(item.id());
+        }
     }
 
-    async fn skip_held(&mut self, held: &[InboxItem]) -> Result<(), SessionError> {
+    async fn skip_held(&mut self, held: &[InboxItem]) {
         for item in held {
-            self.mark(item).await?;
             self.report.skipped.push(item.id());
+            self.mark(item).await;
         }
-        Ok(())
     }
 
     async fn store_in_open_turn(
@@ -56,7 +57,7 @@ impl Run<'_, '_> {
             let entry = TurnEntry::try_from(entry.clone())?;
             self.session.add_entry(turn, entry).await?;
             self.report.stored.push(item.id());
-            self.mark(item).await?;
+            self.mark(item).await;
         }
         Ok(())
     }
@@ -77,7 +78,7 @@ impl Run<'_, '_> {
             self.report.stored.push(item.id());
         }
         for (item, _) in fresh {
-            self.mark(item).await?;
+            self.mark(item).await;
         }
         Ok(())
     }
@@ -143,7 +144,7 @@ async fn run_boundary(
             fresh.push((item.clone(), build(item, mail_entry)?));
         }
     }
-    run.skip_held(&held).await?;
+    run.skip_held(&held).await;
     match run.session.open_ai_turn(run.context.agent) {
         Some(turn) => run.store_in_open_turn(&turn, &fresh).await,
         None => run.store_in_new_input_turn(new_turn, &fresh).await,
