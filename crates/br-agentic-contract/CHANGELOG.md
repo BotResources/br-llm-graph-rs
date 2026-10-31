@@ -30,7 +30,7 @@ Rework of the thread access, the ports, the in-memory ports and the queue rules 
 ### Added
 
 - `PortFuture`, `PortError`, `AiTurnRef`, `ToolBlock`, `SessionError`, `MailEntryBuilder`, `InvalidThreadRef`, `InvalidInboxEntry`.
-- `mail_documents` (documents only for a mail whose entry the conversation holds as an incoming entry), `Queue::read` (fills the queue from the batches of the inbox; it gives a `PortError::Fault` when the inbox gives the same cursor twice in a row, and keeps the items it already read), `Boundary::unmarked`, `Session::holds`, `Session::holds_incoming`, `Session::open_ai_turn`.
+- `mail_documents` (documents only for a mail whose entry the conversation holds as an incoming entry), `Queue::read` (fills the queue from the batches of the inbox; it gives a `PortError::Fault` when the inbox gives the same cursor twice in a row, and keeps the items it already read), `Boundary::unmarked`, `Session::holds`, `Session::holds_incoming`, `Session::open_ai_turn`, `Session::thread` and `Session::conversation` (the thread reference and the copy of the conversation that the instance holds).
 - Re-exports of the types of `br-graph-contract` that the ports name: `Fields`, `InstanceId`, `Reason`, `Cause`, `CancelView`, `Event`, `InputReader`, `Node`, and of the `StreamSink` of `br-llm-clients-core`.
 - `memory::Record` and `memory::Call`, `memory::SentMail`, `MemoryThreadAccess::empty` (an empty conversation with the identity the test gives).
 - `SessionError::WrongTurn` (a call names a turn that is not the AI turn of that agent and author, or closes an AI turn that does not exist) and `SessionError::WrongMailEntry` (the `MailEntryBuilder` gave an entry that is not the entry of its mail: another id than the mail id, or not an agent mail for a `to` item or not a runtime notice for a `cc` item, or an agent mail whose sender, author name or source conversation is not that of the item; `store_at_boundary` then stores and marks nothing and restores the queue).
@@ -40,7 +40,6 @@ Rework of the thread access, the ports, the in-memory ports and the queue rules 
 
 - `WebAccess::reaches_nothing` is also true for an empty whitelist.
 - `result` gives `Event::Failed` with the first error of the discards as its cause when a discard of an open object fails (in 0.1 it ignored the error); `failed` and `cancelled` still ignore it.
-- `ToolContent::from_port_error` of the earlier 0.2.0 work in progress is not shipped, and nothing replaces it: this crate holds no mail tools, a node library maps any inbox error to a tool result with `ToolContent::error_text`.
 - An inbox error is never a fault of the instance: mark errors no longer stop `store_at_boundary` (the item counts as stored or skipped and `Boundary::unmarked` lists the ids).
 
 ## 0.1.0 - 2026-10-29
