@@ -1,25 +1,56 @@
-use br_agentic_contract::{Incoming, ThreadAccess, ThreadRef, WrittenEntry};
-use br_llm_clients_core::{BoxFuture, ClientRequest, OutputMode, StructuredShape};
-use br_llm_messages::{
-    AgentId, Author, HumanMessage, IncomingEntry, InputTurn, PlainBlock, PlainText,
-    ProjectedThread, TextBlock, Turn,
-};
 use std::time::Duration;
 
-use super::answer::{Answer, unwrap_answer};
-use crate::client::ModelClient;
+use br_agentic_contract::AiTurnRef;
+use br_llm_clients_core::{BoxFuture, ClientRequest, OutputMode, StructuredShape};
+use br_llm_messages::{
+    AgentId, Author, ClosureReason, ContentBlock, Conversation, HumanMessage, IncomingEntry,
+    InputTurn, ModelResponse, Perspective, PlainBlock, PlainText, ProjectedThread, ResponseEnding,
+    ResponseMetadata, TextBlock, Turn,
+};
+
+use super::answer::{Answer, critic_shape, unwrap_answer};
+use crate::client::{FallbackList, ModelClient};
 use crate::fault::{AttemptError, CallFailure, Fault};
 use crate::ids::{block_id, entry_id, turn_id};
 use crate::ports::CriticRequest;
+use crate::seats::Seat;
 use crate::sink::DiscardSink;
 use crate::slot::{Attempt, Slot, drive};
 use crate::thinking::check_thinking;
+use crate::worker::Worker;
 
-pub(crate) struct Seat {
-    pub(crate) agent: AgentId,
-    pub(crate) author: Author,
-    pub(crate) system: PlainText,
-    pub(crate) request: CriticRequest,
+fn visible_to_critic(entry: &IncomingEntry) -> bool {
+    !matches!(
+        entry,
+        IncomingEntry::AgentMail(_) | IncomingEntry::RuntimeNotice(_)
+    )
+}
+
+fn critic_view(agent: AgentId, conversation: &Conversation) -> Result<ProjectedThread, Fault> {
+    let projected = Perspective::of(agent)
+        .keeping(visible_to_critic)
+        .project(conversation);
+    let (id, agent) = (projected.conversation(), projected.agent());
+    let mut turns = Vec::new();
+    for turn in projected.into_turns() {
+        match turn {
+            Turn::InputTurn(input) => {
+                let entries: Vec<IncomingEntry> = input
+                    .entries()
+                    .iter()
+                    .filter(|entry| visible_to_critic(entry))
+                    .cloned()
+                    .collect();
+                if !entries.is_empty() {
+                    let kept =
+                        InputTurn::new_projected(input.id(), entries).map_err(Fault::value)?;
+                    turns.push(Turn::InputTurn(kept));
+                }
+            }
+            other => turns.push(other),
+        }
+    }
+    ProjectedThread::from_turns(id, agent, turns).map_err(Fault::value)
 }
 
 fn shows_agent_output(turn: &InputTurn) -> bool {
@@ -58,10 +89,14 @@ fn with_request(
 }
 
 struct CriticAttempt<'s> {
-    seat: &'s Seat,
+    system: PlainText,
     history: ProjectedThread,
-    shape: &'s StructuredShape,
+    request: &'s CriticRequest,
     timeout: Duration,
+}
+
+fn shape_of(client: &ModelClient) -> Result<StructuredShape, Fault> {
+    critic_shape(!client.should_have_thought())
 }
 
 impl Attempt for CriticAttempt<'_> {
@@ -72,14 +107,14 @@ impl Attempt for CriticAttempt<'_> {
         client: &'b ModelClient,
     ) -> BoxFuture<'b, Result<Answer, AttemptError>> {
         Box::pin(async move {
-            let history = with_request(self.history.clone(), &self.seat.request)?;
+            let history = with_request(self.history.clone(), self.request)?;
             let request = ClientRequest::new(
-                Some(self.seat.system.clone()),
+                Some(self.system.clone()),
                 history,
                 turn_id()?,
                 entry_id()?,
                 Vec::new(),
-                OutputMode::Structured(self.shape.clone()),
+                OutputMode::Structured(shape_of(client)?),
             )
             .map_err(|error| AttemptError::Fatal(Fault::value(error)))?;
             let mut sink = DiscardSink;
@@ -104,43 +139,45 @@ impl Attempt for CriticAttempt<'_> {
 }
 
 pub(crate) async fn call_critic(
-    access: &dyn ThreadAccess,
-    thread: &ThreadRef,
+    worker: &Worker<'_>,
     seat: &Seat,
-    slot: &mut Slot,
-    shape: &StructuredShape,
-    timeout: Duration,
+    request: &CriticRequest,
+    list: &FallbackList,
 ) -> Result<Answer, Fault> {
-    let history = access.load(thread, seat.agent).await?;
+    let system = seat
+        .system
+        .clone()
+        .ok_or_else(|| Fault::Value("the critic has no system prompt".to_owned()))?;
+    let history = critic_view(seat.agent, worker.conversation())?;
     let mut attempt = CriticAttempt {
-        seat,
+        system,
         history,
-        shape,
-        timeout,
+        request,
+        timeout: worker.timeouts.model_call(),
     };
-    drive(slot, &mut attempt).await
+    let mut slot = Slot::new(list.clone());
+    drive(&mut slot, &mut attempt).await
 }
 
 pub(crate) async fn store_message(
-    access: &dyn ThreadAccess,
-    thread: &ThreadRef,
-    seat: &Seat,
-    message: String,
+    worker: &mut Worker<'_>,
+    agent: AgentId,
+    author: &Author,
+    message: &str,
 ) -> Result<(), Fault> {
-    let text = TextBlock::new(block_id()?, message).map_err(Fault::value)?;
-    let written = WrittenEntry {
-        id: entry_id()?,
-        sender: seat.agent,
-        author: seat.author.clone(),
-        content: vec![PlainBlock::Text(text)],
+    let turn = AiTurnRef {
+        id: turn_id()?,
+        agent,
+        author: author.clone(),
     };
-    access
-        .add_input_turn(
-            thread,
-            seat.agent,
-            turn_id()?,
-            vec![Incoming::Written(written)],
-        )
-        .await?;
-    Ok(())
+    let text = TextBlock::new(block_id()?, message).map_err(Fault::value)?;
+    let response = ModelResponse::new(
+        entry_id()?,
+        vec![ContentBlock::Text(text)],
+        ResponseEnding::finished(),
+        ResponseMetadata::new(),
+    )
+    .map_err(Fault::value)?;
+    worker.session.complete_response(&turn, response).await?;
+    worker.close_turn(&turn, ClosureReason::completed()).await
 }

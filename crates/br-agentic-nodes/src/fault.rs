@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::time::Duration;
 
-use br_agentic_contract::{BoundaryError, DuplicateTool, PortFault, ThreadError, ToolFault};
+use br_agentic_contract::{BoundaryError, DuplicateTool, PortError, SessionError, ToolFault};
 use br_llm_clients_core::ClientError;
 
 #[derive(Debug, thiserror::Error)]
@@ -11,7 +11,7 @@ pub enum CallFailure {
     #[error("the call exceeded its timeout of {0:?}")]
     Timeout(Duration),
     #[error(
-        "the client reported that the model should have thought, and the response holds no thinking block"
+        "the runner declared that the model should think, and the response holds no thinking block"
     )]
     NoThinking,
     #[error("the answer of the critic is unusable: {0}")]
@@ -21,9 +21,9 @@ pub enum CallFailure {
 #[derive(Debug, thiserror::Error)]
 pub enum Fault {
     #[error(transparent)]
-    Port(#[from] PortFault),
+    Port(#[from] PortError),
     #[error(transparent)]
-    Thread(#[from] ThreadError),
+    Session(#[from] SessionError),
     #[error("the queue could not be stored: {0}")]
     Boundary(#[from] BoundaryError),
     #[error(transparent)]
@@ -32,14 +32,18 @@ pub enum Fault {
     DuplicateTool(#[from] DuplicateTool),
     #[error(transparent)]
     Model(#[from] CallFailure),
-    #[error("no author name is known for the agent {label}")]
-    NoAuthor { label: String },
-    #[error("a value could not be built: {0}")]
+    #[error("a value is refused: {0}")]
     Value(String),
     #[error("the workspace port gave a path outside the sandbox: {0}")]
     Sandbox(String),
     #[error("the critic did not validate at the step limit: {message}")]
     CriticAtStepLimit { message: String },
+    #[error("the critic did not validate at the round limit: {message}")]
+    CriticAtRoundLimit { message: String },
+    #[error("the programmatic critic refused: {reason}")]
+    ProgrammaticRefusal { reason: String },
+    #[error("the programmatic critic refused with a blank explicit reason")]
+    BlankExplicitReason,
     #[error("a panic: {0}")]
     Panic(String),
 }
@@ -96,4 +100,4 @@ macro_rules! fatal_from {
     };
 }
 
-fatal_from!(PortFault, ThreadError, Fault);
+fatal_from!(PortError, SessionError, Fault);

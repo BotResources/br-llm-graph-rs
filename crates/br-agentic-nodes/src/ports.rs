@@ -1,63 +1,66 @@
-use br_agentic_contract::{AgentLabel, PortFault};
+use br_agentic_contract::{AgentLabel, PortError, PortFuture};
 use br_graph_contract::Fields;
-use br_llm_clients_core::BoxFuture;
-use br_llm_messages::{HumanId, ModelResponse, PlainText};
+use br_llm_messages::{HumanId, ModelResponse};
+
+use crate::outcome::{GeneratorCriticOutcome, ReactOutcome};
 
 pub trait PromptPort<F: Fields>: Send + Sync {
     fn prompt<'a>(
         &'a self,
         snapshot: &'a F,
         label: &'a AgentLabel,
-    ) -> BoxFuture<'a, Result<PlainText, PortFault>>;
+    ) -> PortFuture<'a, Result<String, PortError>>;
 }
 
-pub trait OutcomePort<F: Fields>: Send + Sync {
+pub trait AuthorPort<F: Fields>: Send + Sync {
+    fn author<'a>(
+        &'a self,
+        snapshot: &'a F,
+        label: &'a AgentLabel,
+    ) -> PortFuture<'a, Result<String, PortError>>;
+}
+
+pub trait ReactOutcomePort<F: Fields>: Send + Sync {
     fn update<'a>(
         &'a self,
         snapshot: &'a F,
-        outcome: &'a Outcome,
-    ) -> BoxFuture<'a, Result<F::Update, PortFault>>;
+        outcome: &'a ReactOutcome,
+    ) -> PortFuture<'a, Result<F::Update, PortError>>;
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Outcome {
-    response: ModelResponse,
-    step_limit_reached: bool,
-    verdict: Option<bool>,
-}
-
-impl Outcome {
-    pub(crate) fn new(
-        response: ModelResponse,
-        step_limit_reached: bool,
-        verdict: Option<bool>,
-    ) -> Self {
-        Self {
-            response,
-            step_limit_reached,
-            verdict,
-        }
-    }
-
-    pub fn response(&self) -> &ModelResponse {
-        &self.response
-    }
-
-    pub fn step_limit_reached(&self) -> bool {
-        self.step_limit_reached
-    }
-
-    pub fn verdict(&self) -> Option<bool> {
-        self.verdict
-    }
+pub trait GeneratorCriticOutcomePort<F: Fields>: Send + Sync {
+    fn update<'a>(
+        &'a self,
+        snapshot: &'a F,
+        outcome: &'a GeneratorCriticOutcome,
+    ) -> PortFuture<'a, Result<F::Update, PortError>>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CriticRequest {
-    pub text: PlainText,
+    pub text: String,
     pub human: HumanId,
 }
 
 pub trait CriticRequestPort<F: Fields>: Send + Sync {
-    fn request<'a>(&'a self, snapshot: &'a F) -> BoxFuture<'a, Result<CriticRequest, PortFault>>;
+    fn request<'a>(
+        &'a self,
+        snapshot: &'a F,
+        response: &'a ModelResponse,
+    ) -> PortFuture<'a, Result<CriticRequest, PortError>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProgrammaticVerdict {
+    Accept,
+    Refuse(String),
+}
+
+pub trait ProgrammaticCriticPort<F: Fields>: Send + Sync {
+    fn check<'a>(
+        &'a self,
+        snapshot: &'a F,
+        response: &'a ModelResponse,
+        refusals_in_a_row: u32,
+    ) -> PortFuture<'a, Result<ProgrammaticVerdict, PortError>>;
 }

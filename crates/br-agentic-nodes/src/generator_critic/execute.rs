@@ -1,67 +1,209 @@
-use br_graph_contract::{Fields, InstanceId};
-use br_llm_messages::Author;
+use br_graph_contract::Fields;
+use br_llm_messages::{ModelResponse, PlainText};
 
-use super::answer::{Answer, critic_shape};
-use super::critic::{Seat, call_critic, store_message};
-use super::{CRITIC_LABEL, CriticRequestSource, GENERATOR_LABEL, GcBody, StepLimitEnding};
+use super::answer::Answer;
+use super::critic::{call_critic, store_message};
+use super::{
+    CRITIC_LABEL, CriticRequestSource, GENERATOR_LABEL, GcBody, PROGRAMMATIC_CRITIC_LABEL,
+    RoundLimitEnding, StepLimitEnding,
+};
 use crate::config::Common;
+use crate::drain::Drained;
 use crate::fault::{Fault, Stop};
+use crate::outcome::{GeneratorCriticOutcome, Judgement};
 use crate::pass::PassEnd;
-use crate::ports::Outcome;
+use crate::ports::{CriticRequest, ProgrammaticVerdict};
 use crate::run::Body;
+use crate::seats::{SeatSpec, Seats};
 use crate::slot::Slot;
-use crate::start::{agent_label, author_of};
 use crate::worker::Worker;
 
-struct Rounds {
-    unvalidated: u32,
+struct Finish {
+    response: ModelResponse,
+    judgement: Judgement,
+    step_limit_reached: bool,
 }
 
-impl Rounds {
-    fn position(&self) -> u32 {
-        self.unvalidated
-    }
+enum Next {
+    Pass,
+    End(Box<Finish>),
+}
 
-    fn reset(&mut self) {
-        self.unvalidated = 0;
-    }
-
-    fn up(&mut self) {
-        self.unvalidated = self.unvalidated.saturating_add(1);
-    }
+struct Loop {
+    iterations: u32,
+    drain_first: bool,
+    last_scheduled: bool,
+    is_last: bool,
+    position: u32,
+    keep_position: Option<u32>,
 }
 
 impl<F: Fields> GcBody<F> {
-    async fn seat(&self, snapshot: &F, instance: InstanceId) -> Result<Seat, Fault> {
-        let common: &Common<F> = &self.common;
-        let label = agent_label(CRITIC_LABEL)?;
-        let agent = common.ports.agent.agent(snapshot, instance, &label).await?;
-        let author = author_of(self.critic_author.as_ref(), &agent, &label)?;
-        let system = common.ports.prompt.prompt(snapshot, &label).await?;
-        let request = match &*self.critic_request {
+    async fn ask(
+        &self,
+        worker: &Worker<'_>,
+        seats: &Seats,
+        snapshot: &F,
+        response: &ModelResponse,
+        position: u32,
+    ) -> Result<Answer, Fault> {
+        let request = match &self.spec.critic_request {
             CriticRequestSource::Fixed(request) => request.clone(),
-            CriticRequestSource::Port(port) => port.request(snapshot).await?,
+            CriticRequestSource::Port(port) => port.request(snapshot, response).await?,
         };
-        Ok(Seat {
-            agent: agent.id,
-            author,
-            system,
-            request,
-        })
-    }
-
-    async fn ask(&self, worker: &Worker<'_>, seat: &Seat, position: u32) -> Result<Answer, Fault> {
-        let mut slot = Slot::new(self.critic.entry(position).clone());
-        let shape = critic_shape(self.thinking_field)?;
+        PlainText::new(request.text.as_str()).map_err(Fault::value)?;
+        let request = CriticRequest {
+            text: request.text,
+            human: request.human,
+        };
         call_critic(
-            worker.access,
-            &worker.context.thread,
-            seat,
-            &mut slot,
-            &shape,
-            worker.timeouts.model_call(),
+            worker,
+            seats.get(CRITIC_LABEL)?,
+            &request,
+            self.spec.critic.entry(position),
         )
         .await
+    }
+
+    async fn programmatic(
+        &self,
+        worker: &mut Worker<'_>,
+        seats: &Seats,
+        snapshot: &F,
+        response: &ModelResponse,
+        state: &mut Loop,
+    ) -> Result<bool, Fault> {
+        let Some(critic) = &self.programmatic else {
+            return Ok(true);
+        };
+        let verdict = critic
+            .port
+            .check(snapshot, response, worker.counters.refusals)
+            .await?;
+        let reason = match verdict {
+            ProgrammaticVerdict::Accept => {
+                worker.counters.refusals = 0;
+                return Ok(true);
+            }
+            ProgrammaticVerdict::Refuse(reason) => reason,
+        };
+        if reason.trim().is_empty() {
+            return Err(Fault::BlankExplicitReason);
+        }
+        let seat = seats.get(PROGRAMMATIC_CRITIC_LABEL)?;
+        store_message(worker, seat.agent, &seat.author, &reason).await?;
+        worker.counters.refusals = worker.counters.refusals.saturating_add(1);
+        if worker.counters.refusals >= critic.refusal_limit.get() || worker.steps_remaining() == 0 {
+            return Err(Fault::ProgrammaticRefusal { reason });
+        }
+        state.keep_position = Some(state.position);
+        state.drain_first = true;
+        Ok(false)
+    }
+
+    async fn judge(
+        &self,
+        worker: &mut Worker<'_>,
+        seats: &Seats,
+        snapshot: &F,
+        end: PassEnd,
+        state: &mut Loop,
+    ) -> Result<Next, Fault> {
+        let reached = end.step_limit_reached();
+        let response = end.into_response();
+        let finish = |judgement| {
+            Next::End(Box::new(Finish {
+                response: response.clone(),
+                judgement,
+                step_limit_reached: reached,
+            }))
+        };
+        if reached {
+            if state.is_last || self.step_ending == StepLimitEnding::WithoutCriticCall {
+                return Ok(finish(Judgement::NotJudged));
+            }
+            let answer = self
+                .ask(worker, seats, snapshot, &response, state.position)
+                .await?;
+            return if answer.validated {
+                Ok(finish(Judgement::Validated))
+            } else {
+                Err(Fault::CriticAtStepLimit {
+                    message: answer.message,
+                })
+            };
+        }
+        if !self
+            .programmatic(worker, seats, snapshot, &response, state)
+            .await?
+        {
+            return Ok(Next::Pass);
+        }
+        if state.is_last {
+            return Ok(finish(Judgement::NotJudged));
+        }
+        let answer = self
+            .ask(worker, seats, snapshot, &response, state.position)
+            .await?;
+        if answer.validated {
+            return self
+                .validated(worker, state, finish(Judgement::Validated))
+                .await;
+        }
+        self.rejected(worker, seats, answer, state, finish(Judgement::Rejected))
+            .await
+    }
+
+    async fn validated(
+        &self,
+        worker: &mut Worker<'_>,
+        state: &mut Loop,
+        end: Next,
+    ) -> Result<Next, Fault> {
+        if worker.has_inbox() && worker.steps_remaining() > 0 {
+            let drained = worker.drain().await?;
+            if drained.stored > 0 {
+                state.drain_first = false;
+                state.last_scheduled = false;
+                state.keep_position = None;
+                return Ok(Next::Pass);
+            }
+        }
+        Ok(end)
+    }
+
+    async fn rejected(
+        &self,
+        worker: &mut Worker<'_>,
+        seats: &Seats,
+        answer: Answer,
+        state: &mut Loop,
+        end: Next,
+    ) -> Result<Next, Fault> {
+        worker.counters.rounds = worker.counters.rounds.saturating_add(1);
+        let at_limit = worker.counters.rounds >= self.spec.round_limit.get();
+        if at_limit && self.round_ending == RoundLimitEnding::Fail {
+            return Err(Fault::CriticAtRoundLimit {
+                message: answer.message,
+            });
+        }
+        let seat = seats.get(CRITIC_LABEL)?;
+        store_message(worker, seat.agent, &seat.author, &answer.message).await?;
+        let continues = worker.steps_remaining() > 0;
+        if at_limit {
+            if self.round_ending == RoundLimitEnding::FinalGeneration && continues {
+                state.last_scheduled = true;
+                state.drain_first = true;
+                return Ok(Next::Pass);
+            }
+            return Ok(end);
+        }
+        if !continues {
+            return Ok(end);
+        }
+        state.last_scheduled = false;
+        state.drain_first = true;
+        Ok(Next::Pass)
     }
 }
 
@@ -70,74 +212,82 @@ impl<F: Fields> Body<F> for GcBody<F> {
         &self.common
     }
 
-    fn first_label(&self) -> &str {
-        GENERATOR_LABEL
-    }
-
-    fn first_author(&self) -> Option<&Author> {
-        self.generator_author.as_ref()
+    fn seats(&self) -> Vec<SeatSpec<'_, F>> {
+        let mut seats = vec![
+            SeatSpec {
+                label: GENERATOR_LABEL,
+                author: &self.spec.generator_author,
+                prompt: true,
+            },
+            SeatSpec {
+                label: CRITIC_LABEL,
+                author: &self.spec.critic_author,
+                prompt: true,
+            },
+        ];
+        if let Some(critic) = &self.programmatic {
+            seats.push(SeatSpec {
+                label: PROGRAMMATIC_CRITIC_LABEL,
+                author: &critic.author,
+                prompt: false,
+            });
+        }
+        seats
     }
 
     async fn execute(
         &self,
         worker: &mut Worker<'_>,
+        seats: &Seats,
         snapshot: &F,
-        instance: InstanceId,
     ) -> Result<F::Update, Stop> {
-        let mut seat: Option<Seat> = None;
-        let mut rounds = Rounds { unvalidated: 0 };
-        let mut first = true;
-        let mut resume = false;
-        let (response, reached, verdict) = loop {
-            if !first && !resume && worker.drain().await? > 0 {
-                rounds.reset();
-            }
-            first = false;
-            resume = false;
-            let position = rounds.position();
-            let mut slot = Slot::new(self.generator.entry(position).clone());
-            let stored_before = worker.stored_items;
-            let end = worker.pass(&mut slot).await?;
-            if worker.stored_items > stored_before {
-                rounds.reset();
-            }
-            let reached = end.step_limit_reached();
-            let stopped_by_limit = matches!(end, PassEnd::StepLimit(_));
-            let response = end.into_response();
-            if stopped_by_limit && self.ending == StepLimitEnding::WithoutCriticCall {
-                break (response, reached, None);
-            }
-            if seat.is_none() {
-                seat = Some(self.seat(snapshot, instance).await?);
-            }
-            let Some(seat) = seat.as_ref() else {
-                return Err(Fault::Value("the critic has no seat".to_owned()).into());
+        let mut state = Loop {
+            iterations: 0,
+            drain_first: false,
+            last_scheduled: false,
+            is_last: false,
+            position: worker.counters.rounds,
+            keep_position: None,
+        };
+        let mut ended = worker.restored();
+        let finish = loop {
+            let end = match ended.take() {
+                Some(end) => end,
+                None => {
+                    let drained = if state.drain_first {
+                        worker.drain().await?
+                    } else {
+                        Drained::default()
+                    };
+                    state.drain_first = false;
+                    if drained.request_stored {
+                        state.last_scheduled = false;
+                        state.keep_position = None;
+                    }
+                    state.position = state.keep_position.take().unwrap_or(worker.counters.rounds);
+                    state.is_last = state.last_scheduled;
+                    let mut slot = Slot::new(self.spec.generator.entry(state.position).clone());
+                    state.iterations += 1;
+                    worker.pass(&mut slot).await?
+                }
             };
-            let answer = self.ask(worker, seat, position).await?;
-            if stopped_by_limit {
-                if answer.validated {
-                    break (response, reached, Some(true));
-                }
-                return Err(Fault::CriticAtStepLimit {
-                    message: answer.message,
-                }
-                .into());
-            }
-            if answer.validated {
-                if worker.has_inbox() && worker.steps.remaining() > 0 && worker.drain().await? > 0 {
-                    rounds.reset();
-                    resume = true;
-                    continue;
-                }
-                break (response, reached, Some(true));
-            }
-            store_message(worker.access, &worker.context.thread, seat, answer.message).await?;
-            rounds.up();
-            if rounds.unvalidated >= self.round_limit.get() || worker.steps.remaining() == 0 {
-                break (response, reached, Some(false));
+            match self.judge(worker, seats, snapshot, end, &mut state).await? {
+                Next::Pass => {}
+                Next::End(finish) => break *finish,
             }
         };
-        let outcome = Outcome::new(response, reached, verdict);
-        Ok(worker.end(&self.common, snapshot, outcome).await?)
+        let outcome = GeneratorCriticOutcome::new(
+            finish.response,
+            finish.judgement,
+            state.iterations,
+            finish.step_limit_reached,
+        );
+        let update = self
+            .spec
+            .outcome
+            .update(snapshot, &outcome)
+            .await
+            .map_err(Fault::from)?;
+        Ok(worker.finish(&self.common, snapshot, update).await?)
     }
 }

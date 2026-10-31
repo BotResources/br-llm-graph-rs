@@ -1,40 +1,43 @@
 use std::sync::Arc;
 
 use br_agentic_contract::{
-    Attachment, DocumentRef, InboxContext, InboxError, InboxPort, MailDocument, MailId, NewMail,
-    ResultStream, ThreadAccess, Tool, ToolCode, ToolContent, ToolFault,
+    Attachment, DocumentRef, InboxContext, InboxPort, MailDocument, MailId, NewMail, PortError,
+    PortFuture, ResultStream, Tool, ToolBlock, ToolCode, ToolContent, ToolFault,
 };
 use br_graph_contract::CancelView;
-use br_llm_clients_core::{BoxFuture, Parameter, ParameterKind, Parameters, ToolSpec};
-use br_llm_messages::{
-    AgentId, EntryId, EntryView, IncomingEntry, OpaqueJson, PlainBlock, TextBlock, ToolName,
-};
+use br_llm_clients_core::{Parameter, ParameterKind, Parameters, ToolSpec};
+use br_llm_messages::{AgentId, Author, ConversationId, EntryId, OpaqueJson, ToolName};
 use serde::Deserialize;
 
 use crate::fault::Fault;
-use crate::ids::{block_id, entry_id};
+use crate::ids::entry_id;
+use crate::worker::MailGate;
 
 pub const SEND_MAIL: &str = "send_mail";
 pub const GET_MAIL_FILES: &str = "get_mail_files";
 
 pub fn mail_tools(
     inbox: Arc<dyn InboxPort>,
-    access: Arc<dyn ThreadAccess>,
     context: InboxContext,
+    author: Author,
+    source: ConversationId,
+    gate: MailGate,
 ) -> Result<Vec<Tool>, Fault> {
     let send = Tool::new(
         send_mail_spec()?,
         Arc::new(SendMail {
             inbox: Arc::clone(&inbox),
             context,
+            author,
+            source,
         }),
     );
     let files = Tool::new(
         get_mail_files_spec()?,
         Arc::new(GetMailFiles {
             inbox,
-            access,
             context,
+            gate,
         }),
     );
     Ok(vec![send, files])
@@ -128,14 +131,24 @@ fn get_mail_files_spec() -> Result<ToolSpec, Fault> {
     .map_err(Fault::value)
 }
 
-fn text(message: impl Into<String>, is_error: bool) -> Result<ToolContent, ToolFault> {
-    let block = block_id().map_err(ToolFault::new)?;
-    let text = TextBlock::new(block, message).map_err(ToolFault::new)?;
-    Ok(ToolContent::new(vec![PlainBlock::Text(text)], is_error))
+fn error(message: impl Into<String>) -> Result<ToolContent, ToolFault> {
+    ToolContent::error_text(message).map_err(ToolFault::new)
+}
+
+fn acknowledgement(message: impl Into<String>) -> Result<ToolContent, ToolFault> {
+    let block = ToolBlock::text(message).map_err(ToolFault::new)?;
+    Ok(ToolContent::new(vec![block], false))
 }
 
 fn invalid(reason: impl std::fmt::Display) -> Result<ToolContent, ToolFault> {
-    text(format!("the arguments are invalid: {reason}"), true)
+    error(format!("the arguments are invalid: {reason}"))
+}
+
+fn inbox_error(error_value: &PortError) -> Result<ToolContent, ToolFault> {
+    match error_value.reason() {
+        Some(reason) => error(format!("the inbox refused the request: {reason}")),
+        None => error("the inbox could not do it now"),
+    }
 }
 
 #[derive(Deserialize)]
@@ -163,6 +176,8 @@ struct FilesArguments {
 struct SendMail {
     inbox: Arc<dyn InboxPort>,
     context: InboxContext,
+    author: Author,
+    source: ConversationId,
 }
 
 fn agent_ids(texts: &[String]) -> Result<Vec<AgentId>, String> {
@@ -178,11 +193,11 @@ impl ToolCode for SendMail {
         arguments: &'a OpaqueJson,
         _cancel: CancelView,
         _result: &'a mut dyn ResultStream,
-    ) -> BoxFuture<'a, Result<ToolContent, ToolFault>> {
+    ) -> PortFuture<'a, Result<ToolContent, ToolFault>> {
         Box::pin(async move {
             let parsed: SendArguments = match arguments.deserialize_into() {
                 Ok(parsed) => parsed,
-                Err(error) => return invalid(error),
+                Err(failure) => return invalid(failure),
             };
             let (to, cc) = match (agent_ids(&parsed.to), agent_ids(&parsed.cc)) {
                 (Ok(to), Ok(cc)) => (to, cc),
@@ -191,6 +206,8 @@ impl ToolCode for SendMail {
             let id = MailId::new(entry_id().map_err(ToolFault::new)?);
             let mail = NewMail {
                 id,
+                author: self.author.clone(),
+                source: self.source,
                 to,
                 cc,
                 subject: parsed.subject,
@@ -202,11 +219,11 @@ impl ToolCode for SendMail {
                     .collect(),
             };
             match self.inbox.send(&self.context, mail).await {
-                Ok(()) => text(format!("the mail {id} was sent"), false),
-                Err(InboxError::MailRefused(reason)) => {
-                    text(format!("the mail was refused: {reason}"), true)
-                }
-                Err(InboxError::Fault(fault)) => Err(ToolFault::new(fault)),
+                Ok(()) => acknowledgement(format!("the mail {id} was sent")),
+                Err(failure) => match failure.reason() {
+                    Some(reason) => error(format!("the mail was refused: {reason}")),
+                    None => error("the mail could not be sent now"),
+                },
             }
         })
     }
@@ -214,19 +231,20 @@ impl ToolCode for SendMail {
 
 struct GetMailFiles {
     inbox: Arc<dyn InboxPort>,
-    access: Arc<dyn ThreadAccess>,
     context: InboxContext,
+    gate: MailGate,
 }
 
-fn document_text(document: &MailDocument) -> String {
-    match std::str::from_utf8(&document.content) {
+fn document_block(document: &MailDocument) -> Result<ToolBlock, ToolFault> {
+    let text = match std::str::from_utf8(&document.content) {
         Ok(content) => format!("{}:\n{content}", document.name),
         Err(_) => format!(
             "{}: a document of {} bytes that is not text",
             document.name,
             document.content.len()
         ),
-    }
+    };
+    ToolBlock::text(text).map_err(ToolFault::new)
 }
 
 impl ToolCode for GetMailFiles {
@@ -235,45 +253,37 @@ impl ToolCode for GetMailFiles {
         arguments: &'a OpaqueJson,
         _cancel: CancelView,
         _result: &'a mut dyn ResultStream,
-    ) -> BoxFuture<'a, Result<ToolContent, ToolFault>> {
+    ) -> PortFuture<'a, Result<ToolContent, ToolFault>> {
         Box::pin(async move {
             let parsed: FilesArguments = match arguments.deserialize_into() {
                 Ok(parsed) => parsed,
-                Err(error) => return invalid(error),
+                Err(failure) => return invalid(failure),
             };
             let Ok(entry) = EntryId::parse(&parsed.mail_id) else {
                 return invalid(format!("{} is not a mail identity", parsed.mail_id));
             };
-            let projected = self
-                .access
-                .load(&self.context.thread, self.context.agent)
-                .await
-                .map_err(ToolFault::new)?;
-            let holds_mail = matches!(
-                projected.entry(&entry),
-                Ok(EntryView::Incoming(IncomingEntry::AgentMail(_)))
-            );
-            if !holds_mail {
-                return text(
-                    format!("the mail {entry} is not in your thread: you cannot get its files"),
-                    true,
-                );
+            let held = self
+                .gate
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(&entry);
+            if !held {
+                return error(format!(
+                    "the mail {entry} is not in your conversation: you cannot get its files"
+                ));
             }
-            let documents = self
+            let documents = match self
                 .inbox
                 .documents(&self.context, MailId::new(entry))
                 .await
-                .map_err(ToolFault::new)?;
-            if documents.is_empty() {
-                return text(format!("the mail {entry} has no document"), false);
-            }
-            let mut blocks = Vec::new();
-            for document in &documents {
-                let block = block_id().map_err(ToolFault::new)?;
-                let text =
-                    TextBlock::new(block, document_text(document)).map_err(ToolFault::new)?;
-                blocks.push(PlainBlock::Text(text));
-            }
+            {
+                Ok(documents) => documents,
+                Err(failure) => return inbox_error(&failure),
+            };
+            let blocks = documents
+                .iter()
+                .map(document_block)
+                .collect::<Result<Vec<_>, _>>()?;
             Ok(ToolContent::new(blocks, false))
         })
     }

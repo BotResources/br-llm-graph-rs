@@ -1,4 +1,4 @@
-use br_llm_messages::{BlockId, EntryId, TurnId};
+use br_llm_messages::{BlockId, EntryId, Error, TurnId};
 use uuid::Uuid;
 
 use crate::fault::Fault;
@@ -12,5 +12,9 @@ pub(crate) fn turn_id() -> Result<TurnId, Fault> {
 }
 
 pub(crate) fn block_id() -> Result<BlockId, Fault> {
-    BlockId::from_uuid(Uuid::now_v7()).map_err(Fault::value)
+    block_id_raw().map_err(Fault::value)
+}
+
+pub(crate) fn block_id_raw() -> Result<BlockId, Error> {
+    BlockId::from_uuid(Uuid::now_v7())
 }

@@ -1,13 +1,12 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use br_agentic_contract::{ResultStream, Tool, ToolCode, ToolContent, ToolFault};
+use br_agentic_contract::{
+    PortFuture, ResultStream, Tool, ToolBlock, ToolCode, ToolContent, ToolFault,
+};
 use br_graph_contract::CancelView;
-use br_llm_clients_core::{BoxFuture, Parameters, ToolSpec};
+use br_llm_clients_core::{Parameters, ToolSpec};
 use br_llm_messages::{OpaqueJson, ToolName};
-
-use super::ids::block_id;
-use super::text_block;
 
 pub enum Behavior {
     Text(String),
@@ -31,7 +30,7 @@ impl ToolCode for Probe {
         arguments: &'a OpaqueJson,
         cancel: CancelView,
         result: &'a mut dyn ResultStream,
-    ) -> BoxFuture<'a, Result<ToolContent, ToolFault>> {
+    ) -> PortFuture<'a, Result<ToolContent, ToolFault>> {
         Box::pin(async move {
             *self.starts.lock().unwrap() += 1;
             self.arguments
@@ -45,14 +44,18 @@ impl ToolCode for Probe {
             match &self.behavior {
                 Behavior::Text(text) => {
                     result.send(text.clone()).await;
-                    Ok(ToolContent::new(vec![text_block(text)], false))
+                    Ok(ToolContent::new(
+                        vec![ToolBlock::text(text).unwrap()],
+                        false,
+                    ))
                 }
-                Behavior::ErrorText(text) => {
-                    Ok(ToolContent::error_text(block_id(), text.clone()).unwrap())
-                }
+                Behavior::ErrorText(text) => Ok(ToolContent::error_text(text.clone()).unwrap()),
                 Behavior::Slow(delay, text) => {
                     tokio::time::sleep(*delay).await;
-                    Ok(ToolContent::new(vec![text_block(text)], false))
+                    Ok(ToolContent::new(
+                        vec![ToolBlock::text(text).unwrap()],
+                        false,
+                    ))
                 }
                 Behavior::Hang => std::future::pending().await,
                 Behavior::Fault => Err(ToolFault::new("the tool broke")),

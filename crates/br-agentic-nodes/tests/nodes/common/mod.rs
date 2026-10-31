@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 mod driver;
 mod fields;
 mod ids;

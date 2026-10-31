@@ -7,12 +7,17 @@ pub struct StepLimit(NonZeroU32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RoundLimit(NonZeroU32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProgrammaticRefusalLimit(NonZeroU32);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum InvalidLimit {
     #[error("a step limit is at least 1")]
     Steps,
     #[error("a round limit is at least 1")]
     Rounds,
+    #[error("a programmatic-refusal limit is at least 1")]
+    Refusals,
     #[error("a timeout is longer than zero")]
     Timeout,
 }
@@ -30,6 +35,18 @@ impl StepLimit {
 impl RoundLimit {
     pub fn new(limit: u32) -> Result<Self, InvalidLimit> {
         NonZeroU32::new(limit).map(Self).ok_or(InvalidLimit::Rounds)
+    }
+
+    pub fn get(self) -> u32 {
+        self.0.get()
+    }
+}
+
+impl ProgrammaticRefusalLimit {
+    pub fn new(limit: u32) -> Result<Self, InvalidLimit> {
+        NonZeroU32::new(limit)
+            .map(Self)
+            .ok_or(InvalidLimit::Refusals)
     }
 
     pub fn get(self) -> u32 {
@@ -76,6 +93,10 @@ impl Steps {
 
     pub(crate) fn count(&mut self) {
         self.made = self.made.saturating_add(1);
+    }
+
+    pub(crate) fn made(&self) -> u32 {
+        self.made
     }
 
     pub(crate) fn remaining(&self) -> u32 {

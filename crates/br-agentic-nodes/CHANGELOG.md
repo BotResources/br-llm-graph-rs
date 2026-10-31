@@ -8,6 +8,51 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-31
+
+Rework to the sealed intent of minor 0.2, on `br-agentic-contract` 0.2.0.
+
+### Removed
+
+- `Fault::NoAuthor`, `Fault::Thread`; the `From` impls of `Fault` for the 0.1 `PortFault`, `ThreadError` and `BoundaryError`.
+- `Outcome` (with `response`, `step_limit_reached`, `verdict`) and `OutcomePort`; `Ports::new` no longer takes the outcome port.
+- `ReactAgent::with_author`, `ReactAgent::restart`, `GeneratorCritic::restart`, `GeneratorCritic::with_authors`, `with_generator_author`, `with_critic_author`, `with_critic_thinking_field`. The shape of the critic answer follows the `ThinkingExpectation` of the client of each attempt.
+- `Worker::new`, `Worker::load`, `WorkerParts::author`, `WorkerParts::system`, `WorkerParts::tools`.
+
+### Changed
+
+- Every port returns `PortFuture` with `PortError`; `Fault::Port` holds a `PortError`, `Fault::Boundary` holds the 0.2 `BoundaryError`.
+- `PromptPort::prompt` and `CriticRequest::text` use `String`; a blank value is a fault.
+- `CriticRequestPort::request` takes the last model response of the generator; it is called once per round.
+- `Ports::new(thread_port, agent_port, thread_access, prompt_port, tools_port, workspace_port)`.
+- `ReactAgent::new(name, ports, settings, ReactSpec)`.
+- `WorkerParts::inbox` is an `Option<Arc<dyn InboxPort>>`.
+- `Worker::drain` gives `Drained { stored, request_stored }`.
+- `Worker::close_turn` takes `&mut self` and an `&AiTurnRef`.
+- `mail_tools(inbox, inbox_context, author, conversation_id, seen_entries)`.
+- `GeneratorCriticSpec` gains `generator_author`, `critic_author` and `outcome`.
+
+### Added
+
+- `Worker::open` (async, reads the conversation once), `Worker::conversation`, `Worker::steps_made`, `Worker::with_author`, `with_system`, `with_tools`; `Drained`.
+- `ReactSpec { fallback, outcome, author }`, `AuthorSource::{Fixed, Port}`, `AuthorPort`.
+- `ReactOutcome` (`response`, `steps`, `step_limit_reached`) with `ReactOutcomePort`; `GeneratorCriticOutcome` (`response`, `judgement`, `iterations`, `step_limit_reached`) with `GeneratorCriticOutcomePort`; `Judgement::{Validated, Rejected, NotJudged}`.
+- `RoundLimitEnding::{FinalGeneration (default), KeepRejectedGeneration, Fail}` and `GeneratorCritic::with_round_limit_ending`.
+- The programmatic critic: `ProgrammaticCritic { port, author, refusal_limit }`, `ProgrammaticCriticPort`, `ProgrammaticVerdict::{Accept, Refuse}`, `ProgrammaticRefusalLimit`, `PROGRAMMATIC_CRITIC_LABEL`, `GeneratorCritic::with_programmatic_critic`.
+- `Fault::{Session, ProgrammaticRefusal, BlankExplicitReason, CriticAtRoundLimit}`, `InvalidLimit::Refusals`.
+- The crate README (also the crate documentation).
+
+### Behaviour
+
+- The conversation is read once at Start; the instance applies each write to its copy first and then hands it to the thread access.
+- The queue is read at Start with an awaited read and later by one background read at a time, never awaited at a boundary; an error of a read or of a mark is not a fault.
+- The thinking rule applies only to the calls the fallback covers; a refusal, a filter or an exhaustion without tool call is exempt.
+- The round counter and the programmatic-refusal counter go back to 0 only when a request item is stored.
+- All results of a tool run are opened before any call starts. Inbox errors in the mail tools are error results, never faults.
+- The critic projection drops agent mails and runtime notices from input turns.
+- A failed discard at `Result` is a fault.
+- Web access is held in the settings but not enforced by this crate.
+
 ## 0.1.0 - 2026-10-29
 
 First release: the agent nodes and their building blocks. It builds on `br-agentic-contract`, `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`.
