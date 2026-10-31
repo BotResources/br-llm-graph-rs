@@ -248,8 +248,8 @@ The agent nodes: the ReAct agent (`ReactAgent`, subkind `react_agent`) and the g
 
 ```toml
 [dependencies]
-br-agentic-nodes = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-nodes", tag = "br-agentic-nodes/v0.1.0", version = "0.1.0" }
-br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.1.0", version = "0.1.0" }
+br-agentic-nodes = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-nodes", tag = "br-agentic-nodes/v0.2.0", version = "0.2.0" }
+br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.2.0", version = "0.2.0" }
 br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
 br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-core", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
 br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", package = "br-llm-messages", tag = "br-llm-messages/v2.1.0", version = "2.1.0" }
@@ -259,12 +259,12 @@ The public API names types of the libraries it builds on, so pin them beside it 
 
 | Part | What the crate gives |
 |---|---|
-| `ReactAgent`, `GeneratorCritic` | the two nodes; built with `Ports`, `Settings` (step limit, `Timeouts`, web access, file system mode), a `FallbackList` (ReAct) or two `Ladder`s, a `RoundLimit`, a `CriticRequestSource` and a `StepLimitEnding` (generator-critic), and the author names unless the agent port gives them |
-| `PromptPort`, `OutcomePort`, `CriticRequestPort`, `Outcome` | what the runner gives besides the ports of the contract: the system prompt of an agent label, the update that the end of an instance gives (last response, step-limit flag, verdict), the text and the human of the critic request |
+| `ReactAgent`, `GeneratorCritic` | the two nodes; built with `Ports`, `Settings` (step limit, `Timeouts`, web access, file system mode) and a spec: `ReactSpec` (fallback list, outcome port, `AuthorSource`) or `GeneratorCriticSpec` (two `Ladder`s, `RoundLimit`, `CriticRequestSource`, `StepLimitEnding`, two `AuthorSource`s, outcome port), then `with_round_limit_ending` and `with_programmatic_critic` |
+| `PromptPort`, `AuthorPort`, `ReactOutcomePort`, `GeneratorCriticOutcomePort`, `CriticRequestPort`, `ProgrammaticCriticPort` | what the runner gives besides the ports of the contract: the system prompt and the author name of an agent label, the update that the end of an instance gives (`ReactOutcome`; `GeneratorCriticOutcome` with a `Judgement`), the critic request for a response, and the check of the programmatic critic |
 | `FallbackList`, `Ladder`, `Slot`, `ModelClient`, `ThinkingExpectation` | the first call of a pass goes to the next client when it fails, times out or breaks the thinking rule; a client that worked is kept for the pass (the round, for the critic); one client means no retry |
 | `check_thinking`, `holds_thinking`, `warning_text`, `WARNING_WINDOW` | the thinking rule and the text that is sent with the tool results when at most 10 steps remain (never stored) |
-| `Worker`, `WorkerParts` | step, tool round, drain and turn closing, to write an agentic node of your own |
-| `mail_tools`, `SEND_MAIL`, `GET_MAIL_FILES` | the two tools of a node with an inbox; `get_mail_files` acts only on mails whose item the projected thread holds |
+| `Worker`, `WorkerParts`, `Drained` | the conversation copy, step, tool round, drain and turn closing, to write an agentic node of your own |
+| `mail_tools`, `SEND_MAIL`, `GET_MAIL_FILES` | the two tools of a node with an inbox; `get_mail_files` acts only on incoming entries that the node holds |
 | `FileSystem`, `SandboxPath` | the file system of the node, with normalized relative paths, loaded at the start and saved before `Result` |
 
 Behaviour to know:
@@ -273,10 +273,11 @@ Behaviour to know:
 - A fault (a model error the fallback does not solve, a tool fault, a port error) closes the open AI turn as `Failed`, discards the open objects and sends `Failed`; a cancel closes it as `Cancelled`. What was stored stays.
 - A tool call over its timeout, or for a tool the node does not hold, ends with a result that has the error flag set; a tool fault or panic fails the instance.
 - A client that should think is declared by the runner; `br-llm-clients-core` gives no such report. The declaration is required: `ModelClient::new` takes a `ThinkingExpectation` (`Expected` or `NotExpected`) and has no default. The node never reads the settings of a client.
-- The sealed intent asks the instance to enforce the web access and the sandbox. Version 0.1.0 holds the web access and the file system mode (`Settings`), loads the files at the start and saves them before `Result`, and enforces neither the web access nor the sandbox. A `ToolCode` gets only its arguments, a cancel view and a result stream, so no tool can reach the file system of the node. Until a later minor, the runner must give only tools that respect the web access.
-- `GeneratorCritic::with_critic_thinking_field` adds a required `thinking` string to the structured answer of the critic, before `is_validated` and `message`; its value is never stored and never read.
-- In a generator-critic the round counter goes back to 0 whenever a drain stores items, also a drain inside a pass; the critic of that round keeps the ladder entry read at the start of the pass.
-- In a generator-critic the critic request is added at the end of the projected thread of the critic for each call and is never stored. A message of the critic that does not validate is stored as an agent mail from the critic; nothing is stored when it validates.
+- The sealed intent asks the instance to enforce the web access and the sandbox. Version 0.2.0 holds the web access and the file system mode (`Settings`), loads the files at the start and saves them before `Result`, and enforces neither the web access nor the sandbox. A `ToolCode` gets only its arguments, a cancel view and a result stream, so no tool can reach the file system of the node. Until a later minor, the runner must give only tools that respect the web access.
+- The shape of the critic answer follows the `ThinkingExpectation` of the client of each attempt; there is no thinking-field switch.
+- In a generator-critic the round counter and the programmatic-refusal counter go back to 0 only when a drain stores a request item.
+- The instance reads the conversation once at Start and keeps a copy; each write goes to the copy first and then to the thread access. The queue is read in the background and never awaited at a boundary.
+- In a generator-critic the critic request is added at the end of the projection of the critic for each call and is never stored. A message of the critic is stored as an AI turn of the critic. At the round limit the ending is `FinalGeneration` (default), `KeepRejectedGeneration` or `Fail`.
 
 Why:
 
