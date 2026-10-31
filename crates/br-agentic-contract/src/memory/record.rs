@@ -1,8 +1,9 @@
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use br_graph_contract::InstanceId;
 use br_llm_messages::{
-    InputTurn, ModelResponse, ResponseDelta, RuntimeToolResults, TurnClosure, TurnEntry,
+    EntryId, InputTurn, ModelResponse, ResponseDelta, RuntimeToolResults, TurnClosure, TurnEntry,
 };
 
 use crate::ids::{AgentLabel, MailId, ThreadRef};
@@ -10,8 +11,6 @@ use crate::inbox::{Cursor, InboxContext};
 use crate::mail::NewMail;
 use crate::thread_access::AiTurnRef;
 use crate::workspace::WorkspaceFile;
-use br_llm_messages::EntryId;
-use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone)]
 #[non_exhaustive]
