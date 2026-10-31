@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use br_llm_messages::{
-    Conversation, EntryId, InputTurn, ModelResponse, RuntimeToolResults, TurnClosure, TurnEntry,
+    Conversation, ConversationId, EntryId, InputTurn, ModelResponse, RuntimeToolResults,
+    TurnClosure, TurnEntry,
 };
 
 use super::record::{Call, Record};
@@ -39,6 +40,10 @@ impl MemoryThreadAccess {
                 open: HashMap::new(),
             })),
         }
+    }
+
+    pub fn empty(record: &Record, thread: ThreadRef, identity: ConversationId) -> Self {
+        Self::new(record, thread, Conversation::new(identity))
     }
 
     pub fn conversation(&self) -> Conversation {

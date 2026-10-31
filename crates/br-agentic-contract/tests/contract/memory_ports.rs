@@ -118,12 +118,12 @@ async fn given_a_conversation_set_by_the_test_when_the_in_memory_thread_access_r
 }
 
 #[tokio::test]
-async fn given_no_conversation_set_by_the_test_when_the_in_memory_thread_access_reads_then_it_gives_an_empty_conversation_with_the_identity_the_test_set()
+async fn given_an_empty_in_memory_thread_access_with_an_identity_when_it_reads_then_it_gives_an_empty_conversation_with_the_identity_the_test_set()
  {
     let identity = conversation_id();
     let record = Record::new();
     let thread = thread_ref();
-    let access = MemoryThreadAccess::new(&record, thread, Conversation::new(identity));
+    let access = MemoryThreadAccess::empty(&record, thread, identity);
 
     let read = access.read(&thread).await.unwrap();
 
