@@ -4,6 +4,7 @@ use br_llm_messages::{
 };
 
 use crate::error::PortError;
+use crate::ids::MailId;
 use crate::thread_access::AiTurnRef;
 
 #[derive(Debug, thiserror::Error)]
@@ -13,6 +14,8 @@ pub enum SessionError {
     Rules(#[source] Error),
     #[error("the turn {0} is not the AI turn of that agent and author")]
     WrongTurn(TurnId),
+    #[error("the entry built for the mail {0} is not the entry of that mail")]
+    WrongMailEntry(MailId),
     #[error(transparent)]
     Port(PortError),
 }

@@ -87,12 +87,27 @@ impl Run<'_, '_> {
     }
 }
 
+fn is_entry_of(mail: &MailItem, entry: &IncomingEntry) -> bool {
+    entry.id() == mail.id().entry_id()
+        && match mail {
+            MailItem::To { .. } => matches!(entry, IncomingEntry::AgentMail(_)),
+            MailItem::Cc { .. } => matches!(entry, IncomingEntry::RuntimeNotice(_)),
+        }
+}
+
 fn build(
     item: &InboxItem,
     mail_entry: MailEntryBuilder<'_>,
 ) -> Result<IncomingEntry, SessionError> {
     match item {
-        InboxItem::Mail(mail) => Ok(mail_entry(mail)?),
+        InboxItem::Mail(mail) => {
+            let entry = mail_entry(mail)?;
+            if is_entry_of(mail, &entry) {
+                Ok(entry)
+            } else {
+                Err(SessionError::WrongMailEntry(mail.id()))
+            }
+        }
         InboxItem::Entry(entry) => Ok(entry.entry().clone()),
     }
 }

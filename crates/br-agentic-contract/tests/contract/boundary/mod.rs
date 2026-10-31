@@ -251,5 +251,6 @@ async fn given_an_item_whose_entry_the_conversation_holds_when_the_boundary_runs
     assert!(queue.is_empty());
 }
 
+mod builder;
 mod entries;
 mod inbox_errors;

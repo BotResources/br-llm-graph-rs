@@ -1,13 +1,12 @@
 use super::*;
 
 #[tokio::test]
-async fn given_a_mail_item_when_the_boundary_stores_it_then_the_entry_id_is_the_mail_id_and_the_entry_holds_the_sender_the_author_name_and_the_source_conversation_of_the_item()
+async fn given_a_mail_item_for_a_recipient_in_to_when_the_boundary_stores_it_then_the_entry_is_an_agent_mail_with_the_mail_id()
  {
     let world = World::new();
-    let sender = agent_id();
     let mail = new_mail(&[world.agent], &[], "hello");
-    let (id, name, source) = (mail.id, mail.author.clone(), mail.source);
-    world.inbox.deliver_mail(sender, mail).unwrap();
+    let id = mail.id;
+    world.inbox.deliver_mail(agent_id(), mail).unwrap();
     let batch = world
         .inbox
         .items(&world.context(), None, limit(5))
@@ -22,13 +21,9 @@ async fn given_a_mail_item_when_the_boundary_stores_it_then_the_entry_id_is_the_
     let Turn::InputTurn(input) = &conversation.turns()[0] else {
         panic!()
     };
-    let IncomingEntry::AgentMail(entry) = &input.entries()[0] else {
-        panic!("an agent mail")
-    };
-    assert_eq!(entry.id(), id.entry_id());
-    assert_eq!(entry.sender(), sender);
-    assert_eq!(entry.author(), &name);
-    assert_eq!(entry.source_conversation(), source);
+    assert!(
+        matches!(&input.entries()[0], IncomingEntry::AgentMail(entry) if entry.id() == id.entry_id())
+    );
 }
 
 #[tokio::test]
