@@ -10,9 +10,9 @@ The sealed intent of the minor is in the BotResources libraries registry. This f
 
 ## Start here
 
-To write an adapter: pick the port, implement its trait, return `PortError::Refused` only where the table says the port refuses, and return `PortError::Fault` for anything else. The types of `br-graph-contract` that a port signature names are re-exported by this crate, so an adapter needs no `br-graph-contract` import; the agent port and the inbox need no `br-llm-clients-core` import either. A complete, compile-checked adapter of four ports is `tests/contract/adapter_example.rs`; this is its agent port.
+To write an adapter: pick the port, implement its trait, return `PortError::Refused` only where the table says the port refuses, and return `PortError::Fault` for anything else. The types of `br-graph-contract` that a port signature names are re-exported by this crate, so an adapter needs no `br-graph-contract` import; the agent port and the inbox need no `br-llm-clients-core` import either. The thread access names `StreamSink` (re-exported by this crate) and the tools port names `Tool`, which `Tool::new` builds from a `ToolSpec` of `br-llm-clients-core` (not re-exported). A complete, compile-checked adapter of four ports is `tests/contract/adapter_example.rs`; this is its agent port (a process map of identities: a real runner saves the identity with its first instance, so that a restart gives the same identity back).
 
-```rust,ignore
+```rust
 use br_agentic_contract::{AgentLabel, AgentPort, Fields, InstanceId, PortError, PortFuture};
 use br_llm_messages::{AgentId, Uuid};
 
@@ -38,9 +38,46 @@ impl<F: Fields> AgentPort<F> for SavedAgents {
 }
 ```
 
+This is a workspace port that keeps the files in memory.
+
+```rust
+use std::sync::Mutex;
+
+use br_agentic_contract::{Fields, PortError, PortFuture, WorkspaceFile, WorkspacePort};
+
+struct KeptFiles {
+    files: Mutex<Vec<WorkspaceFile>>,
+}
+
+impl<F: Fields> WorkspacePort<F> for KeptFiles {
+    fn load<'a>(
+        &'a self,
+        _snapshot: &'a F,
+    ) -> PortFuture<'a, Result<Vec<WorkspaceFile>, PortError>> {
+        Box::pin(async move {
+            let files = self.files.lock().map_err(|_| PortError::fault("poisoned"))?;
+            Ok(files.clone())
+        })
+    }
+
+    fn save<'a>(
+        &'a self,
+        _snapshot: &'a F,
+        files: Vec<WorkspaceFile>,
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        Box::pin(async move {
+            *self.files.lock().map_err(|_| PortError::fault("poisoned"))? = files;
+            Ok(())
+        })
+    }
+}
+```
+
+The hardest port to write is the thread access (a `StreamSink` and a `ResultStream` to give, an `AiTurnRef` on every call). `tests/contract/forgetful.rs` is a compile-checked thread access that accepts every call and keeps nothing; the intent allows it, and `tests/contract/session/independence.rs` proves that the instance gives the same result with it as with a thread access that keeps everything. `src/memory/thread.rs` and `src/memory/streams.rs` show the semantics of one that keeps what it receives. Do not confuse `ThreadPort` (gives the reference of the thread) with `ThreadAccess` (reads the conversation and receives the additions).
+
 ## The ports
 
-All ports are public, object-safe (`dyn ThreadPort<F>`, `dyn InboxPort`, ... compile), `Send + Sync`, and asynchronous: a method returns a `PortFuture`, a boxed `Send` future that this crate owns, so an adapter needs no `br-llm-clients-core` import except for the response stream of the thread access. The instance never retries a call to a port. A failure of a port other than the inbox is a fault of the instance; no error of the inbox is.
+All ports are public, object-safe (`dyn ThreadPort<F>`, `dyn InboxPort`, ... compile), `Send + Sync`, and asynchronous: a method returns a `PortFuture`, a boxed `Send` future that this crate owns, so the signatures name no future type of `br-llm-clients-core`. The instance never retries a call to a port. A failure of a port other than the inbox is a fault of the instance; no error of the inbox is.
 
 | Port | What it does | Refuses a request? |
 |---|---|---|
@@ -51,13 +88,13 @@ All ports are public, object-safe (`dyn ThreadPort<F>`, `dyn InboxPort`, ... com
 | `ThreadAccess` | `read` the conversation once; every other operation receives a complete addition: `add_input_turn`, `add_entry`, `close_turn`, `open_*` (gives a stream), `complete_*`, `discard_*` | never (a refusal is a fault) |
 | `InboxPort` | `items` (batches and cursor), `wait`, `mark_read`, `send`, `documents` | `send` (no recipient in `to`, a recipient twice) and `documents` (agent not a recipient in `to`) |
 
-The write path of an adapter (`add_*`, `close_turn`, `complete_*`, `discard_*`, `mark_read`, `send`, the stream sends) returns when the adapter has accepted the data; its result carries only accepted, refused or fault. The instance waits on the `read` of the start; it calls `items`, `wait` and `documents` of the inbox when the node library chooses, and an error of any inbox call is not a fault of the instance.
+The write path of an adapter (`add_*`, `close_turn`, `complete_*`, `discard_*`, `mark_read`, `send`, the stream sends) returns when the adapter has accepted the data; its result carries only accepted, refused or fault. At the start the instance awaits the thread port, the agent port, the tools port, the `load` of the workspace port (by file system mode) and the `read` of the thread access; at the end it awaits the `save`; it calls `items`, `wait` and `documents` of the inbox when the node library chooses, and an error of any inbox call is not a fault of the instance.
 
-`PortError` is the one error of the ports: `Refused(Reason)` (a reason as text, an expected error) or `Fault(Cause)` (an opaque cause). No error of the inbox is a fault of the instance: the mail tools of the node library give it to the agent as a tool result with the error flag set, and after a failed read, wait or mark as read the instance goes on with the items it holds. `ToolContent::from_port_error` is for the ports other than the inbox: it turns a refusal into a tool result with the error flag set and a fault into a `ToolFault`.
+`PortError` is the one error of the ports: `Refused(Reason)` (a reason as text, an expected error) or `Fault(Cause)` (an opaque cause). No error of the inbox is a fault of the instance: the mail tools of the node library give it to the agent as a tool result with the error flag set, and after a failed read, wait or mark as read the instance goes on with the items it holds. `ToolContent::from_inbox_error` turns any `PortError` of the inbox, refusal or fault, into a tool result with the error flag set: a refusal gives its reason as text, a fault gives a fixed text, and the cause stays out of what the agent reads. `SessionError::Port` has no `From<PortError>`: it is built only for the thread access, and `Queue::read` and `mail_documents` give a bare `PortError`, so `?` never turns an inbox error into a fault. `Boundary`, `BoundaryError`, `SessionError`, `ToolBlock` and `memory::Call` are `#[non_exhaustive]`: match them with a wildcard arm; `Boundary::default()` is an empty report. A `Queue::read` that meets the same cursor twice gives a fault (an adapter bug).
 
 ## Re-exports
 
-`Fields`, `InstanceId`, `Reason`, `Cause`, `CancelView`, `Event`, `InputReader` and `Node` of `br-graph-contract`. Types of `br-llm-messages` (`AgentId`, `Conversation`, `EntryId`, ...) and the `StreamSink` of `br-llm-clients-core` are named by the signatures too: pin those libraries on the same git URL and tag as this crate, or the types split in two copies.
+`Fields`, `InstanceId`, `Reason`, `Cause`, `CancelView`, `Event`, `InputReader` and `Node` of `br-graph-contract`, and `StreamSink` of `br-llm-clients-core`. Types of `br-llm-messages` (`AgentId`, `Conversation`, `EntryId`, ...) and `ToolSpec` of `br-llm-clients-core` are named by the signatures too: pin those libraries on the same git URL and tag as this crate, or the types split in two copies.
 
 ## What the crate provides to a node library
 
@@ -66,10 +103,11 @@ The write path of an adapter (`add_*`, `close_turn`, `complete_*`, `discard_*`, 
 | `Session` | reads the conversation once (`Session::start`) and keeps the copy of the instance; every addition is applied to the copy under the rules of `br-llm-messages` first and handed to the thread access only when accepted; a refused completion discards the open object and is an error; tracks open objects |
 | `Queue`, `store_at_boundary`, `MailEntryBuilder` | the queue of unread items (an id held earlier is skipped; `Queue::read` fills it from the inbox batches); the instance stores each new item of its queue at a boundary: items the copy holds are skipped and marked, the others go into the open AI turn of the agent after its last entry, else into one new input turn with one entry each; an item is marked as read only after its entry is handed over; an error of a mark stops nothing (the item counts as stored or skipped, the next items go on, `Boundary::unmarked` lists the ids); an error of `Queue::read` leaves in the queue the items it already gave; the node library builds the entry of a mail |
 | `mail_documents` | the documents of a mail only when the conversation holds an incoming entry with the mail id; else a refusal, and the inbox is not asked |
-| `result`, `failed`, `cancelled` | discard every open object (errors of the discards are ignored) and close the input end before the terminal event |
+| `result`, `failed`, `cancelled` | discard every open object and close the input end before the terminal event; an error of a discard is ignored by `failed` and `cancelled` and makes `result` give `Failed` with that error (a port failure is a fault) |
 | `FileSystemMode::start`, `save_files` | `Always`, `Might` and `Never` and when the load is called; the save of the files before `Result` |
 | `Tool`, `ToolCode`, `ToolContent`, `ToolBlock`, `ToolSet` | a tool gets the arguments, the cancel view and the result stream; it gives blocks without identities and an error flag, or a fault; `into_result` gives each block its identity; `ToolSet` refuses a name twice, mail tools included |
-| `WebAccess`, `Site`, `AgentLabel`, `ThreadRef`, `MailId`, `NewMail`, `MailItem`, `InboxEntry` | validated values: a site is non-blank, a label non-empty, a thread reference and a mail id a UUIDv7; an empty whitelist is valid and reaches no site |
+| `WebAccess`, `Site`, `AgentLabel`, `ThreadRef`, `MailId`, `InboxEntry` | validated values: a site is non-blank, a label non-empty, a thread reference and a mail id a UUIDv7; an empty whitelist is valid and reaches no site |
+| `NewMail`, `MailItem`, `MailDocument`, `WorkspaceFile`, `InboxBatch`, `InboxContext`, `AiTurnRef` | plain values with public fields, not validated at construction; `NewMail::refusal` is the check an inbox adapter makes at `send` (no recipient in `to`, a recipient listed twice in `to` and `cc`); the crate checks no subject, body, attachment name or path |
 
 `AgenticNode<F>` is a `Node<F>` of kind `AGENTIC` that tells `has_inbox()`.
 
@@ -89,7 +127,7 @@ For tests, not for production. One `Record` is shared by every in-memory port an
 | `AiTurnRef` names agent and author on every call | a thread holds several agents; the call that creates an AI turn must give them, and the thread access needs no other state |
 | `store_at_boundary` never extends an input turn | the thread access receives complete additions only; items with no open AI turn form a new input turn |
 | `MailEntryBuilder` is a parameter | the content of a mail entry and its escaping belong to the node libraries |
-| `from_port_error` replaces a blank refusal reason by a fixed text | a refusal stays an expected error even if the adapter gave no text |
+| `from_inbox_error` gives a fixed text for a fault and for a blank refusal reason | no error of the inbox is a fault of the instance, and an opaque cause is for the logs of the node, not for the agent |
 | a failed mark is listed in `Boundary::unmarked`, not retried | an unmarked item stays unread in the inbox and the conversation holds it, so the next boundary skips and marks it; the instance never retries a call to a port |
 | `ToolContent` blocks have no identity | the instance gives every identity when it builds the `RuntimeToolResult` |
 | a send to an ended stream is not recorded | the in-memory streams take nothing after the object ended or was opened again |

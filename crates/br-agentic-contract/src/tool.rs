@@ -13,6 +13,7 @@ use crate::future::PortFuture;
 use crate::stream::ResultStream;
 
 const BLANK_REFUSAL: &str = "the request was refused";
+const INBOX_FAULT: &str = "the inbox could not do this";
 
 pub trait ToolCode: Send + Sync {
     fn call<'a>(
@@ -47,6 +48,7 @@ impl ToolFault {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ToolBlock {
     Text(PlainText),
     Image(ImageSource),
@@ -87,13 +89,14 @@ impl ToolContent {
         })
     }
 
-    pub fn from_port_error(error: PortError) -> Result<Self, ToolFault> {
-        match error {
-            PortError::Refused(reason) => Self::error_text(reason.into_string())
-                .or_else(|_| Self::error_text(BLANK_REFUSAL))
-                .map_err(ToolFault::new),
-            PortError::Fault(cause) => Err(ToolFault::new(cause)),
-        }
+    pub fn from_inbox_error(error: PortError) -> Self {
+        let text = match error {
+            PortError::Refused(reason) => reason.into_string(),
+            PortError::Fault(_) => INBOX_FAULT.to_owned(),
+        };
+        Self::error_text(text)
+            .or_else(|_| Self::error_text(BLANK_REFUSAL))
+            .unwrap_or_else(|_| Self::new(Vec::new(), true))
     }
 
     pub fn content(&self) -> &[ToolBlock] {

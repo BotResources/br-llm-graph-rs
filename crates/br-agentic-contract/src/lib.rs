@@ -25,6 +25,7 @@ pub use boundary::{Boundary, BoundaryError, MailEntryBuilder, store_at_boundary}
 pub use br_graph_contract::{
     CancelView, Cause, Event, Fields, InputReader, InstanceId, Node, Reason,
 };
+pub use br_llm_clients_core::StreamSink;
 pub use documents::mail_documents;
 pub use ending::{cancelled, failed, result};
 pub use error::PortError;

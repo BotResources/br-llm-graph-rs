@@ -49,6 +49,11 @@ impl Queue {
                 .filter(|item| self.push(item.clone()))
                 .count();
             match page.next {
+                Some(cursor) if after.as_ref() == Some(&cursor) => {
+                    return Err(PortError::fault(
+                        "the inbox gave the same cursor twice, the list does not advance",
+                    ));
+                }
                 Some(cursor) => after = Some(cursor),
                 None => return Ok(added),
             }

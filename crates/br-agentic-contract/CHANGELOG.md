@@ -8,7 +8,7 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
-## 0.2.0 - 2026-10-30
+## 0.2.0 - 2026-10-31
 
 Rework of the thread access, the ports, the in-memory ports and the queue rules to the sealed intent of minor 0.2. Breaking: the 0.1 API of the thread access, the inbox, the agent port and the tool content does not compile against 0.2.
 
@@ -24,18 +24,22 @@ Rework of the thread access, the ports, the in-memory ports and the queue rules 
 - `Session` holds the conversation copy: `Session::start` reads once; every addition is applied to the copy under the rules of `br-llm-messages` before it is handed over; a refused completion discards the open object. Errors are `SessionError`.
 - `store_at_boundary` takes the session, a `MailEntryBuilder` (the node library builds the entry of a mail) and the id of a new input turn: items the copy holds are skipped and marked; the others go into the open AI turn of the agent after its last entry, else into one new input turn with one entry each; every kind of item is marked as read after its entry is handed over. `BoundaryError` carries a `SessionError`; `BoundaryFault` is removed.
 - `AgenticNode::restart` and `Restart` are removed.
-- The in-memory ports are rebuilt (`MemoryHub` is removed): they take one shared `Record` and keep one ordered record of every call, with what the streams take; the thread access keeps the completed additions and starts from the conversation of the test; there is no link between the in-memory inbox and the in-memory thread access; `MemoryAgentPort` takes its identities from the test; `FixedThreadPort`, `FixedToolsPort` and `MemoryWorkspace` take the record.
+- The in-memory ports are rebuilt (`MemoryHub` is removed): they take one shared `Record` and keep one ordered record of every call, with what the streams take; the thread access keeps the completed additions and starts from the conversation of the test; there is no link between the in-memory inbox and the in-memory thread access; `MemoryAgentPort` takes its identities from the test (it mints a UUIDv7 for a label the test did not name); `FixedThreadPort`, `FixedToolsPort` and `MemoryWorkspace` take the record.
+
+- `Boundary`, `BoundaryError`, `SessionError`, `ToolBlock` and `memory::Call` are `#[non_exhaustive]`; `SessionError` has no `From<PortError>` (an inbox error never becomes a fault through `?`); `BoundaryError` keeps its fault as the `source`.
 
 ### Added
 
 - `PortFuture`, `PortError`, `AiTurnRef`, `ToolBlock`, `SessionError`, `MailEntryBuilder`, `InvalidThreadRef`, `InvalidInboxEntry`.
-- `mail_documents` (documents only for a mail whose entry the conversation holds as an incoming entry), `Queue::read`, `ToolContent::from_port_error`, `Boundary::unmarked`, `Session::holds`, `Session::holds_incoming`, `Session::open_ai_turn`.
-- Re-exports of the types of `br-graph-contract` that the ports name: `Fields`, `InstanceId`, `Reason`, `Cause`, `CancelView`, `Event`, `InputReader`, `Node`.
+- `mail_documents` (documents only for a mail whose entry the conversation holds as an incoming entry), `Queue::read`, `ToolContent::from_inbox_error` (any error of the inbox, refusal or fault, as a tool result with the error flag and a text that never holds the cause), `Boundary::unmarked`, `Session::holds`, `Session::holds_incoming`, `Session::open_ai_turn`.
+- Re-exports of the types of `br-graph-contract` that the ports name: `Fields`, `InstanceId`, `Reason`, `Cause`, `CancelView`, `Event`, `InputReader`, `Node`, and of the `StreamSink` of `br-llm-clients-core`.
 - `memory::Record` and `memory::Call`, `memory::SentMail`.
 - A crate README (the contract of the crate).
 
 ### Changed
 
+- `result` sends `Failed` with the port error when a discard of an open object fails (a port failure is a fault); `failed` and `cancelled` still ignore the error of a discard.
+- `Queue::read` gives a fault when the inbox gives the same cursor twice (the read would not end).
 - `WebAccess::reaches_nothing` is also true for an empty whitelist.
 - An inbox error is never a fault of the instance: mark errors no longer stop `store_at_boundary` (the item counts as stored or skipped and `Boundary::unmarked` lists the ids).
 

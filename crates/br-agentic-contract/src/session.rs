@@ -72,7 +72,10 @@ impl<'a> Session<'a> {
 
     pub async fn add_input_turn(&mut self, turn: InputTurn) -> Result<(), SessionError> {
         apply_input_turn(&mut self.conversation, &turn)?;
-        Ok(self.access.add_input_turn(&self.thread, turn).await?)
+        self.access
+            .add_input_turn(&self.thread, turn)
+            .await
+            .map_err(SessionError::Port)
     }
 
     pub async fn add_entry(
@@ -81,10 +84,10 @@ impl<'a> Session<'a> {
         entry: TurnEntry,
     ) -> Result<(), SessionError> {
         apply_entry(&mut self.conversation, turn, entry.clone())?;
-        Ok(self
-            .access
+        self.access
             .add_entry(&self.thread, turn.clone(), entry)
-            .await?)
+            .await
+            .map_err(SessionError::Port)
     }
 
     pub async fn close_turn(
@@ -93,10 +96,10 @@ impl<'a> Session<'a> {
         closure: TurnClosure,
     ) -> Result<(), SessionError> {
         apply_closure(&mut self.conversation, turn, closure.clone())?;
-        Ok(self
-            .access
+        self.access
             .close_turn(&self.thread, turn.clone(), closure)
-            .await?)
+            .await
+            .map_err(SessionError::Port)
     }
 
     pub async fn open_response(
@@ -107,7 +110,8 @@ impl<'a> Session<'a> {
         let stream = self
             .access
             .open_response(&self.thread, turn.clone(), entry)
-            .await?;
+            .await
+            .map_err(SessionError::Port)?;
         track(&mut self.responses, entry);
         Ok(stream)
     }
@@ -124,7 +128,8 @@ impl<'a> Session<'a> {
         }
         self.access
             .complete_response(&self.thread, turn.clone(), response)
-            .await?;
+            .await
+            .map_err(SessionError::Port)?;
         self.responses.retain(|open| *open != entry);
         Ok(())
     }
@@ -142,7 +147,8 @@ impl<'a> Session<'a> {
         let stream = self
             .access
             .open_result(&self.thread, turn.clone(), entry)
-            .await?;
+            .await
+            .map_err(SessionError::Port)?;
         track(&mut self.results, entry);
         Ok(stream)
     }
@@ -159,7 +165,8 @@ impl<'a> Session<'a> {
         }
         self.access
             .complete_result(&self.thread, turn.clone(), result)
-            .await?;
+            .await
+            .map_err(SessionError::Port)?;
         self.results.retain(|open| *open != entry);
         Ok(())
     }

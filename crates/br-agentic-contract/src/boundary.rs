@@ -12,6 +12,7 @@ use crate::thread_access::AiTurnRef;
 pub type MailEntryBuilder<'a> = &'a (dyn Fn(&MailItem) -> Result<IncomingEntry, Error> + Sync);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Boundary {
     pub stored: Vec<EntryId>,
     pub skipped: Vec<EntryId>,
@@ -19,8 +20,10 @@ pub struct Boundary {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("{fault}")]
+#[error("the instance faulted at the boundary")]
+#[non_exhaustive]
 pub struct BoundaryError {
+    #[source]
     pub fault: SessionError,
     pub done: Boundary,
 }

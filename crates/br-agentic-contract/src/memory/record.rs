@@ -14,6 +14,7 @@ use br_llm_messages::EntryId;
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Call {
     ThreadPort,
     AgentPort {

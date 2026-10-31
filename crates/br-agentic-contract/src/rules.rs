@@ -7,13 +7,14 @@ use crate::error::PortError;
 use crate::thread_access::AiTurnRef;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SessionError {
     #[error("the rules of br-llm-messages refuse the change: {0}")]
     Rules(#[source] Error),
     #[error("the turn {0} is not the AI turn of that agent and author")]
     WrongTurn(TurnId),
     #[error(transparent)]
-    Port(#[from] PortError),
+    Port(PortError),
 }
 
 impl From<Error> for SessionError {
