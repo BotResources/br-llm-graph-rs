@@ -16,7 +16,7 @@ The sealed intent of the minor is in the BotResources libraries registry. This f
 
 ## The building blocks
 
-Public, so that a runner author can write a node of their own: `Worker` (opened with `WorkerParts`; `step`, `tool_round`, `drain`, `close_turn`, `conversation`, `steps_remaining`), `Slot` (the settled client of a fallback list), `check_thinking` and `holds_thinking`, `warning_text` and `WARNING_WINDOW`, `mail_tools` with `SEND_MAIL` and `GET_MAIL_FILES`, `FileSystem` and `SandboxPath`, and `Fault`, `CallFailure` and `Stop`.
+Public, so that a runner author can write a node of their own: `Worker` (opened with `WorkerParts`; `step`, `tool_round`, `drain`, `close_turn`, `conversation`, `steps_made`, `steps_remaining`), `Slot` (the settled client of a fallback list), `check_thinking` and `holds_thinking`, `warning_text` and `WARNING_WINDOW`, `mail_tools` with `SEND_MAIL` and `GET_MAIL_FILES`, `FileSystem` and `SandboxPath`, and `Fault`, `CallFailure` and `Stop`.
 
 ## What the node does
 

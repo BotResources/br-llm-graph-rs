@@ -90,12 +90,6 @@ impl<F: Fields> Clone for AuthorSource<F> {
     }
 }
 
-impl<F: Fields> From<Author> for AuthorSource<F> {
-    fn from(author: Author) -> Self {
-        AuthorSource::Fixed(author)
-    }
-}
-
 impl<F: Fields> AuthorSource<F> {
     pub(crate) async fn resolve(&self, snapshot: &F, label: &AgentLabel) -> Result<Author, Fault> {
         match self {

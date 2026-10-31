@@ -35,7 +35,7 @@ Rework to the sealed intent of minor 0.2, on `br-agentic-contract` 0.2.0.
 ### Added
 
 - `Worker::open` (async, reads the conversation once), `Worker::conversation`, `Worker::steps_made`, `Worker::with_author`, `with_system`, `with_tools`; `Drained`.
-- `ReactSpec { fallback, outcome, author }`, `AuthorSource::{Fixed, Port}` (and `From<Author>`), `AuthorPort`.
+- `ReactSpec { fallback, outcome, author }`, `AuthorSource::{Fixed, Port}`, `AuthorPort`.
 - `ReactOutcome` (`response`, `steps`, `step_limit_reached`) with `ReactOutcomePort`; `GeneratorCriticOutcome` (`response`, `judgement`, `iterations`, `step_limit_reached`) with `GeneratorCriticOutcomePort`; `Judgement::{Validated, Rejected, NotJudged}`.
 - `RoundLimitEnding::{FinalGeneration (default), KeepRejectedGeneration, Fail}` and `GeneratorCritic::with_round_limit_ending`.
 - The programmatic critic: `ProgrammaticCritic { port, author, refusal_limit }`, `ProgrammaticCriticPort`, `ProgrammaticVerdict::{Accept, Refuse}`, `ProgrammaticRefusalLimit`, `PROGRAMMATIC_CRITIC_LABEL`, `GeneratorCritic::with_programmatic_critic`.

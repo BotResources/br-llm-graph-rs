@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-#![allow(dead_code, unused_imports)]
+#![allow(dead_code)]
 
 mod bounds;
 #[path = "../nodes/common/mod.rs"]

@@ -3,7 +3,6 @@ use br_agentic_nodes::{Judgement, RoundLimitEnding};
 use crate::common::*;
 use crate::items::*;
 use crate::kit::*;
-use crate::view::*;
 
 #[derive(Clone, Copy)]
 enum Kind {

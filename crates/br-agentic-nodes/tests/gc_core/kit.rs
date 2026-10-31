@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use br_agentic_contract::memory::Call;
 use br_agentic_nodes::{
     GeneratorCritic, Judgement, Ladder, ModelClient, RoundLimitEnding, StepLimitEnding,
     ThinkingExpectation,
@@ -11,9 +10,8 @@ use br_llm_clients_core::{
     BoxFuture, CallOutcome, Client, ClientRequest, ClientSettings, StreamSink,
 };
 use br_llm_messages::{
-    AITurn, AgentId, ClosureReason, ContentBlock, Conversation, EntryId, IncomingEntry,
-    ModelResponse, PlainBlock, ProjectedThread, ResponseEnding, ResponseMetadata, Turn,
-    TurnClosure, TurnEntry,
+    AITurn, ClosureReason, ContentBlock, Conversation, EntryId, ModelResponse, ResponseEnding,
+    ResponseMetadata, Turn, TurnClosure, TurnEntry,
 };
 
 use crate::common::*;
