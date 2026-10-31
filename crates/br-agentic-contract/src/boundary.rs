@@ -89,9 +89,22 @@ impl Run<'_, '_> {
 
 fn is_entry_of(mail: &MailItem, entry: &IncomingEntry) -> bool {
     entry.id() == mail.id().entry_id()
-        && match mail {
-            MailItem::To { .. } => matches!(entry, IncomingEntry::AgentMail(_)),
-            MailItem::Cc { .. } => matches!(entry, IncomingEntry::RuntimeNotice(_)),
+        && match (mail, entry) {
+            (
+                MailItem::To {
+                    sender,
+                    author,
+                    source,
+                    ..
+                },
+                IncomingEntry::AgentMail(agent_mail),
+            ) => {
+                agent_mail.sender() == *sender
+                    && agent_mail.author() == author
+                    && agent_mail.source_conversation() == *source
+            }
+            (MailItem::Cc { .. }, IncomingEntry::RuntimeNotice(_)) => true,
+            _ => false,
         }
 }
 

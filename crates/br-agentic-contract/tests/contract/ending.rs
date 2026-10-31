@@ -92,7 +92,7 @@ async fn given_open_objects_and_a_discard_that_fails_when_the_instance_is_cancel
 }
 
 #[tokio::test]
-async fn given_open_objects_and_a_discard_that_fails_when_the_instance_ends_with_result_then_the_error_is_ignored_the_input_end_is_closed_and_the_event_is_the_result()
+async fn given_open_objects_and_a_discard_that_fails_when_the_instance_ends_with_result_then_the_input_end_is_closed_and_the_event_is_failed_with_the_port_error()
  {
     let world = World::new();
     let flaky = Flaky::new(world.access.clone());
@@ -104,7 +104,7 @@ async fn given_open_objects_and_a_discard_that_fails_when_the_instance_ends_with
 
     let event = result::<Doc>(&reader, &mut session, 5).await;
 
-    assert!(matches!(event, Event::Result(5)));
+    assert!(matches!(event, Event::Failed(cause) if cause.to_string() == "a port failed"));
     assert_eq!(flaky.failed_calls.load(Ordering::SeqCst), 2);
     assert!(input_end.give(an_input()).is_err());
 }

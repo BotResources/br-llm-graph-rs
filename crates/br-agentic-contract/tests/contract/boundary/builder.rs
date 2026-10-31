@@ -1,5 +1,5 @@
 use br_agentic_contract::{BoundaryError, MailId, MailItem};
-use br_llm_messages::{AgentId, AgentMail, Error, RuntimeNotice};
+use br_llm_messages::{AgentId, AgentMail, Author, ConversationId, Error, RuntimeNotice};
 
 use super::*;
 
@@ -122,6 +122,111 @@ async fn given_a_mail_builder_that_gives_a_runtime_notice_with_another_id_for_a_
     let (error, id, queue) = run_with(&world, &[agent_id()], &[world.agent], &builder).await;
 
     assert_refused(&world, &error, id, &queue);
+}
+
+fn agent_mail_changing(
+    item: &MailItem,
+    change: impl FnOnce(&mut AgentId, &mut Author, &mut ConversationId),
+) -> IncomingEntry {
+    let MailItem::To {
+        id,
+        sender,
+        author,
+        source,
+        subject,
+        ..
+    } = item
+    else {
+        panic!("a mail in to")
+    };
+    let (mut sender, mut author, mut source) = (*sender, author.clone(), *source);
+    change(&mut sender, &mut author, &mut source);
+    IncomingEntry::from(
+        AgentMail::new(
+            id.entry_id(),
+            sender,
+            author,
+            source,
+            vec![text_block(subject)],
+        )
+        .unwrap(),
+    )
+}
+
+#[tokio::test]
+async fn given_a_mail_builder_that_gives_an_agent_mail_with_another_sender_than_the_item_when_the_boundary_runs_then_the_boundary_faults_and_nothing_is_stored_or_marked()
+ {
+    let world = World::new();
+    let builder = |item: &MailItem| {
+        Ok(agent_mail_changing(item, |sender, _, _| {
+            *sender = agent_id()
+        }))
+    };
+
+    let (error, id, queue) = run_with(&world, &[world.agent], &[], &builder).await;
+
+    assert_refused(&world, &error, id, &queue);
+}
+
+#[tokio::test]
+async fn given_a_mail_builder_that_gives_an_agent_mail_with_another_author_name_than_the_item_when_the_boundary_runs_then_the_boundary_faults_and_nothing_is_stored_or_marked()
+ {
+    let world = World::new();
+    let builder = |item: &MailItem| {
+        Ok(agent_mail_changing(item, |_, author, _| {
+            *author = super::author("somebody else")
+        }))
+    };
+
+    let (error, id, queue) = run_with(&world, &[world.agent], &[], &builder).await;
+
+    assert_refused(&world, &error, id, &queue);
+}
+
+#[tokio::test]
+async fn given_a_mail_builder_that_gives_an_agent_mail_with_another_source_conversation_than_the_item_when_the_boundary_runs_then_the_boundary_faults_and_nothing_is_stored_or_marked()
+ {
+    let world = World::new();
+    let builder = |item: &MailItem| {
+        Ok(agent_mail_changing(item, |_, _, source| {
+            *source = conversation_id()
+        }))
+    };
+
+    let (error, id, queue) = run_with(&world, &[world.agent], &[], &builder).await;
+
+    assert_refused(&world, &error, id, &queue);
+}
+
+#[tokio::test]
+async fn given_a_mail_builder_that_copies_the_sender_the_author_name_and_the_source_of_the_item_when_the_boundary_runs_then_the_entry_is_stored_and_the_item_is_marked()
+ {
+    let world = World::new();
+    let mail = new_mail(&[world.agent], &[], "hello");
+    let id = mail.id;
+    world.inbox.deliver_mail(agent_id(), mail).unwrap();
+    let batch = world
+        .inbox
+        .items(&world.context(), None, limit(5))
+        .await
+        .unwrap();
+    let mut session = world.session().await;
+    let mut queue = queue_of(&batch.items);
+    let builder = |item: &MailItem| Ok(agent_mail_changing(item, |_, _, _| {}));
+
+    let report = store_at_boundary(
+        &mut session,
+        &world.inbox,
+        &world.context(),
+        &mut queue,
+        &builder,
+        turn_id(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.stored, vec![id.entry_id()]);
+    assert!(world.inbox.is_read(world.agent, id.entry_id()));
 }
 
 #[tokio::test]

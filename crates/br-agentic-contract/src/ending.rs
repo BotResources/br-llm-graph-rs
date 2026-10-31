@@ -7,9 +7,12 @@ pub async fn result<F: Fields>(
     session: &mut Session<'_>,
     update: F::Update,
 ) -> Event<F> {
-    session.discard_all().await;
+    let errors = session.discard_all().await;
     reader.close();
-    Event::Result(update)
+    match errors.into_iter().next() {
+        Some(error) => Event::failed(error),
+        None => Event::Result(update),
+    }
 }
 
 pub async fn failed<F: Fields>(
