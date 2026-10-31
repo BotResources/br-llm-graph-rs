@@ -1,12 +1,9 @@
-use std::sync::Arc;
-
 use br_agentic_contract::{AgentLabel, ToolSet, save_files};
 use br_graph_contract::{Fields, InstanceId};
 use br_llm_messages::{ClosureReason, PlainText};
 
 use crate::config::Common;
 use crate::fault::Fault;
-use crate::mail_tools::mail_tools;
 use crate::sandbox::FileSystem;
 use crate::seats::{Seat, SeatSpec, Seats};
 use crate::worker::Worker;
@@ -24,6 +21,11 @@ impl Worker<'_> {
         specs: &[SeatSpec<'_, F>],
         agents: Vec<(AgentLabel, br_llm_messages::AgentId)>,
     ) -> Result<Seats, Fault> {
+        if specs.len() != agents.len() {
+            return Err(Fault::Value(
+                "the node has not one agent for each seat".to_owned(),
+            ));
+        }
         self.agents = agents.iter().map(|(_, agent)| *agent).collect();
         self.close_open_turns(&ClosureReason::interrupted(), true)
             .await?;
@@ -49,16 +51,7 @@ impl Worker<'_> {
         self.system = main.system.clone();
         self.known = vec![(main.agent, main.author.clone())];
         let tools = common.ports.tools.tools(snapshot, instance).await?;
-        let mail = match &common.ports.inbox {
-            Some(inbox) => mail_tools(
-                Arc::clone(inbox),
-                self.context,
-                main.author.clone(),
-                self.session.conversation().id(),
-                Arc::clone(&self.gate),
-            )?,
-            None => Vec::new(),
-        };
+        let mail = self.mail_tools()?;
         self.tools = ToolSet::new(tools, mail)?;
         let loaded = common
             .settings
@@ -69,8 +62,7 @@ impl Worker<'_> {
             .map(FileSystem::from_files)
             .transpose()
             .map_err(|error| Fault::Sandbox(error.to_string()))?;
-        self.read_inbox_now().await;
-        self.drain().await?;
+        self.drain_at_start().await?;
         Ok(seats)
     }
 

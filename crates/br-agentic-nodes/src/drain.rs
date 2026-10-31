@@ -22,6 +22,11 @@ fn is_request(item: &InboxItem) -> bool {
 }
 
 impl Worker<'_> {
+    pub async fn drain_at_start(&mut self) -> Result<Drained, Fault> {
+        self.read_inbox_now().await;
+        self.drain().await
+    }
+
     pub async fn drain(&mut self) -> Result<Drained, Fault> {
         let Some(inbox) = self.inbox.clone() else {
             return Ok(Drained::default());

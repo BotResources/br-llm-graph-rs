@@ -100,6 +100,24 @@ async fn given_a_mail_with_a_text_and_a_binary_document_when_the_files_are_asked
 }
 
 #[tokio::test(start_paused = true)]
+async fn given_an_attachment_name_with_a_line_break_when_the_files_are_asked_then_the_name_is_quoted_and_cannot_forge_a_line()
+ {
+    let rig = Rig::new();
+    let id = mail_with_documents(
+        &rig,
+        &[("a.txt\nforged: line", "ref-forged", b"the content".to_vec())],
+    );
+
+    let results = run_files(&rig, vec![files_call(id)]).await;
+
+    assert!(!results[0].is_error);
+    let text = results[0].text();
+    assert!(text.starts_with("\"a.txt\\nforged: line\":"), "{text}");
+    assert!(!text.contains("\nforged: line"), "{text}");
+    assert!(text.contains("the content"), "{text}");
+}
+
+#[tokio::test(start_paused = true)]
 async fn given_a_mail_with_no_document_when_the_files_are_asked_then_the_result_has_empty_content_and_no_error()
  {
     let rig = Rig::new();

@@ -21,6 +21,13 @@ struct Finished {
     ended: Result<Result<ToolContent, ToolFault>, Elapsed>,
 }
 
+struct Immediate {
+    entry: EntryId,
+    call: BlockId,
+    name: ToolName,
+    content: ToolContent,
+}
+
 fn timeout_text(name: &ToolName, timeout: Duration) -> String {
     let mut text = format!(
         "the call to the tool {} exceeded its timeout of {timeout:?}",
@@ -61,9 +68,21 @@ impl Worker<'_> {
             opened.push((call, entry, stream));
         }
         let mut running = JoinSet::new();
+        let mut immediate = Vec::new();
         for (call, entry, stream) in opened {
-            self.start_call(&target, call, entry, stream, &mut running)
-                .await?;
+            if let Some(answer) = self.start_call(call, entry, stream, &mut running)? {
+                immediate.push(answer);
+            }
+        }
+        for answer in immediate {
+            self.complete_call(
+                &target,
+                answer.entry,
+                answer.call,
+                answer.name,
+                answer.content,
+            )
+            .await?;
         }
         while let Some(joined) = running.join_next().await {
             let finished = joined.map_err(|error| Fault::Panic(error.to_string()))?;
@@ -88,23 +107,25 @@ impl Worker<'_> {
         Ok(())
     }
 
-    async fn start_call(
+    fn start_call(
         &mut self,
-        target: &AiTurnRef,
         call: &RuntimeToolCall,
         entry: EntryId,
         stream: ResultStreamBox,
         running: &mut JoinSet<Finished>,
-    ) -> Result<(), Fault> {
+    ) -> Result<Option<Immediate>, Fault> {
         let name = call.name().clone();
         let Some(tool) = self.tools.find(name.as_str()).cloned() else {
             let content =
                 ToolContent::error_text(format!("the node holds no tool named {}", name.as_str()))
                     .map_err(Fault::value)?;
             drop(stream);
-            return self
-                .complete_call(target, entry, call.id(), name, content)
-                .await;
+            return Ok(Some(Immediate {
+                entry,
+                call: call.id(),
+                name,
+                content,
+            }));
         };
         let arguments = call.arguments().clone();
         let cancel = self.cancel.clone();
@@ -122,7 +143,7 @@ impl Worker<'_> {
                 ended,
             }
         });
-        Ok(())
+        Ok(None)
     }
 
     async fn complete_call(
@@ -136,9 +157,20 @@ impl Worker<'_> {
         let mut ids = (0..content.content().len())
             .map(|_| block_id())
             .collect::<Result<Vec<_>, _>>()?;
+        let mut exhausted = false;
         let result = content
-            .into_result(block_id()?, call, name, || ids.pop().unwrap_or(call))
+            .into_result(block_id()?, call, name, || {
+                ids.pop().unwrap_or_else(|| {
+                    exhausted = true;
+                    call
+                })
+            })
             .map_err(Fault::value)?;
+        if exhausted {
+            return Err(Fault::Value(
+                "a tool result needed more block identities than it holds blocks".to_owned(),
+            ));
+        }
         let results = RuntimeToolResults::new(entry, vec![result]).map_err(Fault::value)?;
         self.session.complete_result(target, results).await?;
         Ok(())

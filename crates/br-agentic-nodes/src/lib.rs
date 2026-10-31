@@ -37,7 +37,7 @@ pub use generator_critic::{
     StepLimitEnding,
 };
 pub use limits::{InvalidLimit, ProgrammaticRefusalLimit, RoundLimit, StepLimit, Timeouts};
-pub use mail_tools::{GET_MAIL_FILES, SEND_MAIL, mail_tools};
+pub use mail_tools::{GET_MAIL_FILES, SEND_MAIL};
 pub use outcome::{GeneratorCriticOutcome, Judgement, ReactOutcome};
 pub use ports::{
     AuthorPort, CriticRequest, CriticRequestPort, GeneratorCriticOutcomePort,

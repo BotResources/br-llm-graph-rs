@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use br_agentic_contract::{
-    AiTurnRef, InboxContext, InboxPort, Queue, Session, ThreadAccess, ToolSet,
+    AiTurnRef, InboxContext, InboxPort, Queue, Session, ThreadAccess, Tool, ToolSet,
 };
 use br_graph_contract::CancelView;
 use br_llm_messages::{
@@ -12,6 +12,7 @@ use br_llm_messages::{
 use crate::fault::Fault;
 use crate::ids::entry_id;
 use crate::limits::{StepLimit, Steps, Timeouts};
+use crate::mail_tools::mail_tools;
 use crate::read::RunningRead;
 use crate::sandbox::FileSystem;
 
@@ -114,6 +115,19 @@ impl<'a> Worker<'a> {
 
     pub fn conversation(&self) -> &Conversation {
         self.session.conversation()
+    }
+
+    pub fn mail_tools(&self) -> Result<Vec<Tool>, Fault> {
+        match &self.inbox {
+            Some(inbox) => mail_tools(
+                Arc::clone(inbox),
+                self.context,
+                self.author()?.clone(),
+                self.session.conversation().id(),
+                Arc::clone(&self.gate),
+            ),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub(crate) fn author(&self) -> Result<&Author, Fault> {

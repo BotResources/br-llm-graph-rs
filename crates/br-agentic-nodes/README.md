@@ -16,7 +16,7 @@ The sealed intent of the minor is in the BotResources libraries registry. This f
 
 ## The building blocks
 
-Public, so that a runner author can write a node of their own: `Worker` (opened with `WorkerParts`; `step`, `tool_round`, `drain`, `close_turn`, `conversation`, `steps_made`, `steps_remaining`), `Slot` (the settled client of a fallback list), `check_thinking` and `holds_thinking`, `warning_text` and `WARNING_WINDOW`, `mail_tools` with `SEND_MAIL` and `GET_MAIL_FILES`, `FileSystem` and `SandboxPath`, and `Fault`, `CallFailure` and `Stop`.
+Public, so that a runner author can write a node of their own: `Worker` (opened with `WorkerParts`; `step`, `tool_round`, `drain_at_start` (the awaited inbox read of Start, then a drain), `drain`, `close_turn`, `conversation`, `steps_made`, `steps_remaining`, and `mail_tools`: the mail tools of a worker that has an inbox, bound to its conversation, empty without an inbox, a fault without an author), `Slot` (the settled client of a fallback list), `check_thinking` and `holds_thinking`, `warning_text` and `WARNING_WINDOW`, the names `SEND_MAIL` and `GET_MAIL_FILES`, `FileSystem` and `SandboxPath`, and `Fault`, `CallFailure` and `Stop`.
 
 ## What the node does
 
@@ -25,6 +25,7 @@ Public, so that a runner author can write a node of their own: `Worker` (opened 
 - The thinking rule (a client declared `Expected` must give a thinking block) applies to the first model call of a ReAct instance, the first step of each pass of a generator, and each call of the critic. A failed call there is handled by the fallback.
 - The inbox is read at Start with an awaited read, then by one background read at a time, started at each boundary (start of a pass, after a tool run that left no provider continuation and no provider execution pending, after the closure of a final response). The read is never awaited at a boundary; its items join the queue when it has finished. A read or a mark that fails is not a fault.
 - The mail of an inbox item is built by this crate: the text carries the sender, the recipients, the subject, the body and the attachment names, and each text written by the sender is quoted and escaped.
+- No tool can reach the file system of the node: a `ToolCode` gets only its arguments, a cancel view and a result stream. `Result` saves back what Start loaded.
 - A fault closes the open AI turn of the node `Failed`; a cancel closes it `Cancelled`; both discard the open objects, drop the running read and ignore the errors of these closures and discards.
 
 ## Why

@@ -259,12 +259,12 @@ The public API names types of the libraries it builds on, so pin them beside it 
 
 | Part | What the crate gives |
 |---|---|
-| `ReactAgent`, `GeneratorCritic` | the two nodes; built with `Ports`, `Settings` (step limit, `Timeouts`, web access, file system mode) and a spec: `ReactSpec` (fallback list, outcome port, `AuthorSource`) or `GeneratorCriticSpec` (two `Ladder`s, `RoundLimit`, `CriticRequestSource`, `StepLimitEnding`, two `AuthorSource`s, outcome port), then `with_round_limit_ending` and `with_programmatic_critic` |
+| `ReactAgent`, `GeneratorCritic` | the two nodes; built with `Ports`, `Settings` (step limit, `Timeouts`, web access, file system mode) and a spec: `ReactSpec` (fallback list, outcome port, `AuthorSource`) or `GeneratorCriticSpec` (two `Ladder`s, `RoundLimit`, `CriticRequestSource`, two `AuthorSource`s, outcome port), then `with_step_limit_ending` (`StepLimitEnding`), `with_round_limit_ending` and `with_programmatic_critic` |
 | `PromptPort`, `AuthorPort`, `ReactOutcomePort`, `GeneratorCriticOutcomePort`, `CriticRequestPort`, `ProgrammaticCriticPort` | what the runner gives besides the ports of the contract: the system prompt and the author name of an agent label, the update that the end of an instance gives (`ReactOutcome`; `GeneratorCriticOutcome` with a `Judgement`), the critic request for a response, and the check of the programmatic critic |
 | `FallbackList`, `Ladder`, `Slot`, `ModelClient`, `ThinkingExpectation` | the first call of a pass goes to the next client when it fails, times out or breaks the thinking rule; a client that worked is kept for the pass (the round, for the critic); one client means no retry |
 | `check_thinking`, `holds_thinking`, `warning_text`, `WARNING_WINDOW` | the thinking rule and the text that is sent with the tool results when at most 10 steps remain (never stored) |
-| `Worker`, `WorkerParts`, `Drained` | the conversation copy, step, tool round, drain and turn closing, to write an agentic node of your own |
-| `mail_tools`, `SEND_MAIL`, `GET_MAIL_FILES` | the two tools of a node with an inbox; `get_mail_files` acts only on incoming entries that the node holds |
+| `Worker`, `WorkerParts`, `Drained` | the conversation copy, step, tool round, drain (`drain_at_start` for the awaited read of Start) and turn closing, to write an agentic node of your own; `Worker::mail_tools` gives the two mail tools of a worker that has an inbox |
+| `SEND_MAIL`, `GET_MAIL_FILES` | the names of the two tools of a node with an inbox; `get_mail_files` acts only on incoming entries that the node holds |
 | `FileSystem`, `SandboxPath` | the file system of the node, with normalized relative paths, loaded at the start and saved before `Result` |
 
 Behaviour to know:

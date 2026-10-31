@@ -101,9 +101,6 @@ impl Ladder {
     pub fn entry(&self, position: u32) -> &FallbackList {
         let last = self.entries.len().saturating_sub(1);
         let index = usize::try_from(position).map_or(last, |index| index.min(last));
-        match self.entries.get(index) {
-            Some(entry) => entry,
-            None => &self.entries[last],
-        }
+        &self.entries[index]
     }
 }

@@ -12,7 +12,7 @@ use crate::drain::Drained;
 use crate::fault::{Fault, Stop};
 use crate::outcome::{GeneratorCriticOutcome, Judgement};
 use crate::pass::PassEnd;
-use crate::ports::{CriticRequest, ProgrammaticVerdict};
+use crate::ports::ProgrammaticVerdict;
 use crate::run::Body;
 use crate::seats::{SeatSpec, Seats};
 use crate::slot::Slot;
@@ -52,10 +52,6 @@ impl<F: Fields> GcBody<F> {
             CriticRequestSource::Port(port) => port.request(snapshot, response).await?,
         };
         PlainText::new(request.text.as_str()).map_err(Fault::value)?;
-        let request = CriticRequest {
-            text: request.text,
-            human: request.human,
-        };
         call_critic(
             worker,
             seats.get(CRITIC_LABEL)?,

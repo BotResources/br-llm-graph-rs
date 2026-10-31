@@ -11,12 +11,13 @@ use serde::Deserialize;
 
 use crate::fault::Fault;
 use crate::ids::entry_id;
+use crate::mail_entry::quote;
 use crate::worker::MailGate;
 
 pub const SEND_MAIL: &str = "send_mail";
 pub const GET_MAIL_FILES: &str = "get_mail_files";
 
-pub fn mail_tools(
+pub(crate) fn mail_tools(
     inbox: Arc<dyn InboxPort>,
     context: InboxContext,
     author: Author,
@@ -237,10 +238,10 @@ struct GetMailFiles {
 
 fn document_block(document: &MailDocument) -> Result<ToolBlock, ToolFault> {
     let text = match std::str::from_utf8(&document.content) {
-        Ok(content) => format!("{}:\n{content}", document.name),
+        Ok(content) => format!("{}:\n{content}", quote(&document.name)),
         Err(_) => format!(
             "{}: a document of {} bytes that is not text",
-            document.name,
+            quote(&document.name),
             document.content.len()
         ),
     };

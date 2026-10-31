@@ -18,6 +18,7 @@ Rework to the sealed intent of minor 0.2, on `br-agentic-contract` 0.2.0.
 - `Outcome` (with `response`, `step_limit_reached`, `verdict`) and `OutcomePort`; `Ports::new` no longer takes the outcome port.
 - `ReactAgent::with_author`, `ReactAgent::restart`, `GeneratorCritic::restart`, `GeneratorCritic::with_authors`, `with_generator_author`, `with_critic_author`, `with_critic_thinking_field`. The shape of the critic answer follows the `ThinkingExpectation` of the client of each attempt.
 - `Worker::new`, `Worker::load`, `WorkerParts::author`, `WorkerParts::system`, `WorkerParts::tools`.
+- The free function `mail_tools`; a worker gives its mail tools with `Worker::mail_tools`.
 
 ### Changed
 
@@ -29,12 +30,11 @@ Rework to the sealed intent of minor 0.2, on `br-agentic-contract` 0.2.0.
 - `WorkerParts::inbox` is an `Option<Arc<dyn InboxPort>>`.
 - `Worker::drain` gives `Drained { stored, request_stored }`.
 - `Worker::close_turn` takes `&mut self` and an `&AiTurnRef`.
-- `mail_tools(inbox, inbox_context, author, conversation_id, seen_entries)`.
 - `GeneratorCriticSpec` gains `generator_author`, `critic_author` and `outcome`.
 
 ### Added
 
-- `Worker::open` (async, reads the conversation once), `Worker::conversation`, `Worker::steps_made`, `Worker::with_author`, `with_system`, `with_tools`; `Drained`.
+- `Worker::open` (async, reads the conversation once), `Worker::conversation`, `Worker::steps_made`, `Worker::with_author`, `with_system`, `with_tools`, `Worker::mail_tools`, `Worker::drain_at_start`; `Drained`.
 - `ReactSpec { fallback, outcome, author }`, `AuthorSource::{Fixed, Port}`, `AuthorPort`.
 - `ReactOutcome` (`response`, `steps`, `step_limit_reached`) with `ReactOutcomePort`; `GeneratorCriticOutcome` (`response`, `judgement`, `iterations`, `step_limit_reached`) with `GeneratorCriticOutcomePort`; `Judgement::{Validated, Rejected, NotJudged}`.
 - `RoundLimitEnding::{FinalGeneration (default), KeepRejectedGeneration, Fail}` and `GeneratorCritic::with_round_limit_ending`.
@@ -50,8 +50,10 @@ Rework to the sealed intent of minor 0.2, on `br-agentic-contract` 0.2.0.
 - The round counter and the programmatic-refusal counter go back to 0 only when a request item is stored.
 - All results of a tool run are opened before any call starts. Inbox errors in the mail tools are error results, never faults.
 - The critic projection drops agent mails and runtime notices from input turns.
-- A failed discard at `Result` is a fault.
-- Web access is held in the settings but not enforced by this crate.
+- A failed discard at `Result` is a fault of the instance, as `br-agentic-contract` 0.2.0 rules; this crate has no code for it.
+- Web access is held in the settings but not enforced by this crate. No tool can reach the file system of the node: a `ToolCode` gets only its arguments, a cancel view and a result stream.
+- All calls of a tool run start together: a call to a tool the node does not hold gets its error result after the real calls have started.
+- `get_mail_files` gives each attachment name quoted, like the mail text, so a name written by the sender cannot forge a line of the result.
 
 ## 0.1.0 - 2026-10-29
 
