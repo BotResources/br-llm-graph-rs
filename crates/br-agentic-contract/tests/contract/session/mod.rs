@@ -178,4 +178,5 @@ async fn given_an_open_response_when_the_session_opens_it_then_the_object_is_not
     assert_eq!(session.open_objects(), 1);
 }
 
+mod independence;
 mod streaming;

@@ -52,7 +52,7 @@ async fn given_an_item_that_a_read_already_gave_and_that_is_still_unread_when_th
     assert!(waited.unwrap().is_ok());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn given_no_unread_item_when_the_caller_waits_then_the_wait_returns_when_an_item_arrives_and_gives_nothing_else()
  {
     let world = World::new();
@@ -73,7 +73,7 @@ async fn given_no_unread_item_when_the_caller_waits_then_the_wait_returns_when_a
     assert!(outcome.is_ok());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn given_a_wait_when_an_item_arrives_for_another_agent_then_the_wait_goes_on() {
     let world = World::new();
     let context = world.context();
@@ -91,7 +91,7 @@ async fn given_a_wait_when_an_item_arrives_for_another_agent_then_the_wait_goes_
     waiting.abort();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn given_a_wait_that_is_dropped_when_an_item_arrives_then_nothing_is_lost() {
     let world = World::new();
     let context = world.context();

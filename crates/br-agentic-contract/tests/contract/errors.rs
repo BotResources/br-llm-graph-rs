@@ -21,9 +21,9 @@ fn given_a_fault_then_the_error_keeps_an_opaque_cause_and_is_not_a_refusal() {
 }
 
 #[test]
-fn given_a_refused_request_when_a_tool_turns_it_into_its_result_then_the_content_has_the_error_flag_and_the_reason_as_text_and_there_is_no_fault()
+fn given_a_refused_request_of_the_inbox_when_a_tool_turns_it_into_its_result_then_the_content_has_the_error_flag_and_the_reason_as_text()
  {
-    let content = ToolContent::from_port_error(PortError::refused("not a recipient")).unwrap();
+    let content = ToolContent::from_inbox_error(PortError::refused("not a recipient"));
 
     assert!(content.is_error());
     assert_eq!(
@@ -33,17 +33,23 @@ fn given_a_refused_request_when_a_tool_turns_it_into_its_result_then_the_content
 }
 
 #[test]
-fn given_a_refused_request_with_a_blank_reason_when_a_tool_turns_it_into_its_result_then_the_content_still_has_the_error_flag_and_a_text()
+fn given_a_refused_request_of_the_inbox_with_a_blank_reason_when_a_tool_turns_it_into_its_result_then_the_content_still_has_the_error_flag_and_a_text()
  {
-    let content = ToolContent::from_port_error(PortError::refused("  ")).unwrap();
+    let content = ToolContent::from_inbox_error(PortError::refused("  "));
 
     assert!(content.is_error());
     assert_eq!(content.content().len(), 1);
 }
 
 #[test]
-fn given_a_fault_when_a_tool_turns_it_into_its_result_then_it_stays_a_fault_with_the_same_cause() {
-    let fault = ToolContent::from_port_error(PortError::fault("link down")).unwrap_err();
+fn given_a_fault_of_the_inbox_when_a_tool_turns_it_into_its_result_then_the_content_has_the_error_flag_and_a_text_without_the_cause_and_the_run_goes_on()
+ {
+    let content = ToolContent::from_inbox_error(PortError::fault("link down at 10.0.0.7"));
 
-    assert_eq!(fault.cause().to_string(), "link down");
+    assert!(content.is_error());
+    let [ToolBlock::Text(text)] = content.content() else {
+        panic!("one text block")
+    };
+    assert!(!text.as_str().trim().is_empty());
+    assert!(!text.as_str().contains("10.0.0.7"));
 }

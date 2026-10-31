@@ -1,6 +1,5 @@
 use br_agentic_contract::{
-    AgentLabel, FileSystemMode, InvalidLabel, InvalidSite, InvalidThreadRef, MailId, Site,
-    ThreadRef, WebAccess,
+    AgentLabel, InvalidLabel, InvalidSite, InvalidThreadRef, MailId, Site, ThreadRef, WebAccess,
 };
 use br_llm_messages::Uuid;
 
@@ -66,10 +65,4 @@ fn given_the_three_web_accesses_then_only_none_and_the_empty_whitelist_reach_not
     let one = WebAccess::Whitelist(vec![Site::new("example.org").unwrap()]);
     assert!(!one.reaches_nothing());
     assert_eq!(one.sites().len(), 1);
-}
-
-#[test]
-fn given_the_three_file_system_modes_then_they_are_distinct_values() {
-    assert_ne!(FileSystemMode::Always, FileSystemMode::Might);
-    assert_ne!(FileSystemMode::Might, FileSystemMode::Never);
 }

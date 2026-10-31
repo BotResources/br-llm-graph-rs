@@ -3,11 +3,13 @@
 mod adapter_example;
 mod boundary;
 mod common;
+mod concurrent;
 mod dyn_compat;
 mod ending;
 mod errors;
 mod failing_inbox;
 mod flaky;
+mod forgetful;
 mod inbox_items;
 mod inbox_mail;
 mod mail_documents;

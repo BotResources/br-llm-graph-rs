@@ -173,6 +173,26 @@ async fn given_an_inbox_whose_read_fails_after_a_first_batch_when_the_queue_read
 }
 
 #[tokio::test]
+async fn given_an_inbox_that_gives_the_same_cursor_twice_when_the_queue_reads_it_then_the_read_is_a_fault_and_the_queue_keeps_the_items_it_holds()
+ {
+    let world = World::new();
+    let items: Vec<InboxItem> = (0..3)
+        .map(|n| human_item(&format!("m{n}"), &world))
+        .collect();
+    let mut inbox = FailingInbox::new(&world.inbox);
+    inbox.stuck_cursor = true;
+    let mut queue = Queue::new();
+
+    let error = queue
+        .read(&inbox, &world.context(), limit(2))
+        .await
+        .unwrap_err();
+
+    assert!(!error.is_refusal());
+    assert_eq!(queue.items(), &items[..2]);
+}
+
+#[tokio::test]
 async fn given_an_inbox_whose_documents_fail_when_the_documents_of_a_mail_are_asked_then_the_inbox_error_is_returned_unchanged_and_not_as_a_refusal()
  {
     let world = World::new();

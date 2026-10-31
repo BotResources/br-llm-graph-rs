@@ -19,6 +19,7 @@ pub struct FailingInbox<'a> {
     pub marks: FailingMarks,
     pub items_before_failing: Option<usize>,
     pub fail_wait: bool,
+    pub stuck_cursor: bool,
     pub fail_send: bool,
     pub fail_documents: bool,
     items_calls: AtomicUsize,
@@ -32,6 +33,7 @@ impl<'a> FailingInbox<'a> {
             marks: FailingMarks::None,
             items_before_failing: None,
             fail_wait: false,
+            stuck_cursor: false,
             fail_send: false,
             fail_documents: false,
             items_calls: AtomicUsize::new(0),
@@ -63,6 +65,14 @@ impl InboxPort for FailingInbox<'_> {
         match self.items_before_failing {
             Some(allowed) if call >= allowed => {
                 Box::pin(async { Err(PortError::fault("the inbox read failed")) })
+            }
+            _ if self.stuck_cursor => {
+                let page = self.inner.items(context, None, limit);
+                Box::pin(async move {
+                    let mut batch = page.await?;
+                    batch.next = Some(Cursor::new("stuck"));
+                    Ok(batch)
+                })
             }
             _ => self.inner.items(context, after, limit),
         }
