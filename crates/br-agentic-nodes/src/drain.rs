@@ -1,52 +1,64 @@
-use std::num::NonZeroUsize;
+use std::collections::HashSet;
 
-use br_agentic_contract::{Cursor, store_at_boundary};
+use br_agentic_contract::{InboxItem, store_at_boundary};
+use br_llm_messages::{EntryId, IncomingEntry};
 
 use crate::fault::Fault;
 use crate::ids::turn_id;
+use crate::mail_entry::MailEntries;
 use crate::worker::Worker;
 
-const BATCH: NonZeroUsize = match NonZeroUsize::new(64) {
-    Some(batch) => batch,
-    None => NonZeroUsize::MIN,
-};
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Drained {
+    pub stored: usize,
+    pub request_stored: bool,
+}
+
+fn is_request(item: &InboxItem) -> bool {
+    match item {
+        InboxItem::Mail(_) => true,
+        InboxItem::Entry(entry) => matches!(entry.entry(), IncomingEntry::HumanMessage(_)),
+    }
+}
 
 impl Worker<'_> {
-    pub(crate) async fn read_inbox(&mut self) -> Result<(), Fault> {
-        let Some(inbox) = self.inbox else {
-            return Ok(());
-        };
-        let mut cursor: Option<Cursor> = None;
-        loop {
-            let batch = inbox.items(&self.context, cursor.as_ref(), BATCH).await?;
-            for item in batch.items {
-                self.queue.push(item);
-            }
-            match batch.next {
-                Some(next) => cursor = Some(next),
-                None => return Ok(()),
-            }
-        }
+    pub async fn drain_at_start(&mut self) -> Result<Drained, Fault> {
+        self.read_inbox_now().await;
+        self.drain().await
     }
 
-    pub async fn drain(&mut self) -> Result<usize, Fault> {
-        let Some(inbox) = self.inbox else {
-            return Ok(0);
+    pub async fn drain(&mut self) -> Result<Drained, Fault> {
+        let Some(inbox) = self.inbox.clone() else {
+            return Ok(Drained::default());
         };
-        self.read_inbox().await?;
+        self.refresh_read().await;
         if self.queue.is_empty() {
-            return Ok(0);
+            return Ok(Drained::default());
         }
+        let requests: HashSet<EntryId> = self
+            .queue
+            .items()
+            .iter()
+            .filter(|item| is_request(item))
+            .map(InboxItem::id)
+            .collect();
+        let entries = MailEntries::new(self.known.clone());
         let boundary = store_at_boundary(
-            self.access,
-            inbox,
+            &mut self.session,
+            &*inbox,
             &self.context,
             &mut self.queue,
+            &|item| entries.build(item),
             turn_id()?,
         )
         .await?;
-        let stored = boundary.stored.len();
-        self.stored_items = self.stored_items.saturating_add(stored);
-        Ok(stored)
+        let request_stored = boundary.stored.iter().any(|id| requests.contains(id));
+        if request_stored {
+            self.counters.reset();
+        }
+        Ok(Drained {
+            stored: boundary.stored.len(),
+            request_stored,
+        })
     }
 }

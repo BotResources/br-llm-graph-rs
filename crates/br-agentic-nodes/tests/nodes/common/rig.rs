@@ -3,29 +3,39 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use br_agentic_contract::memory::{
-    FixedThreadPort, FixedToolsPort, MemoryAgentPort, MemoryHub, MemoryWorkspace,
+    FixedThreadPort, FixedToolsPort, MemoryAgentPort, MemoryInbox, MemoryThreadAccess,
+    MemoryWorkspace, Record,
 };
 use br_agentic_contract::{
-    AgentLabel, AgentPort, FileSystemMode, InboxEntry, Incoming, PortFault, ThreadAccess,
-    ThreadRef, Tool, WebAccess, WorkspaceFile,
+    AgentLabel, FileSystemMode, InboxEntry, PortError, PortFuture, ThreadRef, Tool, WebAccess,
+    WorkspaceFile,
 };
 use br_agentic_nodes::{
-    CriticRequest, CriticRequestSource, FallbackList, GeneratorCritic, GeneratorCriticSpec, Ladder,
-    ModelClient, Ports, PromptPort, ReactAgent, RoundLimit, Settings, StepLimit,
-    ThinkingExpectation, Timeouts,
+    AuthorSource, CriticRequest, CriticRequestSource, FallbackList, GeneratorCritic,
+    GeneratorCriticSpec, Ladder, ModelClient, Ports, PromptPort, ReactAgent, ReactSpec, RoundLimit,
+    Settings, StepLimit, ThinkingExpectation, Timeouts,
 };
-use br_llm_clients_core::BoxFuture;
-use br_llm_messages::{AgentId, HumanId, HumanMessage, IncomingEntry, PlainText, TurnId};
+use br_llm_messages::{
+    AgentId, Conversation, ConversationId, HumanId, HumanMessage, IncomingEntry, InputTurn, Turn,
+};
 
-use super::ids::{author, entry_id, human_id, instance_id, text_block, turn_id};
+use super::ids::{author, entry_id, human_id, text_block, turn_id, uuid};
 use super::{Doc, Recording, Scripted};
 
 #[derive(Default)]
 pub struct Prompts {
     asked: Mutex<HashMap<String, usize>>,
+    blank: bool,
 }
 
 impl Prompts {
+    pub fn blank() -> Self {
+        Self {
+            asked: Mutex::default(),
+            blank: true,
+        }
+    }
+
     pub fn asked(&self, label: &str) -> usize {
         self.asked.lock().unwrap().get(label).copied().unwrap_or(0)
     }
@@ -36,7 +46,7 @@ impl PromptPort<Doc> for Prompts {
         &'a self,
         _snapshot: &'a Doc,
         label: &'a AgentLabel,
-    ) -> BoxFuture<'a, Result<PlainText, PortFault>> {
+    ) -> PortFuture<'a, Result<String, PortError>> {
         Box::pin(async move {
             *self
                 .asked
@@ -44,25 +54,39 @@ impl PromptPort<Doc> for Prompts {
                 .unwrap()
                 .entry(label.as_str().to_owned())
                 .or_default() += 1;
-            Ok(PlainText::new(format!("system prompt of the {label}")).unwrap())
+            if self.blank {
+                return Ok("   ".to_owned());
+            }
+            Ok(format!("system prompt of the {label}"))
         })
     }
 }
 
 pub struct Rig {
-    pub hub: MemoryHub,
+    pub record: Record,
     pub thread: ThreadRef,
+    pub access: Arc<MemoryThreadAccess>,
+    pub inbox: Arc<MemoryInbox>,
     pub outcome: Arc<Recording>,
     pub workspace: Arc<MemoryWorkspace>,
     pub prompts: Arc<Prompts>,
     pub agents: Arc<MemoryAgentPort<Doc>>,
     pub tools: Vec<Tool>,
-    pub inbox: bool,
+    pub with_inbox: bool,
     pub settings: Settings,
+    pub agent: AgentId,
+    pub generator: AgentId,
+    pub critic: AgentId,
+    pub programmatic: AgentId,
+    pub conversation_id: ConversationId,
 }
 
 pub fn client(scripted: &Arc<Scripted>) -> ModelClient {
     ModelClient::new(scripted.clone(), ThinkingExpectation::NotExpected)
+}
+
+pub fn thinking_client(scripted: &Arc<Scripted>) -> ModelClient {
+    ModelClient::new(scripted.clone(), ThinkingExpectation::Expected)
 }
 
 pub fn list(clients: &[&Arc<Scripted>]) -> FallbackList {
@@ -83,44 +107,86 @@ pub fn doc() -> Doc {
     }
 }
 
+pub fn agent_id() -> AgentId {
+    AgentId::from_uuid(uuid()).unwrap()
+}
+
+pub fn human_message(text: &str) -> HumanMessage {
+    HumanMessage::new(entry_id(), human_id(), vec![text_block(text)]).unwrap()
+}
+
+pub fn inbox_entry(text: &str) -> InboxEntry {
+    InboxEntry::new(IncomingEntry::from(human_message(text))).unwrap()
+}
+
+pub fn conversation_with(id: ConversationId, first: &str) -> Conversation {
+    let mut conversation = Conversation::new(id);
+    let turn = InputTurn::new(turn_id(), vec![IncomingEntry::from(human_message(first))]).unwrap();
+    conversation.push_turn(Turn::from(turn)).unwrap();
+    conversation
+}
+
+pub fn critic_request() -> CriticRequest {
+    CriticRequest {
+        text: "what do you think of this?".to_owned(),
+        human: HumanId::from_uuid(uuid()).unwrap(),
+    }
+}
+
 impl Rig {
     pub fn new() -> Self {
-        Self::with_authors(true)
+        let conversation_id = ConversationId::from_uuid(uuid()).unwrap();
+        Self::with_conversation(conversation_id, conversation_with(conversation_id, "start"))
     }
 
-    pub fn without_authors() -> Self {
-        Self::with_authors(false)
+    pub fn empty() -> Self {
+        let conversation_id = ConversationId::from_uuid(uuid()).unwrap();
+        Self::with_conversation(conversation_id, Conversation::new(conversation_id))
     }
 
-    fn with_authors(named: bool) -> Self {
-        let hub = MemoryHub::new();
-        let thread = hub.create_thread();
-        let mut agents = MemoryAgentPort::new(hub.clone());
-        if named {
-            for label in ["agent", "generator", "critic"] {
-                agents = agents.with_author(AgentLabel::new(label).unwrap(), author(label));
-            }
+    pub fn with_conversation(conversation_id: ConversationId, conversation: Conversation) -> Self {
+        let record = Record::new();
+        let thread = ThreadRef::from_uuid(uuid()).unwrap();
+        let agent = agent_id();
+        let generator = agent_id();
+        let critic = agent_id();
+        let programmatic = agent_id();
+        let mut agents = MemoryAgentPort::new(&record);
+        for (label, id) in [
+            ("agent", agent),
+            ("generator", generator),
+            ("critic", critic),
+            ("programmatic_critic", programmatic),
+        ] {
+            agents = agents.with_agent(AgentLabel::new(label).unwrap(), id);
         }
         Self {
-            thread,
+            access: Arc::new(MemoryThreadAccess::new(&record, thread, conversation)),
+            inbox: Arc::new(MemoryInbox::new(&record)),
             outcome: Arc::new(Recording::default()),
-            workspace: Arc::new(MemoryWorkspace::new(Vec::new())),
+            workspace: Arc::new(MemoryWorkspace::new(&record, Vec::new())),
             prompts: Arc::new(Prompts::default()),
             agents: Arc::new(agents),
             tools: Vec::new(),
-            inbox: false,
+            with_inbox: false,
             settings: Settings::new(
                 StepLimit::new(20).unwrap(),
                 Timeouts::new(Duration::from_secs(5), Duration::from_secs(5)).unwrap(),
                 WebAccess::Full,
                 FileSystemMode::Never,
             ),
-            hub,
+            record,
+            thread,
+            agent,
+            generator,
+            critic,
+            programmatic,
+            conversation_id,
         }
     }
 
     pub fn with_inbox(mut self) -> Self {
-        self.inbox = true;
+        self.with_inbox = true;
         self
     }
 
@@ -141,32 +207,71 @@ impl Rig {
 
     pub fn with_files(mut self, mode: FileSystemMode, files: Vec<WorkspaceFile>) -> Self {
         self.settings.file_system = mode;
-        self.workspace = Arc::new(MemoryWorkspace::new(files));
+        self.workspace = Arc::new(MemoryWorkspace::new(&self.record, files));
+        self
+    }
+
+    pub fn with_outcome(mut self, outcome: Recording) -> Self {
+        self.outcome = Arc::new(outcome);
+        self
+    }
+
+    pub fn with_prompts(mut self, prompts: Prompts) -> Self {
+        self.prompts = Arc::new(prompts);
         self
     }
 
     pub fn ports(&self) -> Ports<Doc> {
         let ports = Ports::new(
-            Arc::new(FixedThreadPort::new(self.thread)),
+            Arc::new(FixedThreadPort::new(&self.record, self.thread)),
             self.agents.clone(),
-            Arc::new(self.hub.thread_access()),
+            self.access.clone(),
             self.prompts.clone(),
-            Arc::new(FixedToolsPort::new(self.tools.clone())),
+            Arc::new(FixedToolsPort::new(&self.record, self.tools.clone())),
             self.workspace.clone(),
-            self.outcome.clone(),
         );
-        if self.inbox {
-            ports.with_inbox(Arc::new(self.hub.inbox()))
+        if self.with_inbox {
+            ports.with_inbox(self.inbox.clone())
         } else {
             ports
         }
     }
 
-    pub fn react(&self, clients: &[&Arc<Scripted>]) -> ReactAgent<Doc> {
-        ReactAgent::new("agent", self.ports(), list(clients), self.settings.clone())
+    pub fn react_spec(&self, fallback: FallbackList) -> ReactSpec<Doc> {
+        ReactSpec {
+            fallback,
+            outcome: self.outcome.clone(),
+            author: AuthorSource::Fixed(author("Agent")),
+        }
     }
 
-    pub fn generator_critic(
+    pub fn react(&self, clients: &[&Arc<Scripted>]) -> ReactAgent<Doc> {
+        ReactAgent::new(
+            "agent",
+            self.ports(),
+            self.settings.clone(),
+            self.react_spec(list(clients)),
+        )
+    }
+
+    pub fn pair_spec(
+        &self,
+        generator: Ladder,
+        critic: Ladder,
+        round_limit: u32,
+    ) -> GeneratorCriticSpec<Doc> {
+        GeneratorCriticSpec {
+            generator,
+            critic,
+            round_limit: RoundLimit::new(round_limit).unwrap(),
+            critic_request: CriticRequestSource::Fixed(critic_request()),
+            generator_author: AuthorSource::Fixed(author("Generator")),
+            critic_author: AuthorSource::Fixed(author("Critic")),
+            outcome: self.outcome.clone(),
+        }
+    }
+
+    pub fn pair(
         &self,
         generator: Ladder,
         critic: Ladder,
@@ -176,120 +281,17 @@ impl Rig {
             "pair",
             self.ports(),
             self.settings.clone(),
-            GeneratorCriticSpec {
-                generator,
-                critic,
-                round_limit: RoundLimit::new(round_limit).unwrap(),
-                critic_request: CriticRequestSource::Fixed(critic_request()),
-            },
+            self.pair_spec(generator, critic, round_limit),
         )
     }
 
-    pub async fn agent(&self, label: &str) -> AgentId {
-        let label = AgentLabel::new(label).unwrap();
-        self.agents
-            .agent(&doc(), instance_id(), &label)
-            .await
-            .unwrap()
-            .id
-    }
-
-    pub async fn start_with(&self, text: &str) -> TurnId {
-        let agent = self.agent("agent").await;
-        self.start_as(agent, text).await
-    }
-
-    pub async fn start_as(&self, agent: AgentId, text: &str) -> TurnId {
-        let turn = turn_id();
-        let message = HumanMessage::new(entry_id(), human_id(), vec![text_block(text)]).unwrap();
-        let entry = InboxEntry::new(IncomingEntry::from(message)).unwrap();
-        self.hub
-            .thread_access()
-            .add_input_turn(&self.thread, agent, turn, vec![Incoming::Entry(entry)])
-            .await
-            .unwrap();
-        turn
-    }
-
-    pub fn deliver_human(&self, agent: AgentId, text: &str) -> br_llm_messages::EntryId {
-        let message = HumanMessage::new(entry_id(), human_id(), vec![text_block(text)]).unwrap();
-        let id = message.id();
-        self.hub.deliver_entry(
-            agent,
-            InboxEntry::new(IncomingEntry::from(message)).unwrap(),
-        );
-        id
+    pub fn conversation(&self) -> Conversation {
+        self.access.conversation()
     }
 }
 
-pub fn critic_request() -> CriticRequest {
-    CriticRequest {
-        text: PlainText::new("what do you think of this?").unwrap(),
-        human: HumanId::from_uuid(super::ids::uuid()).unwrap(),
-    }
-}
-
-impl Rig {
-    pub fn context_of(&self, agent: AgentId) -> br_agentic_contract::InboxContext {
-        br_agentic_contract::InboxContext {
-            instance: instance_id(),
-            thread: self.thread,
-            agent,
-        }
-    }
-
-    pub async fn send_mail(
-        &self,
-        from: AgentId,
-        to: AgentId,
-        subject: &str,
-        attachments: Vec<br_agentic_contract::Attachment>,
-    ) -> br_agentic_contract::MailId {
-        use br_agentic_contract::InboxPort;
-        let id = super::ids::mail_id();
-        self.hub
-            .inbox()
-            .send(
-                &self.context_of(from),
-                br_agentic_contract::NewMail {
-                    id,
-                    to: vec![to],
-                    cc: Vec::new(),
-                    subject: subject.to_owned(),
-                    body: "the body".to_owned(),
-                    attachments,
-                },
-            )
-            .await
-            .unwrap();
-        id
-    }
-}
-
-impl Rig {
-    pub fn deliver_human_later(&self, _agent: AgentId, text: &str) -> InboxEntry {
-        let message = HumanMessage::new(entry_id(), human_id(), vec![text_block(text)]).unwrap();
-        InboxEntry::new(IncomingEntry::from(message)).unwrap()
-    }
-}
-
-impl Rig {
-    pub async fn start_gc(&self, text: &str) -> AgentId {
-        let agent = self.agent("generator").await;
-        self.start_as(agent, text).await;
-        agent
-    }
-}
-
-impl Rig {
-    pub fn note_on_first_call(&self, model: &Arc<Scripted>, agent: AgentId, text: &str) {
-        let hub = self.hub.clone();
-        let note = self.deliver_human_later(agent, text);
-        let delivered = std::sync::atomic::AtomicBool::new(false);
-        model.on_call(move |_| {
-            if !delivered.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                hub.deliver_entry(agent, note.clone());
-            }
-        });
+impl Default for Rig {
+    fn default() -> Self {
+        Self::new()
     }
 }

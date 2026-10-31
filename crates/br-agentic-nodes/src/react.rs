@@ -1,56 +1,59 @@
 use std::sync::Arc;
 
-use br_agentic_contract::{AGENTIC, AgenticNode, Restart};
+use br_agentic_contract::{AGENTIC, AgenticNode};
 use br_graph_contract::{CancelView, CreateFuture, Fields, Instance, InstanceId, Node};
-use br_llm_messages::Author;
 
 use crate::client::FallbackList;
-use crate::config::{Common, Ports, Settings};
+use crate::config::{AuthorSource, Common, Ports, Settings};
 use crate::fault::Stop;
+use crate::outcome::ReactOutcome;
 use crate::pass::PassEnd;
-use crate::ports::Outcome;
+use crate::ports::ReactOutcomePort;
 use crate::run::{Body, run};
+use crate::seats::{SeatSpec, Seats};
 use crate::slot::Slot;
 use crate::worker::Worker;
 
 pub const REACT_AGENT: &str = "react_agent";
 pub const AGENT_LABEL: &str = "agent";
 
-pub struct ReactAgent<F: Fields> {
+pub struct ReactSpec<F: Fields> {
+    pub fallback: FallbackList,
+    pub outcome: Arc<dyn ReactOutcomePort<F>>,
+    pub author: AuthorSource<F>,
+}
+
+struct ReactBody<F: Fields> {
     common: Arc<Common<F>>,
     fallback: FallbackList,
-    author: Option<Author>,
+    outcome: Arc<dyn ReactOutcomePort<F>>,
+    author: AuthorSource<F>,
+}
+
+pub struct ReactAgent<F: Fields> {
+    body: Arc<ReactBody<F>>,
 }
 
 impl<F: Fields> ReactAgent<F> {
     pub fn new(
         name: impl Into<String>,
         ports: Ports<F>,
-        fallback: FallbackList,
         settings: Settings,
+        spec: ReactSpec<F>,
     ) -> Self {
         Self {
-            common: Arc::new(Common {
-                name: name.into(),
-                ports,
-                settings,
+            body: Arc::new(ReactBody {
+                common: Arc::new(Common {
+                    name: name.into(),
+                    ports,
+                    settings,
+                }),
+                fallback: spec.fallback,
+                outcome: spec.outcome,
+                author: spec.author,
             }),
-            fallback,
-            author: None,
         }
     }
-
-    #[must_use]
-    pub fn with_author(mut self, author: Author) -> Self {
-        self.author = Some(author);
-        self
-    }
-}
-
-struct ReactBody<F: Fields> {
-    common: Arc<Common<F>>,
-    fallback: FallbackList,
-    author: Option<Author>,
 }
 
 impl<F: Fields> Body<F> for ReactBody<F> {
@@ -58,41 +61,49 @@ impl<F: Fields> Body<F> for ReactBody<F> {
         &self.common
     }
 
-    fn first_label(&self) -> &str {
-        AGENT_LABEL
-    }
-
-    fn first_author(&self) -> Option<&Author> {
-        self.author.as_ref()
+    fn seats(&self) -> Vec<SeatSpec<'_, F>> {
+        vec![SeatSpec {
+            label: AGENT_LABEL,
+            author: &self.author,
+            prompt: true,
+        }]
     }
 
     async fn execute(
         &self,
         worker: &mut Worker<'_>,
+        _seats: &Seats,
         snapshot: &F,
-        _instance: InstanceId,
     ) -> Result<F::Update, Stop> {
         let mut slot = Slot::new(self.fallback.clone());
-        let end = loop {
-            let end = worker.pass(&mut slot).await?;
-            if matches!(end, PassEnd::Final(_))
-                && worker.has_inbox()
-                && worker.steps.remaining() > 0
-                && worker.drain().await? > 0
-            {
-                continue;
-            }
-            break end;
+        let end = match worker.restored() {
+            Some(end) => end,
+            None => loop {
+                let end = worker.pass(&mut slot).await?;
+                if matches!(end, PassEnd::Final(_))
+                    && worker.has_inbox()
+                    && worker.steps_remaining() > 0
+                    && worker.drain().await?.stored > 0
+                {
+                    continue;
+                }
+                break end;
+            },
         };
         let reached = end.step_limit_reached();
-        let outcome = Outcome::new(end.into_response(), reached, None);
-        Ok(worker.end(&self.common, snapshot, outcome).await?)
+        let outcome = ReactOutcome::new(end.into_response(), worker.steps_made(), reached);
+        let update = self
+            .outcome
+            .update(snapshot, &outcome)
+            .await
+            .map_err(crate::fault::Fault::from)?;
+        Ok(worker.finish(&self.common, snapshot, update).await?)
     }
 }
 
 impl<F: Fields> Node<F> for ReactAgent<F> {
     fn name(&self) -> &str {
-        &self.common.name
+        &self.body.common.name
     }
 
     fn kind(&self) -> &str {
@@ -104,11 +115,7 @@ impl<F: Fields> Node<F> for ReactAgent<F> {
     }
 
     fn create(&self, cancel: CancelView, id: InstanceId) -> CreateFuture<'_, F> {
-        let body = Arc::new(ReactBody {
-            common: Arc::clone(&self.common),
-            fallback: self.fallback.clone(),
-            author: self.author.clone(),
-        });
+        let body = Arc::clone(&self.body);
         Box::pin(async move {
             let (instance, reader, sender) = Instance::channel(id);
             tokio::spawn(run(body, reader, sender, cancel));
@@ -119,10 +126,6 @@ impl<F: Fields> Node<F> for ReactAgent<F> {
 
 impl<F: Fields> AgenticNode<F> for ReactAgent<F> {
     fn has_inbox(&self) -> bool {
-        self.common.ports.has_inbox()
-    }
-
-    fn restart(&self) -> Restart {
-        Restart::Resets
+        self.body.common.ports.has_inbox()
     }
 }

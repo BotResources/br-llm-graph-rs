@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use br_agentic_contract::{
-    AgentPort, FileSystemMode, InboxPort, ThreadAccess, ThreadPort, ToolsPort, WebAccess,
-    WorkspacePort,
+    AgentLabel, AgentPort, FileSystemMode, InboxPort, ThreadAccess, ThreadPort, ToolsPort,
+    WebAccess, WorkspacePort,
 };
 use br_graph_contract::Fields;
+use br_llm_messages::Author;
 
+use crate::fault::Fault;
 use crate::limits::{StepLimit, Timeouts};
-use crate::ports::{OutcomePort, PromptPort};
+use crate::ports::{AuthorPort, PromptPort};
 
 pub struct Ports<F: Fields> {
     pub(crate) thread: Arc<dyn ThreadPort<F>>,
@@ -16,7 +18,6 @@ pub struct Ports<F: Fields> {
     pub(crate) prompt: Arc<dyn PromptPort<F>>,
     pub(crate) tools: Arc<dyn ToolsPort<F>>,
     pub(crate) workspace: Arc<dyn WorkspacePort<F>>,
-    pub(crate) outcome: Arc<dyn OutcomePort<F>>,
     pub(crate) inbox: Option<Arc<dyn InboxPort>>,
 }
 
@@ -28,7 +29,6 @@ impl<F: Fields> Ports<F> {
         prompt: Arc<dyn PromptPort<F>>,
         tools: Arc<dyn ToolsPort<F>>,
         workspace: Arc<dyn WorkspacePort<F>>,
-        outcome: Arc<dyn OutcomePort<F>>,
     ) -> Self {
         Self {
             thread,
@@ -37,7 +37,6 @@ impl<F: Fields> Ports<F> {
             prompt,
             tools,
             workspace,
-            outcome,
             inbox: None,
         }
     }
@@ -73,6 +72,32 @@ impl Settings {
             timeouts,
             web_access,
             file_system,
+        }
+    }
+}
+
+pub enum AuthorSource<F: Fields> {
+    Fixed(Author),
+    Port(Arc<dyn AuthorPort<F>>),
+}
+
+impl<F: Fields> Clone for AuthorSource<F> {
+    fn clone(&self) -> Self {
+        match self {
+            AuthorSource::Fixed(author) => AuthorSource::Fixed(author.clone()),
+            AuthorSource::Port(port) => AuthorSource::Port(Arc::clone(port)),
+        }
+    }
+}
+
+impl<F: Fields> AuthorSource<F> {
+    pub(crate) async fn resolve(&self, snapshot: &F, label: &AgentLabel) -> Result<Author, Fault> {
+        match self {
+            AuthorSource::Fixed(author) => Ok(author.clone()),
+            AuthorSource::Port(port) => {
+                let name = port.author(snapshot, label).await?;
+                Author::new(name).map_err(Fault::value)
+            }
         }
     }
 }

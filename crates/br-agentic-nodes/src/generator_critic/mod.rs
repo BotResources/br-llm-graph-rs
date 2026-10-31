@@ -4,19 +4,21 @@ mod execute;
 
 use std::sync::Arc;
 
-use br_agentic_contract::{AGENTIC, AgenticNode, Restart};
+use br_agentic_contract::{AGENTIC, AgenticNode};
 use br_graph_contract::{CancelView, CreateFuture, Fields, Instance, InstanceId, Node};
-use br_llm_messages::Author;
 
 use crate::client::Ladder;
-use crate::config::{Common, Ports, Settings};
-use crate::limits::RoundLimit;
-use crate::ports::{CriticRequest, CriticRequestPort};
+use crate::config::{AuthorSource, Common, Ports, Settings};
+use crate::limits::{ProgrammaticRefusalLimit, RoundLimit};
+use crate::ports::{
+    CriticRequest, CriticRequestPort, GeneratorCriticOutcomePort, ProgrammaticCriticPort,
+};
 use crate::run::run;
 
 pub const GENERATOR_CRITIC: &str = "generator_critic";
 pub const GENERATOR_LABEL: &str = "generator";
 pub const CRITIC_LABEL: &str = "critic";
+pub const PROGRAMMATIC_CRITIC_LABEL: &str = "programmatic_critic";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StepLimitEnding {
@@ -25,9 +27,23 @@ pub enum StepLimitEnding {
     WithCriticCall,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RoundLimitEnding {
+    #[default]
+    FinalGeneration,
+    KeepRejectedGeneration,
+    Fail,
+}
+
 pub enum CriticRequestSource<F: Fields> {
     Fixed(CriticRequest),
     Port(Arc<dyn CriticRequestPort<F>>),
+}
+
+pub struct ProgrammaticCritic<F: Fields> {
+    pub port: Arc<dyn ProgrammaticCriticPort<F>>,
+    pub refusal_limit: ProgrammaticRefusalLimit,
+    pub author: AuthorSource<F>,
 }
 
 pub struct GeneratorCriticSpec<F: Fields> {
@@ -35,30 +51,21 @@ pub struct GeneratorCriticSpec<F: Fields> {
     pub critic: Ladder,
     pub round_limit: RoundLimit,
     pub critic_request: CriticRequestSource<F>,
+    pub generator_author: AuthorSource<F>,
+    pub critic_author: AuthorSource<F>,
+    pub outcome: Arc<dyn GeneratorCriticOutcomePort<F>>,
 }
 
 pub(crate) struct GcBody<F: Fields> {
-    pub(crate) common: Arc<Common<F>>,
-    pub(crate) generator: Ladder,
-    pub(crate) critic: Ladder,
-    pub(crate) round_limit: RoundLimit,
-    pub(crate) ending: StepLimitEnding,
-    pub(crate) critic_request: Arc<CriticRequestSource<F>>,
-    pub(crate) generator_author: Option<Author>,
-    pub(crate) critic_author: Option<Author>,
-    pub(crate) thinking_field: bool,
+    pub(crate) common: Common<F>,
+    pub(crate) spec: GeneratorCriticSpec<F>,
+    pub(crate) step_ending: StepLimitEnding,
+    pub(crate) round_ending: RoundLimitEnding,
+    pub(crate) programmatic: Option<ProgrammaticCritic<F>>,
 }
 
 pub struct GeneratorCritic<F: Fields> {
-    common: Arc<Common<F>>,
-    generator: Ladder,
-    critic: Ladder,
-    round_limit: RoundLimit,
-    ending: StepLimitEnding,
-    critic_request: Arc<CriticRequestSource<F>>,
-    generator_author: Option<Author>,
-    critic_author: Option<Author>,
-    thinking_field: bool,
+    body: Arc<GcBody<F>>,
 }
 
 impl<F: Fields> GeneratorCritic<F> {
@@ -69,57 +76,46 @@ impl<F: Fields> GeneratorCritic<F> {
         spec: GeneratorCriticSpec<F>,
     ) -> Self {
         Self {
-            common: Arc::new(Common {
-                name: name.into(),
-                ports,
-                settings,
+            body: Arc::new(GcBody {
+                common: Common {
+                    name: name.into(),
+                    ports,
+                    settings,
+                },
+                spec,
+                step_ending: StepLimitEnding::default(),
+                round_ending: RoundLimitEnding::default(),
+                programmatic: None,
             }),
-            generator: spec.generator,
-            critic: spec.critic,
-            round_limit: spec.round_limit,
-            ending: StepLimitEnding::default(),
-            critic_request: Arc::new(spec.critic_request),
-            generator_author: None,
-            critic_author: None,
-            thinking_field: false,
         }
     }
 
-    #[must_use]
-    pub fn with_authors(mut self, generator: Author, critic: Author) -> Self {
-        self.generator_author = Some(generator);
-        self.critic_author = Some(critic);
+    fn edit(mut self, change: impl FnOnce(&mut GcBody<F>)) -> Self {
+        if let Some(body) = Arc::get_mut(&mut self.body) {
+            change(body);
+        }
         self
     }
 
     #[must_use]
-    pub fn with_generator_author(mut self, author: Author) -> Self {
-        self.generator_author = Some(author);
-        self
+    pub fn with_step_limit_ending(self, ending: StepLimitEnding) -> Self {
+        self.edit(|body| body.step_ending = ending)
     }
 
     #[must_use]
-    pub fn with_critic_author(mut self, author: Author) -> Self {
-        self.critic_author = Some(author);
-        self
+    pub fn with_round_limit_ending(self, ending: RoundLimitEnding) -> Self {
+        self.edit(|body| body.round_ending = ending)
     }
 
     #[must_use]
-    pub fn with_step_limit_ending(mut self, ending: StepLimitEnding) -> Self {
-        self.ending = ending;
-        self
-    }
-
-    #[must_use]
-    pub fn with_critic_thinking_field(mut self) -> Self {
-        self.thinking_field = true;
-        self
+    pub fn with_programmatic_critic(self, critic: ProgrammaticCritic<F>) -> Self {
+        self.edit(|body| body.programmatic = Some(critic))
     }
 }
 
 impl<F: Fields> Node<F> for GeneratorCritic<F> {
     fn name(&self) -> &str {
-        &self.common.name
+        &self.body.common.name
     }
 
     fn kind(&self) -> &str {
@@ -131,17 +127,7 @@ impl<F: Fields> Node<F> for GeneratorCritic<F> {
     }
 
     fn create(&self, cancel: CancelView, id: InstanceId) -> CreateFuture<'_, F> {
-        let body = Arc::new(GcBody {
-            common: Arc::clone(&self.common),
-            generator: self.generator.clone(),
-            critic: self.critic.clone(),
-            round_limit: self.round_limit,
-            ending: self.ending,
-            critic_request: Arc::clone(&self.critic_request),
-            generator_author: self.generator_author.clone(),
-            critic_author: self.critic_author.clone(),
-            thinking_field: self.thinking_field,
-        });
+        let body = Arc::clone(&self.body);
         Box::pin(async move {
             let (instance, reader, sender) = Instance::channel(id);
             tokio::spawn(run(body, reader, sender, cancel));
@@ -152,10 +138,6 @@ impl<F: Fields> Node<F> for GeneratorCritic<F> {
 
 impl<F: Fields> AgenticNode<F> for GeneratorCritic<F> {
     fn has_inbox(&self) -> bool {
-        self.common.ports.has_inbox()
-    }
-
-    fn restart(&self) -> Restart {
-        Restart::Resets
+        self.body.common.ports.has_inbox()
     }
 }

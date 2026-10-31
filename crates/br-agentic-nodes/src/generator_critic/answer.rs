@@ -1,8 +1,9 @@
 use br_llm_clients_core::{Parameter, ParameterKind, Parameters, StructuredShape};
-use br_llm_messages::{ContentBlock, ModelResponse};
+use br_llm_messages::{ContentBlock, ModelResponse, ResponseEnding, TextBlock};
 use serde::Deserialize;
 
 use crate::fault::Fault;
+use crate::ids::block_id_raw;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Answer {
@@ -18,6 +19,14 @@ struct Wire {
 }
 
 pub(crate) fn unwrap_answer(response: &ModelResponse) -> Result<Answer, String> {
+    if matches!(
+        response.ending(),
+        ResponseEnding::Refusal { .. }
+            | ResponseEnding::Filtering { .. }
+            | ResponseEnding::OutputExhaustion { .. }
+    ) {
+        return Err("the response ends with a refusal, a filter or an exhaustion".to_owned());
+    }
     let structured = response
         .blocks()
         .iter()
@@ -36,13 +45,16 @@ pub(crate) fn unwrap_answer(response: &ModelResponse) -> Result<Answer, String> 
             message: wire.message.unwrap_or_default(),
         });
     }
-    match wire.message {
-        Some(message) if !message.trim().is_empty() => Ok(Answer {
-            validated: false,
-            message,
-        }),
-        _ => Err("the critic does not validate and gives a blank message".to_owned()),
-    }
+    let message = wire
+        .message
+        .ok_or_else(|| "the critic does not validate and gives no message".to_owned())?;
+    let id = block_id_raw().map_err(|error| error.to_string())?;
+    TextBlock::new(id, message.as_str())
+        .map_err(|_| "the critic does not validate and gives a blank message".to_owned())?;
+    Ok(Answer {
+        validated: false,
+        message,
+    })
 }
 
 pub(crate) fn critic_shape(thinking_field: bool) -> Result<StructuredShape, Fault> {
