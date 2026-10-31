@@ -2,12 +2,22 @@ use std::fmt;
 
 use br_llm_messages::{EntryId, Error, Uuid};
 
+const UUID_V7: usize = 7;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ThreadRef(Uuid);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("a thread reference is a UUIDv7")]
+pub struct InvalidThreadRef;
+
 impl ThreadRef {
-    pub fn new(uuid: Uuid) -> Self {
-        Self(uuid)
+    pub fn from_uuid(uuid: Uuid) -> Result<Self, InvalidThreadRef> {
+        if uuid.get_version_num() == UUID_V7 {
+            Ok(Self(uuid))
+        } else {
+            Err(InvalidThreadRef)
+        }
     }
 
     pub fn as_uuid(&self) -> Uuid {
@@ -58,13 +68,13 @@ impl fmt::Display for MailId {
 pub struct AgentLabel(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("an agent label has a non-blank text")]
+#[error("an agent label is a non-empty text")]
 pub struct InvalidLabel;
 
 impl AgentLabel {
     pub fn new(text: impl Into<String>) -> Result<Self, InvalidLabel> {
         let text = text.into();
-        if text.trim().is_empty() {
+        if text.is_empty() {
             return Err(InvalidLabel);
         }
         Ok(Self(text))

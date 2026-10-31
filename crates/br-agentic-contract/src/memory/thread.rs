@@ -1,101 +1,201 @@
-use br_llm_clients_core::BoxFuture;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
 use br_llm_messages::{
-    AgentId, BlockId, EntryId, ModelResponse, ProjectedThread, RuntimeToolResult,
-    RuntimeToolResults, TurnClosure, TurnId,
+    Conversation, ConversationId, EntryId, InputTurn, ModelResponse, RuntimeToolResults,
+    TurnClosure, TurnEntry,
 };
 
-use super::state::MemoryHub;
-use crate::fault::{PortFault, ThreadError};
+use super::record::{Call, Record};
+use super::streams::{MemoryResponseStream, MemoryResultStream};
+use crate::error::PortError;
+use crate::future::PortFuture;
 use crate::ids::ThreadRef;
-use crate::thread_access::{
-    Completed, Incoming, Opened, ResponseStream, ResultStreamBox, Stored, ThreadAccess, TurnTarget,
+use crate::rules::{
+    SessionError, apply_closure, apply_entry, apply_input_turn, apply_response, apply_results,
 };
+use crate::stream::{ResponseStream, ResultStreamBox};
+use crate::thread_access::{AiTurnRef, ThreadAccess};
+
+struct State {
+    conversation: Conversation,
+    open: HashMap<EntryId, Arc<AtomicBool>>,
+}
 
 #[derive(Clone)]
 pub struct MemoryThreadAccess {
-    hub: MemoryHub,
+    thread: ThreadRef,
+    record: Record,
+    state: Arc<Mutex<State>>,
 }
 
-impl MemoryHub {
-    pub fn thread_access(&self) -> MemoryThreadAccess {
-        MemoryThreadAccess { hub: self.clone() }
+impl MemoryThreadAccess {
+    pub fn new(record: &Record, thread: ThreadRef, conversation: Conversation) -> Self {
+        Self {
+            thread,
+            record: record.clone(),
+            state: Arc::new(Mutex::new(State {
+                conversation,
+                open: HashMap::new(),
+            })),
+        }
+    }
+
+    pub fn empty(record: &Record, thread: ThreadRef, identity: ConversationId) -> Self {
+        Self::new(record, thread, Conversation::new(identity))
+    }
+
+    pub fn conversation(&self) -> Conversation {
+        self.lock().conversation.clone()
+    }
+
+    pub fn is_open(&self, entry: EntryId) -> bool {
+        self.lock().open.contains_key(&entry)
+    }
+
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn check(&self, thread: &ThreadRef) -> Result<(), PortError> {
+        if *thread == self.thread {
+            Ok(())
+        } else {
+            Err(PortError::fault(format!("unknown thread {thread}")))
+        }
+    }
+
+    fn store(
+        &self,
+        thread: &ThreadRef,
+        apply: impl FnOnce(&mut Conversation) -> Result<(), SessionError>,
+    ) -> Result<(), PortError> {
+        self.check(thread)?;
+        apply(&mut self.lock().conversation).map_err(PortError::fault)
+    }
+
+    fn begin(&self, entry: EntryId) -> Arc<AtomicBool> {
+        let alive = Arc::new(AtomicBool::new(true));
+        if let Some(previous) = self.lock().open.insert(entry, alive.clone()) {
+            previous.store(false, Ordering::SeqCst);
+        }
+        alive
+    }
+
+    fn end(&self, entry: EntryId) {
+        if let Some(alive) = self.lock().open.remove(&entry) {
+            alive.store(false, Ordering::SeqCst);
+        }
     }
 }
 
 impl ThreadAccess for MemoryThreadAccess {
-    fn load<'a>(
+    fn read<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        agent: AgentId,
-    ) -> BoxFuture<'a, Result<ProjectedThread, PortFault>> {
+    ) -> PortFuture<'a, Result<Conversation, PortError>> {
+        self.record.push(Call::Read { thread: *thread });
         Box::pin(async move {
-            let state = self.hub.lock();
-            state
-                .threads
-                .get(thread)
-                .map(|conversation| conversation.project_for(agent))
-                .ok_or_else(|| PortFault::new(format!("unknown thread {thread}")))
+            self.check(thread)?;
+            Ok(self.conversation())
         })
     }
 
     fn add_input_turn<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        _agent: AgentId,
-        turn: TurnId,
-        items: Vec<Incoming>,
-    ) -> BoxFuture<'a, Result<Stored, ThreadError>> {
-        Box::pin(async move { self.hub.add_input_turn(thread, turn, &items) })
+        turn: InputTurn,
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::AddInputTurn {
+            thread: *thread,
+            turn: turn.clone(),
+        });
+        Box::pin(async move { self.store(thread, |c| apply_input_turn(c, &turn)) })
     }
 
-    fn add_incoming<'a>(
+    fn add_entry<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        agent: AgentId,
-        target: TurnTarget,
-        item: Incoming,
-    ) -> BoxFuture<'a, Result<Stored, ThreadError>> {
-        Box::pin(async move { self.hub.add_incoming(thread, agent, &target, &item) })
+        turn: AiTurnRef,
+        entry: TurnEntry,
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::AddEntry {
+            thread: *thread,
+            turn: turn.clone(),
+            entry: entry.clone(),
+        });
+        Box::pin(async move { self.store(thread, |c| apply_entry(c, &turn, entry)) })
     }
 
     fn close_turn<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        agent: AgentId,
-        turn: TurnId,
+        turn: AiTurnRef,
         closure: TurnClosure,
-    ) -> BoxFuture<'a, Result<Stored, ThreadError>> {
-        Box::pin(async move { self.hub.close_turn(thread, agent, turn, closure) })
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::CloseTurn {
+            thread: *thread,
+            turn: turn.clone(),
+            closure: closure.clone(),
+        });
+        Box::pin(async move { self.store(thread, |c| apply_closure(c, &turn, closure)) })
     }
 
     fn open_response<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        agent: AgentId,
-        target: TurnTarget,
+        turn: AiTurnRef,
         entry: EntryId,
-    ) -> BoxFuture<'a, Result<Opened<ResponseStream, ModelResponse>, ThreadError>> {
-        Box::pin(async move { self.hub.open_response(thread, agent, &target, entry) })
+    ) -> PortFuture<'a, Result<ResponseStream, PortError>> {
+        self.record.push(Call::OpenResponse {
+            thread: *thread,
+            turn,
+            entry,
+        });
+        Box::pin(async move {
+            self.check(thread)?;
+            let alive = self.begin(entry);
+            let stream: ResponseStream = Box::new(MemoryResponseStream {
+                entry,
+                alive,
+                record: self.record.clone(),
+            });
+            Ok(stream)
+        })
     }
 
     fn complete_response<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        agent: AgentId,
-        target: TurnTarget,
+        turn: AiTurnRef,
         response: ModelResponse,
-    ) -> BoxFuture<'a, Result<Completed<ModelResponse>, ThreadError>> {
-        Box::pin(async move { self.hub.complete_response(thread, agent, &target, response) })
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::CompleteResponse {
+            thread: *thread,
+            turn: turn.clone(),
+            response: response.clone(),
+        });
+        Box::pin(async move {
+            let entry = response.id();
+            self.store(thread, |c| apply_response(c, &turn, response))?;
+            self.end(entry);
+            Ok(())
+        })
     }
 
     fn discard_response<'a>(
         &'a self,
-        _thread: &'a ThreadRef,
-        _agent: AgentId,
+        thread: &'a ThreadRef,
         entry: EntryId,
-    ) -> BoxFuture<'a, Result<(), ThreadError>> {
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::DiscardResponse {
+            thread: *thread,
+            entry,
+        });
         Box::pin(async move {
-            self.hub.discard(entry);
+            self.check(thread)?;
+            self.end(entry);
             Ok(())
         })
     }
@@ -103,36 +203,57 @@ impl ThreadAccess for MemoryThreadAccess {
     fn open_result<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        agent: AgentId,
-        target: TurnTarget,
+        turn: AiTurnRef,
         entry: EntryId,
-        call: BlockId,
-    ) -> BoxFuture<'a, Result<Opened<ResultStreamBox, RuntimeToolResults>, ThreadError>> {
-        Box::pin(async move { self.hub.open_result(thread, agent, &target, entry, call) })
+    ) -> PortFuture<'a, Result<ResultStreamBox, PortError>> {
+        self.record.push(Call::OpenResult {
+            thread: *thread,
+            turn,
+            entry,
+        });
+        Box::pin(async move {
+            self.check(thread)?;
+            let alive = self.begin(entry);
+            let stream: ResultStreamBox = Box::new(MemoryResultStream {
+                entry,
+                alive,
+                record: self.record.clone(),
+            });
+            Ok(stream)
+        })
     }
 
     fn complete_result<'a>(
         &'a self,
         thread: &'a ThreadRef,
-        agent: AgentId,
-        target: TurnTarget,
-        entry: EntryId,
-        result: RuntimeToolResult,
-    ) -> BoxFuture<'a, Result<Completed<RuntimeToolResults>, ThreadError>> {
+        turn: AiTurnRef,
+        result: RuntimeToolResults,
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::CompleteResult {
+            thread: *thread,
+            turn: turn.clone(),
+            result: result.clone(),
+        });
         Box::pin(async move {
-            self.hub
-                .complete_result(thread, agent, &target, entry, result)
+            let entry = result.id();
+            self.store(thread, |c| apply_results(c, &turn, result))?;
+            self.end(entry);
+            Ok(())
         })
     }
 
     fn discard_result<'a>(
         &'a self,
-        _thread: &'a ThreadRef,
-        _agent: AgentId,
+        thread: &'a ThreadRef,
         entry: EntryId,
-    ) -> BoxFuture<'a, Result<(), ThreadError>> {
+    ) -> PortFuture<'a, Result<(), PortError>> {
+        self.record.push(Call::DiscardResult {
+            thread: *thread,
+            entry,
+        });
         Box::pin(async move {
-            self.hub.discard(entry);
+            self.check(thread)?;
+            self.end(entry);
             Ok(())
         })
     }

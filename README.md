@@ -220,11 +220,11 @@ Why:
 
 ## br-agentic-contract
 
-The contract of the agentic nodes: what every node of kind `agentic` has in common. The ports a runner gives a node (thread, agent, tools, workspace, thread access and inbox), the mail and the inbox, the tool with its result stream, the web access and the file system mode, the rules an instance follows at a boundary, when it streams and when it ends, and in-memory ports for tests. It depends on `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`, and on no node library. It needs a Tokio runtime. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+The contract of the agentic nodes: what every node of kind `agentic` has in common. A port is a trait of this crate that a runner gives to a node; an adapter is what a runner library implements for a port. The ports (thread, agent, tools, workspace, thread access and inbox), the mail, the tool with its result stream, the web access and the file system mode, the rules an instance follows (the session over its conversation copy, the boundary, streaming, ending), and in-memory ports for tests. The contract of the crate, with the list of ports, an adapter example and the in-memory ports, is `crates/br-agentic-contract/README.md`. It depends on `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`, and on no node library. It uses `tokio::sync` only (the `sync` feature of `tokio`) and needs no runtime of its own. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
 
 ```toml
 [dependencies]
-br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.1.0", version = "0.1.0" }
+br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.2.0", version = "0.2.0" }
 br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
 br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-core", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
 br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", package = "br-llm-messages", tag = "br-llm-messages/v2.1.0", version = "2.1.0" }
@@ -234,29 +234,13 @@ The public API names types of the three libraries it builds on, so pin them besi
 
 | Part | What the crate gives |
 |---|---|
-| `AgenticNode` | a `Node` of kind `AGENTIC` that tells whether it has an inbox and what a restart of the runner does to its counters (`Restart`) |
-| ports | `ThreadPort`, `AgentPort`, `ToolsPort`, `WorkspacePort`, `ThreadAccess`, `InboxPort`: asynchronous, never retried; a failure is a `PortFault`; the state snapshot is the fields of the first input |
-| `ThreadAccess` | additions to a thread by identity (an identity the thread holds is accepted and changes nothing, before the rules of `br-llm-messages`), a refusal with a `Reason`, and a model response or a tool result added in two moves: open (a stream), then complete or discard; an open object is never in the projected thread |
-| `InboxPort`, `NewMail`, `MailItem` | the items of one agent oldest first in batches with a cursor, wait for the next item, mark a mail as read, send a mail (refused with a reason without a recipient in `to` or with a repeated recipient), the documents of a mail |
-| `Tool`, `ToolContent`, `ToolSet` | a tool spec with its code; an expected error is content with the error flag, a fault is `ToolFault`; a repeated tool name is refused |
+| ports | `ThreadPort`, `AgentPort`, `ToolsPort`, `WorkspacePort`, `ThreadAccess`, `InboxPort`: public, object-safe, `Send + Sync`, asynchronous (`PortFuture`), never retried by the instance; one error type, `PortError` (`Refused` with a reason, `Fault` with a cause); only the inbox refuses |
+| `ThreadAccess` | one `read` of the whole `Conversation` at the start; every other operation receives a complete addition and answers accepted or an error; a model response or a tool result is added in two moves (open gives a stream, then complete or discard) |
+| `InboxPort`, `NewMail`, `MailItem` | the unread items of one agent oldest first in batches with a cursor, wait, mark any item as read, send a mail (with the author name and the source conversation; refused without a recipient in `to` or with a repeated recipient), the documents of a mail for a recipient in `to` |
+| `Session`, `Queue`, `store_at_boundary`, `mail_documents`, `result`, `failed`, `cancelled` | the rules of an instance: rules first on its conversation copy, the boundary and the read marks, the documents of a held mail, endings that discard open objects |
+| `Tool`, `ToolContent`, `ToolSet` | a tool spec with its code; content as blocks without identity and an error flag; a fault is `ToolFault`; a repeated tool name is refused |
 | `WebAccess`, `FileSystemMode` | the web access and the file system mode a node is built with, and the load at the start and the save before `Result` |
-| `Queue`, `store_at_boundary`, `Session`, `result`, `failed`, `cancelled` | the rules of an instance as functions: store the queued inbox items at a boundary and mark a mail only after its entry is stored; open, complete and discard objects; end with discards and a closed input end |
-| `memory` | in-memory ports for tests that follow the rules of the contract; not for production |
-
-Behaviour to know:
-
-- The in-memory ports hold a `Conversation` of `br-llm-messages` for each thread, so a refusal is a refusal of its rules.
-- `store_at_boundary` stops at the first failure: the item that failed and the items after it stay in the queue and their mails stay unread; `BoundaryError` carries the `Boundary` of what was stored or skipped before the failure; an entry that was stored but whose mail could not be marked read is in `done` and also back in the queue, and the next boundary skips it and marks it. An item that the thread access answers `Stored::Held` is counted as skipped.
-- The boundary writes into an input turn only when it is a real input turn. An input turn of the projection that shows the AI turn of another agent is not one: when it holds an agent output, or when the thread access refuses the addition to it, the item goes into a new input turn.
-- The in-memory thread access refuses an addition, an opening or a closing on an AI turn of another agent or with another author name, and an addition to an AI turn as if it were an input turn.
-- The in-memory `wait` resolves with the first item for the agent that comes after the last item that a read of the inbox or an earlier `wait` gave to that agent, so an item that arrives between a read and a `wait` is not lost. An item that a read gave and that is neither stored nor marked is not given again by `wait`.
-- An input turn added with some held entries stores the entries that are not held; with all entries held it answers `Stored::Held`; with a held turn id and some entry that is not held it is refused. `store_at_boundary` needs a new turn id on every call.
-- Completing or opening an object that the thread holds ends an open stream of that object.
-- On one thread shared by two agents, a mail sent to one in `to` and to the other in `cc` has the same entry id for both; the agent that stores its notice first makes the other skip the mail.
-- `result`, `failed` and `cancelled` ignore the errors of the discards. The caller stops the work still running before it calls them.
-- `FileSystemMode::Might` has a file system only when the load gives at least one file.
-
-Not enforced, and left to the implementer as the sealed intent states: that a tool is safe to call from several runs at the same time; that a tool that starts background work is given only to a node with an inbox; that the tool that gets the documents of a mail acts only on mails whose item the projected thread holds as an incoming entry; that the inbox lists every unread mail and every entry the projection does not hold; that the agent port gives another identity for another label; that the runner runs one instance at a time for one agent on one thread; that the thread access stores each addition whole or not at all, keeps the order and accepts a repeated identity without a second copy; that the implementer drops an open object when its instance ended without completing or discarding it and ignores what is sent to a stream that has ended; that the inbox sends a mail once for one mail id; and that the thread, tools and workspace ports give what belongs to the run of the state snapshot.
+| `memory` | in-memory ports for tests with one shared `Record` of every call; not for production |
 
 ## br-agentic-nodes
 

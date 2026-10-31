@@ -1,130 +1,206 @@
 use br_llm_messages::{
-    AgentId, BlockId, EntryId, ModelResponse, RuntimeToolResult, RuntimeToolResults,
+    AgentId, Conversation, EntryId, InputTurn, ModelResponse, RuntimeToolResults, Turn,
+    TurnClosure, TurnEntry,
 };
 
-use crate::fault::ThreadError;
+use crate::error::PortError;
 use crate::ids::ThreadRef;
-use crate::thread_access::{
-    Completed, Opened, ResponseStream, ResultStreamBox, ThreadAccess, TurnTarget,
+use crate::rules::{
+    SessionError, apply_closure, apply_entry, apply_input_turn, apply_response, apply_results,
 };
+use crate::stream::{ResponseStream, ResultStreamBox};
+use crate::thread_access::{AiTurnRef, ThreadAccess};
 
 pub struct Session<'a> {
     access: &'a dyn ThreadAccess,
     thread: ThreadRef,
-    agent: AgentId,
+    conversation: Conversation,
     responses: Vec<EntryId>,
     results: Vec<EntryId>,
 }
 
 impl<'a> Session<'a> {
-    pub fn new(access: &'a dyn ThreadAccess, thread: ThreadRef, agent: AgentId) -> Self {
-        Self {
+    pub async fn start(access: &'a dyn ThreadAccess, thread: ThreadRef) -> Result<Self, PortError> {
+        let conversation = access.read(&thread).await?;
+        Ok(Self {
             access,
             thread,
-            agent,
+            conversation,
             responses: Vec::new(),
             results: Vec::new(),
-        }
+        })
+    }
+
+    pub fn thread(&self) -> &ThreadRef {
+        &self.thread
+    }
+
+    pub fn conversation(&self) -> &Conversation {
+        &self.conversation
     }
 
     pub fn open_objects(&self) -> usize {
         self.responses.len() + self.results.len()
     }
 
+    pub fn holds(&self, entry: EntryId) -> bool {
+        self.conversation.entry(&entry).is_ok()
+    }
+
+    pub fn holds_incoming(&self, entry: EntryId) -> bool {
+        use br_llm_messages::EntryRef;
+        match self.conversation.entry(&entry) {
+            Ok(EntryRef::Incoming { .. }) => true,
+            Ok(EntryRef::Turn(held)) => held.is_incoming(),
+            _ => false,
+        }
+    }
+
+    pub fn open_ai_turn(&self, agent: AgentId) -> Option<AiTurnRef> {
+        self.conversation
+            .turns()
+            .iter()
+            .rev()
+            .filter_map(Turn::as_ai)
+            .find(|ai| ai.agent() == agent && !ai.is_closed())
+            .map(|ai| AiTurnRef {
+                id: ai.id(),
+                agent,
+                author: ai.author().clone(),
+            })
+    }
+
+    pub async fn add_input_turn(&mut self, turn: InputTurn) -> Result<(), SessionError> {
+        apply_input_turn(&mut self.conversation, &turn)?;
+        self.access
+            .add_input_turn(&self.thread, turn)
+            .await
+            .map_err(SessionError::Port)
+    }
+
+    pub async fn add_entry(
+        &mut self,
+        turn: &AiTurnRef,
+        entry: TurnEntry,
+    ) -> Result<(), SessionError> {
+        apply_entry(&mut self.conversation, turn, entry.clone())?;
+        self.access
+            .add_entry(&self.thread, turn.clone(), entry)
+            .await
+            .map_err(SessionError::Port)
+    }
+
+    pub async fn close_turn(
+        &mut self,
+        turn: &AiTurnRef,
+        closure: TurnClosure,
+    ) -> Result<(), SessionError> {
+        apply_closure(&mut self.conversation, turn, closure.clone())?;
+        self.access
+            .close_turn(&self.thread, turn.clone(), closure)
+            .await
+            .map_err(SessionError::Port)
+    }
+
     pub async fn open_response(
         &mut self,
-        target: TurnTarget,
+        turn: &AiTurnRef,
         entry: EntryId,
-    ) -> Result<Opened<ResponseStream, ModelResponse>, ThreadError> {
-        let opened = self
+    ) -> Result<ResponseStream, SessionError> {
+        let stream = self
             .access
-            .open_response(&self.thread, self.agent, target, entry)
-            .await?;
-        if matches!(opened, Opened::Stream(_)) {
-            track(&mut self.responses, entry);
-        }
-        Ok(opened)
+            .open_response(&self.thread, turn.clone(), entry)
+            .await
+            .map_err(SessionError::Port)?;
+        track(&mut self.responses, entry);
+        Ok(stream)
     }
 
     pub async fn complete_response(
         &mut self,
-        target: TurnTarget,
+        turn: &AiTurnRef,
         response: ModelResponse,
-    ) -> Result<Completed<ModelResponse>, ThreadError> {
+    ) -> Result<(), SessionError> {
         let entry = response.id();
-        let completed = self
-            .access
-            .complete_response(&self.thread, self.agent, target, response)
-            .await?;
+        if let Err(refusal) = apply_response(&mut self.conversation, turn, response.clone()) {
+            self.discard_response_if_open(entry).await;
+            return Err(refusal);
+        }
+        self.access
+            .complete_response(&self.thread, turn.clone(), response)
+            .await
+            .map_err(SessionError::Port)?;
         self.responses.retain(|open| *open != entry);
-        Ok(completed)
+        Ok(())
     }
 
-    pub async fn discard_response(&mut self, entry: EntryId) -> Result<(), ThreadError> {
+    pub async fn discard_response(&mut self, entry: EntryId) -> Result<(), PortError> {
         self.responses.retain(|open| *open != entry);
-        self.access
-            .discard_response(&self.thread, self.agent, entry)
-            .await
+        self.access.discard_response(&self.thread, entry).await
     }
 
     pub async fn open_result(
         &mut self,
-        target: TurnTarget,
+        turn: &AiTurnRef,
         entry: EntryId,
-        call: BlockId,
-    ) -> Result<Opened<ResultStreamBox, RuntimeToolResults>, ThreadError> {
-        let opened = self
+    ) -> Result<ResultStreamBox, SessionError> {
+        let stream = self
             .access
-            .open_result(&self.thread, self.agent, target, entry, call)
-            .await?;
-        if matches!(opened, Opened::Stream(_)) {
-            track(&mut self.results, entry);
-        }
-        Ok(opened)
+            .open_result(&self.thread, turn.clone(), entry)
+            .await
+            .map_err(SessionError::Port)?;
+        track(&mut self.results, entry);
+        Ok(stream)
     }
 
     pub async fn complete_result(
         &mut self,
-        target: TurnTarget,
-        entry: EntryId,
-        result: RuntimeToolResult,
-    ) -> Result<Completed<RuntimeToolResults>, ThreadError> {
-        let completed = self
-            .access
-            .complete_result(&self.thread, self.agent, target, entry, result)
-            .await?;
-        self.results.retain(|open| *open != entry);
-        Ok(completed)
-    }
-
-    pub async fn discard_result(&mut self, entry: EntryId) -> Result<(), ThreadError> {
-        self.results.retain(|open| *open != entry);
+        turn: &AiTurnRef,
+        result: RuntimeToolResults,
+    ) -> Result<(), SessionError> {
+        let entry = result.id();
+        if let Err(refusal) = apply_results(&mut self.conversation, turn, result.clone()) {
+            self.discard_result_if_open(entry).await;
+            return Err(refusal);
+        }
         self.access
-            .discard_result(&self.thread, self.agent, entry)
+            .complete_result(&self.thread, turn.clone(), result)
             .await
+            .map_err(SessionError::Port)?;
+        self.results.retain(|open| *open != entry);
+        Ok(())
     }
 
-    pub async fn discard_all(&mut self) -> Vec<ThreadError> {
+    pub async fn discard_result(&mut self, entry: EntryId) -> Result<(), PortError> {
+        self.results.retain(|open| *open != entry);
+        self.access.discard_result(&self.thread, entry).await
+    }
+
+    pub async fn discard_all(&mut self) -> Vec<PortError> {
         let mut errors = Vec::new();
         for entry in std::mem::take(&mut self.responses) {
-            if let Err(error) = self
-                .access
-                .discard_response(&self.thread, self.agent, entry)
-                .await
-            {
+            if let Err(error) = self.access.discard_response(&self.thread, entry).await {
                 errors.push(error);
             }
         }
         for entry in std::mem::take(&mut self.results) {
-            if let Err(error) = self
-                .access
-                .discard_result(&self.thread, self.agent, entry)
-                .await
-            {
+            if let Err(error) = self.access.discard_result(&self.thread, entry).await {
                 errors.push(error);
             }
         }
         errors
+    }
+
+    async fn discard_response_if_open(&mut self, entry: EntryId) {
+        if self.responses.contains(&entry) {
+            let _ = self.discard_response(entry).await;
+        }
+    }
+
+    async fn discard_result_if_open(&mut self, entry: EntryId) {
+        if self.results.contains(&entry) {
+            let _ = self.discard_result(entry).await;
+        }
     }
 }
 

@@ -2,14 +2,14 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use br_graph_contract::{CancelView, Cause};
-use br_llm_clients_core::{BoxFuture, ToolSpec};
+use br_llm_clients_core::ToolSpec;
 use br_llm_messages::{
-    BlockId, Error, OpaqueJson, PlainBlock, RuntimeToolResult, TextBlock, ToolName,
+    BlockId, Error, ImageBlock, ImageSource, OpaqueJson, PlainBlock, PlainText, RuntimeToolResult,
+    StructuredBlock, TextBlock, ToolName,
 };
 
-pub trait ResultStream: Send {
-    fn send<'a>(&'a mut self, fragment: String) -> BoxFuture<'a, ()>;
-}
+use crate::future::PortFuture;
+use crate::stream::ResultStream;
 
 pub trait ToolCode: Send + Sync {
     fn call<'a>(
@@ -17,7 +17,7 @@ pub trait ToolCode: Send + Sync {
         arguments: &'a OpaqueJson,
         cancel: CancelView,
         result: &'a mut dyn ResultStream,
-    ) -> BoxFuture<'a, Result<ToolContent, ToolFault>>;
+    ) -> PortFuture<'a, Result<ToolContent, ToolFault>>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -44,24 +44,48 @@ impl ToolFault {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum ToolBlock {
+    Text(PlainText),
+    Image(ImageSource),
+    Structured(OpaqueJson),
+}
+
+impl ToolBlock {
+    pub fn text(text: impl Into<String>) -> Result<Self, Error> {
+        PlainText::new(text).map(Self::Text)
+    }
+
+    fn with_id(self, id: BlockId) -> Result<PlainBlock, Error> {
+        match self {
+            ToolBlock::Text(text) => TextBlock::new(id, text.as_str()).map(PlainBlock::Text),
+            ToolBlock::Image(source) => Ok(PlainBlock::Image(ImageBlock::new(id, source))),
+            ToolBlock::Structured(value) => {
+                StructuredBlock::new(id, value).map(PlainBlock::StructuredContent)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolContent {
-    content: Vec<PlainBlock>,
+    content: Vec<ToolBlock>,
     is_error: bool,
 }
 
 impl ToolContent {
-    pub fn new(content: Vec<PlainBlock>, is_error: bool) -> Self {
+    pub fn new(content: Vec<ToolBlock>, is_error: bool) -> Self {
         Self { content, is_error }
     }
 
-    pub fn error_text(block: BlockId, text: impl Into<String>) -> Result<Self, Error> {
+    pub fn error_text(text: impl Into<String>) -> Result<Self, Error> {
         Ok(Self {
-            content: vec![PlainBlock::Text(TextBlock::new(block, text)?)],
+            content: vec![ToolBlock::text(text)?],
             is_error: true,
         })
     }
 
-    pub fn content(&self) -> &[PlainBlock] {
+    pub fn content(&self) -> &[ToolBlock] {
         &self.content
     }
 
@@ -74,8 +98,14 @@ impl ToolContent {
         id: BlockId,
         call: BlockId,
         name: ToolName,
+        mut block_ids: impl FnMut() -> BlockId,
     ) -> Result<RuntimeToolResult, Error> {
-        RuntimeToolResult::new(id, call, name, self.is_error, self.content)
+        let content = self
+            .content
+            .into_iter()
+            .map(|block| block.with_id(block_ids()))
+            .collect::<Result<Vec<_>, _>>()?;
+        RuntimeToolResult::new(id, call, name, self.is_error, content)
     }
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "br-agentic-contract"
-version = "0.1.0"
+version = "0.2.0"
 description = "Contract of the agentic nodes: the ports a runner gives a node, the inbox and the mail, the tool, the web access and the file system mode, the rules every agentic instance follows, and in-memory ports for tests"
 edition.workspace = true
 rust-version.workspace = true

@@ -1,13 +1,10 @@
-mod additions;
-mod build;
-mod hub;
 mod inbox;
-mod objects;
+mod record;
 mod simple;
-mod state;
+mod streams;
 mod thread;
 
-pub use inbox::MemoryInbox;
+pub use inbox::{MemoryInbox, SentMail};
+pub use record::{Call, Record};
 pub use simple::{FixedThreadPort, FixedToolsPort, MemoryAgentPort, MemoryWorkspace};
-pub use state::MemoryHub;
 pub use thread::MemoryThreadAccess;
