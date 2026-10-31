@@ -234,7 +234,7 @@ The public API names types of the three libraries it builds on, so pin them besi
 
 | Part | What the crate gives |
 |---|---|
-| ports | `ThreadPort`, `AgentPort`, `ToolsPort`, `WorkspacePort`, `ThreadAccess`, `InboxPort`: public, object-safe, `Send + Sync`, asynchronous (`PortFuture`), never retried; one error type, `PortError` (`Refused` with a reason, `Fault` with a cause); only the inbox refuses |
+| ports | `ThreadPort`, `AgentPort`, `ToolsPort`, `WorkspacePort`, `ThreadAccess`, `InboxPort`: public, object-safe, `Send + Sync`, asynchronous (`PortFuture`), never retried by the instance; one error type, `PortError` (`Refused` with a reason, `Fault` with a cause); only the inbox refuses |
 | `ThreadAccess` | one `read` of the whole `Conversation` at the start; every other operation receives a complete addition and answers accepted or an error; a model response or a tool result is added in two moves (open gives a stream, then complete or discard) |
 | `InboxPort`, `NewMail`, `MailItem` | the unread items of one agent oldest first in batches with a cursor, wait, mark any item as read, send a mail (with the author name and the source conversation; refused without a recipient in `to` or with a repeated recipient), the documents of a mail for a recipient in `to` |
 | `Session`, `Queue`, `store_at_boundary`, `mail_documents`, `result`, `failed`, `cancelled` | the rules of an instance: rules first on its conversation copy, the boundary and the read marks, the documents of a held mail, endings that discard open objects |
