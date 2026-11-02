@@ -8,7 +8,9 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
-Toward the intent of minor 0.3 (draft): a structured reply for the ReAct agent and the generator.
+## 0.3.0 - 2026-11-02
+
+Implements the sealed intent of minor 0.3: a structured reply for the ReAct agent and the generator.
 
 ### Added
 
