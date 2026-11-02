@@ -5,6 +5,7 @@ use br_agentic_contract::{
     AiTurnRef, InboxContext, InboxPort, Queue, Session, ThreadAccess, Tool, ToolSet,
 };
 use br_graph_contract::CancelView;
+use br_llm_clients_core::StructuredShape;
 use br_llm_messages::{
     AgentId, Author, ClosureReason, Conversation, EntryId, PlainText, TurnClosure,
 };
@@ -38,6 +39,7 @@ pub struct Worker<'a> {
     pub(crate) read: Option<RunningRead>,
     pub(crate) author: Option<Author>,
     pub(crate) system: Option<PlainText>,
+    pub(crate) shape: Option<StructuredShape>,
     pub(crate) tools: ToolSet,
     pub(crate) files: Option<FileSystem>,
     pub(crate) steps: Steps,
@@ -69,6 +71,7 @@ impl<'a> Worker<'a> {
             read: None,
             author: None,
             system: None,
+            shape: None,
             tools: ToolSet::new(Vec::new(), Vec::new())?,
             files: None,
             steps: Steps::new(parts.step_limit),
@@ -92,6 +95,12 @@ impl<'a> Worker<'a> {
     #[must_use]
     pub fn with_system(mut self, system: PlainText) -> Self {
         self.system = Some(system);
+        self
+    }
+
+    #[must_use]
+    pub fn with_shape(mut self, shape: StructuredShape) -> Self {
+        self.shape = Some(shape);
         self
     }
 

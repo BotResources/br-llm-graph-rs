@@ -214,11 +214,13 @@ impl<F: Fields> Body<F> for GcBody<F> {
                 label: GENERATOR_LABEL,
                 author: &self.spec.generator_author,
                 prompt: true,
+                shape: true,
             },
             SeatSpec {
                 label: CRITIC_LABEL,
                 author: &self.spec.critic_author,
                 prompt: true,
+                shape: false,
             },
         ];
         if let Some(critic) = &self.programmatic {
@@ -226,6 +228,7 @@ impl<F: Fields> Body<F> for GcBody<F> {
                 label: PROGRAMMATIC_CRITIC_LABEL,
                 author: &critic.author,
                 prompt: false,
+                shape: false,
             });
         }
         seats

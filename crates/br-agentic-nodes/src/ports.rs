@@ -1,5 +1,6 @@
 use br_agentic_contract::{AgentLabel, PortError, PortFuture};
 use br_graph_contract::Fields;
+use br_llm_clients_core::StructuredShape;
 use br_llm_messages::{HumanId, ModelResponse};
 
 use crate::outcome::{GeneratorCriticOutcome, ReactOutcome};
@@ -10,6 +11,14 @@ pub trait PromptPort<F: Fields>: Send + Sync {
         snapshot: &'a F,
         label: &'a AgentLabel,
     ) -> PortFuture<'a, Result<String, PortError>>;
+}
+
+pub trait OutputSchemaPort<F: Fields>: Send + Sync {
+    fn shape<'a>(
+        &'a self,
+        snapshot: &'a F,
+        label: &'a AgentLabel,
+    ) -> PortFuture<'a, Result<Option<StructuredShape>, PortError>>;
 }
 
 pub trait AuthorPort<F: Fields>: Send + Sync {

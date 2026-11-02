@@ -1,4 +1,6 @@
-use br_llm_messages::ModelResponse;
+use br_llm_messages::{ModelResponse, StructuredBlock};
+
+use crate::structure::structured_reply;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Judgement {
@@ -25,6 +27,10 @@ impl ReactOutcome {
 
     pub fn response(&self) -> &ModelResponse {
         &self.response
+    }
+
+    pub fn structured_reply(&self) -> Option<&StructuredBlock> {
+        structured_reply(&self.response)
     }
 
     pub fn steps(&self) -> u32 {
@@ -61,6 +67,10 @@ impl GeneratorCriticOutcome {
 
     pub fn response(&self) -> &ModelResponse {
         &self.response
+    }
+
+    pub fn structured_reply(&self) -> Option<&StructuredBlock> {
+        structured_reply(&self.response)
     }
 
     pub fn judgement(&self) -> Judgement {

@@ -14,6 +14,8 @@ pub enum CallFailure {
         "the runner declared that the model should think, and the response holds no thinking block"
     )]
     NoThinking,
+    #[error("the agent has a shape, and its final response holds no structured block")]
+    NoStructuredReply,
     #[error("the answer of the critic is unusable: {0}")]
     UnusableAnswer(String),
 }

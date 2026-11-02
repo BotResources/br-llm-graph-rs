@@ -11,8 +11,8 @@ use br_llm_clients_core::{
 use br_llm_messages::{
     ContentBlock, DeltaOp, ExecutionStatus, ModelName, ModelResponse, OpaqueJson,
     ProviderToolExecutionRecord, RedactedThinkingBlock, ReplayFormat, ReplayMaterial,
-    ReplayPayload, ResponseDelta, ResponseEnding, ResponseMetadata, RuntimeToolCall, TextBlock,
-    ThinkingBlock, ToolName,
+    ReplayPayload, ResponseDelta, ResponseEnding, ResponseMetadata, RuntimeToolCall,
+    StructuredBlock, TextBlock, ThinkingBlock, ToolName,
 };
 
 use crate::common::block_id;
@@ -20,6 +20,7 @@ use crate::common::block_id;
 #[derive(Clone)]
 pub enum Part {
     Text(String),
+    Structured(String),
     Call(String, String),
     Thinking,
     Redacted,
@@ -32,6 +33,9 @@ pub fn blocks(parts: &[Part]) -> Vec<ContentBlock> {
         .iter()
         .map(|part| match part {
             Part::Text(text) => ContentBlock::Text(TextBlock::new(block_id(), text).unwrap()),
+            Part::Structured(json) => ContentBlock::StructuredContent(
+                StructuredBlock::new(block_id(), OpaqueJson::parse(json).unwrap()).unwrap(),
+            ),
             Part::Call(name, arguments) => ContentBlock::RuntimeToolCall(
                 RuntimeToolCall::new(
                     block_id(),
@@ -85,6 +89,13 @@ impl Act {
     pub fn text(text: &str) -> Self {
         Self::of(Kind::Respond(
             vec![Part::Text(text.to_owned())],
+            ResponseEnding::finished(),
+        ))
+    }
+
+    pub fn structured(json: &str) -> Self {
+        Self::of(Kind::Respond(
+            vec![Part::Structured(json.to_owned())],
             ResponseEnding::finished(),
         ))
     }

@@ -1,5 +1,6 @@
 use br_agentic_contract::AgentLabel;
 use br_graph_contract::Fields;
+use br_llm_clients_core::StructuredShape;
 use br_llm_messages::{AgentId, Author, PlainText};
 
 use crate::config::AuthorSource;
@@ -9,6 +10,7 @@ pub(crate) struct SeatSpec<'b, F: Fields> {
     pub(crate) label: &'static str,
     pub(crate) author: &'b AuthorSource<F>,
     pub(crate) prompt: bool,
+    pub(crate) shape: bool,
 }
 
 pub(crate) struct Seat {
@@ -16,6 +18,7 @@ pub(crate) struct Seat {
     pub(crate) agent: AgentId,
     pub(crate) author: Author,
     pub(crate) system: Option<PlainText>,
+    pub(crate) shape: Option<StructuredShape>,
 }
 
 pub(crate) struct Seats(pub(crate) Vec<Seat>);
