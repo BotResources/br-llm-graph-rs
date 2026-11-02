@@ -1,16 +1,17 @@
 use std::time::Duration;
 
 use br_agentic_contract::{AiTurnRef, Session};
-use br_llm_clients_core::{BoxFuture, ClientRequest, OutputMode, ToolSpec};
+use br_llm_clients_core::{BoxFuture, ClientRequest, OutputMode, StructuredShape, ToolSpec};
 use br_llm_messages::{
-    AITurn, ModelResponse, PlainText, ProjectedThread, ResponseEnding, RuntimeNotice, TurnId,
-    TurnState,
+    AITurn, ModelResponse, PlainText, ProjectedThread, ResponseEnding, RuntimeNotice, TurnEntry,
+    TurnId, TurnState,
 };
 
 use crate::client::ModelClient;
 use crate::fault::{AttemptError, CallFailure, Fault};
 use crate::ids::{entry_id, turn_id};
 use crate::slot::{Attempt, Slot, drive};
+use crate::structure::check_structure;
 use crate::thinking::check_thinking;
 use crate::worker::Worker;
 
@@ -20,6 +21,7 @@ struct StepAttempt<'w, 'a> {
     history: ProjectedThread,
     turn: AiTurnRef,
     tools: Vec<ToolSpec>,
+    shape: Option<StructuredShape>,
     timeout: Duration,
     covered: bool,
 }
@@ -39,7 +41,9 @@ impl Attempt for StepAttempt<'_, '_> {
                 self.turn.id,
                 entry,
                 self.tools.clone(),
-                OutputMode::Plain,
+                self.shape
+                    .clone()
+                    .map_or(OutputMode::Plain, OutputMode::Structured),
             )
             .map_err(|error| AttemptError::Fatal(Fault::value(error)))?;
             let mut stream = self.session.open_response(&self.turn, entry).await?;
@@ -58,6 +62,9 @@ impl Attempt for StepAttempt<'_, '_> {
                             if self.covered && !exempt(&response) {
                                 check_thinking(client, &response)?;
                             }
+                            if self.shape.is_some() && !exempt(&response) && self.ends(&response) {
+                                check_structure(&response)?;
+                            }
                             Ok(response)
                         })
                 }
@@ -70,6 +77,26 @@ impl Attempt for StepAttempt<'_, '_> {
                 }
             }
         })
+    }
+}
+
+impl StepAttempt<'_, '_> {
+    /// Whether the response would be a final response once added to the AI turn of the step.
+    fn ends(&self, response: &ModelResponse) -> bool {
+        if response.runtime_calls().next().is_some() {
+            return false;
+        }
+        let current = self
+            .session
+            .conversation()
+            .turn(&self.turn.id)
+            .ok()
+            .and_then(|turn| turn.as_ai().cloned());
+        let mut turn = current.unwrap_or_else(|| {
+            AITurn::open(self.turn.id, self.turn.agent, self.turn.author.clone())
+        });
+        turn.push_entry(TurnEntry::ModelResponse(response.clone()))
+            .is_ok_and(|()| at_boundary(&turn.state()))
     }
 }
 
@@ -119,6 +146,7 @@ impl Worker<'_> {
                 history,
                 turn: target.clone(),
                 tools: self.tools.specs(),
+                shape: self.shape.clone(),
                 timeout: self.timeouts.model_call(),
                 covered: !slot.is_settled(),
             };

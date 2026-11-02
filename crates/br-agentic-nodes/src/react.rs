@@ -66,6 +66,7 @@ impl<F: Fields> Body<F> for ReactBody<F> {
             label: AGENT_LABEL,
             author: &self.author,
             prompt: true,
+            shape: true,
         }]
     }
 

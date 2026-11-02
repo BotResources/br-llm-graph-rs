@@ -23,6 +23,7 @@ mod projection;
 mod raw;
 mod request;
 mod seen;
+mod structured;
 mod thinking;
 mod timeout;
 mod wrap;

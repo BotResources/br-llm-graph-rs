@@ -9,7 +9,7 @@ use br_llm_messages::Author;
 
 use crate::fault::Fault;
 use crate::limits::{StepLimit, Timeouts};
-use crate::ports::{AuthorPort, PromptPort};
+use crate::ports::{AuthorPort, OutputSchemaPort, PromptPort};
 
 pub struct Ports<F: Fields> {
     pub(crate) thread: Arc<dyn ThreadPort<F>>,
@@ -19,6 +19,7 @@ pub struct Ports<F: Fields> {
     pub(crate) tools: Arc<dyn ToolsPort<F>>,
     pub(crate) workspace: Arc<dyn WorkspacePort<F>>,
     pub(crate) inbox: Option<Arc<dyn InboxPort>>,
+    pub(crate) output_schema: Option<Arc<dyn OutputSchemaPort<F>>>,
 }
 
 impl<F: Fields> Ports<F> {
@@ -38,12 +39,19 @@ impl<F: Fields> Ports<F> {
             tools,
             workspace,
             inbox: None,
+            output_schema: None,
         }
     }
 
     #[must_use]
     pub fn with_inbox(mut self, inbox: Arc<dyn InboxPort>) -> Self {
         self.inbox = Some(inbox);
+        self
+    }
+
+    #[must_use]
+    pub fn with_output_schema(mut self, output_schema: Arc<dyn OutputSchemaPort<F>>) -> Self {
+        self.output_schema = Some(output_schema);
         self
     }
 

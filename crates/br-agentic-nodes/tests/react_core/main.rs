@@ -14,6 +14,7 @@ mod restored;
 mod retries;
 mod start;
 mod step;
+mod structured;
 mod the_loop;
 mod thinking;
 mod timeout;

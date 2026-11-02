@@ -8,6 +8,20 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+Toward the intent of minor 0.3 (draft): a structured reply for the ReAct agent and the generator.
+
+### Added
+
+- `OutputSchemaPort` and `Ports::with_output_schema`: an optional port that gives, at Start, the `StructuredShape` of the agent that makes steps (label `agent` of a ReAct agent, `generator` of a generator-critic), or none. It is never called for the critic or the programmatic critic.
+- With a shape, every step of that agent asks the client for `OutputMode::Structured(shape)`, a step that offers tools included. Without the port, or with no shape, steps ask for plain text as before.
+- The structure rule: a final response of an agent that has a shape must hold a structured block. Otherwise the call is a failed call (`CallFailure::NoStructuredReply`): the next client of the list when the fallback covers the step, a fault otherwise. A refusal, a filter or an exhaustion is exempt; a response restored at Start is not checked.
+- `ReactOutcome::structured_reply` and `GeneratorCriticOutcome::structured_reply`: the first structured block of the last response.
+- Building blocks: `structured_reply`, `check_structure`, `Worker::with_shape`.
+
+### Changed
+
+- `CallFailure` has a new variant, `NoStructuredReply`: an exhaustive `match` on `CallFailure` must handle it.
+
 ## 0.2.0 - 2026-10-31
 
 Rework to the sealed intent of minor 0.2, on `br-agentic-contract` 0.2.0.

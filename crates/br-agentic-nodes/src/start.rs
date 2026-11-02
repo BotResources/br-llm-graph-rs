@@ -37,18 +37,24 @@ impl Worker<'_> {
             } else {
                 None
             };
+            let shape = match (&common.ports.output_schema, spec.shape) {
+                (Some(port), true) => port.shape(snapshot, &label).await?,
+                _ => None,
+            };
             let author = spec.author.resolve(snapshot, &label).await?;
             seats.push(Seat {
                 label,
                 agent,
                 author,
                 system,
+                shape,
             });
         }
         let seats = Seats(seats);
         let main = seats.main()?;
         self.author = Some(main.author.clone());
         self.system = main.system.clone();
+        self.shape = main.shape.clone();
         self.known = vec![(main.agent, main.author.clone())];
         let tools = common.ports.tools.tools(snapshot, instance).await?;
         let mail = self.mail_tools()?;

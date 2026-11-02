@@ -22,6 +22,7 @@ mod sink;
 mod slot;
 mod start;
 mod step;
+mod structure;
 mod thinking;
 mod tool_round;
 mod warning;
@@ -40,12 +41,13 @@ pub use limits::{InvalidLimit, ProgrammaticRefusalLimit, RoundLimit, StepLimit, 
 pub use mail_tools::{GET_MAIL_FILES, SEND_MAIL};
 pub use outcome::{GeneratorCriticOutcome, Judgement, ReactOutcome};
 pub use ports::{
-    AuthorPort, CriticRequest, CriticRequestPort, GeneratorCriticOutcomePort,
+    AuthorPort, CriticRequest, CriticRequestPort, GeneratorCriticOutcomePort, OutputSchemaPort,
     ProgrammaticCriticPort, ProgrammaticVerdict, PromptPort, ReactOutcomePort,
 };
 pub use react::{AGENT_LABEL, REACT_AGENT, ReactAgent, ReactSpec};
 pub use sandbox::{FileSystem, SandboxError, SandboxPath};
 pub use slot::Slot;
+pub use structure::{check_structure, structured_reply};
 pub use thinking::{check_thinking, holds_thinking};
 pub use warning::{WARNING_WINDOW, warning_text};
 pub use worker::{Worker, WorkerParts};
