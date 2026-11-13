@@ -1,5 +1,24 @@
 # br-llm-graph
 
+> [!IMPORTANT]
+> **This repository is maintained for BotResources and its authorized clients.**
+> It is published under Apache-2.0 and made available read-only for visibility and
+> reuse. The Apache-2.0 license governs your rights to use, modify, and fork the code;
+> the rest of this notice describes our operational stance, not a legal
+> restriction.
+>
+> **We do not accept external pull requests, issues, or support requests.**
+> Issues and Discussions are disabled. PRs from accounts that are not on the
+> internal contributor allowlist will be closed without review. Forks are
+> permitted by Apache-2.0 and we do not (and cannot) prevent them; we simply do not
+> monitor, support, or accept contributions from forks outside the BR
+> commercial relationship.
+>
+> - Clients with a commercial relationship: contact your BR account manager.
+> - Security reports: see [SECURITY.md](SECURITY.md) (private email channel).
+> - This is not a community-supported project. No support is provided through
+>   GitHub.
+
 LangGraph-like orchestration over br-llm-messages and br-llm-clients-core: a typed key/value state read and written through typed keys, async nodes, sync edges that may declare their targets, supersteps with fan-out and join, calls of graphs and maps over lists, resumption from checkpoints, a node that makes one model call, a ReAct agent and a generator-critic, and a description of every built graph as data. The model is a `Client` of br-llm-clients-core the host gives; the tools, the hooks that judge their calls and the thread store an agent works in are the host's. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it. The graph's API is made of br-llm-messages and br-llm-clients-core types (authors, conversations, `Client`, `ToolSpec`, `OutputMode`), so a dependent pins them on the tags the graph builds on, beside it:
 
 ```toml
