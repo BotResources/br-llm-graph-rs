@@ -25,6 +25,7 @@ struct BoxState {
 struct State {
     boxes: HashMap<BoxId, BoxState>,
     scripts: HashMap<String, CommandResult>,
+    writes: HashMap<BoxId, Vec<(FilePath, Vec<u8>)>>,
     next: u64,
 }
 
@@ -78,6 +79,21 @@ impl MemorySandbox {
                 .map(|(path, content)| (path.clone(), content.clone()))
                 .collect(),
         )
+    }
+
+    pub fn files(&self, sandbox: &BoxId) -> Option<Vec<(FilePath, Vec<u8>)>> {
+        let state = self.lock();
+        let held = state.boxes.get(sandbox)?;
+        Some(
+            held.files
+                .iter()
+                .map(|(path, content)| (path.clone(), content.clone()))
+                .collect(),
+        )
+    }
+
+    pub fn writes(&self, sandbox: &BoxId) -> Vec<(FilePath, Vec<u8>)> {
+        self.lock().writes.get(sandbox).cloned().unwrap_or_default()
     }
 
     pub fn is_released(&self, sandbox: &BoxId) -> bool {
@@ -203,7 +219,12 @@ impl SandboxPort for MemorySandbox {
             path: path.clone(),
         });
         Box::pin(async move {
-            self.with_box(sandbox, |held, _| {
+            self.with_box(sandbox, |held, state| {
+                state
+                    .writes
+                    .entry(sandbox.clone())
+                    .or_default()
+                    .push((path.clone(), content.clone()));
                 held.files.insert(path.clone(), content);
                 Ok(())
             })

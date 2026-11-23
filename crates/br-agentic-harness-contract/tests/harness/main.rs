@@ -1,6 +1,8 @@
 mod common;
+mod credential;
 mod drivers;
 mod dyn_compat;
+mod instances;
 mod lifecycle_order;
 mod mail;
 mod mark_after_stored;

@@ -170,3 +170,20 @@ async fn given_a_history_when_it_is_used_as_the_node_history_then_it_serves_ever
     assert!(asked);
     Ok(())
 }
+
+#[tokio::test]
+async fn given_an_entry_the_thread_holds_when_it_is_dropped_afterwards_then_the_answer_is_still_stored()
+-> Res {
+    let world = World::new()?;
+    let entry = entry_id()?;
+    world
+        .history
+        .add_entry(&world.thread, world.turn()?, world.response_entry(entry)?)
+        .await?;
+
+    world.history.drop_entry(entry);
+
+    let answer = world.history.stored(&world.thread, entry).await?;
+    assert_eq!(answer, StoredAnswer::Stored);
+    Ok(())
+}
