@@ -19,7 +19,7 @@ dependencies = [
 name = "br-agentic-harness-contract"
 version = "0.1.0"
 dependencies = [
- "br-agentic-contract 0.3.0",
+ "br-agentic-contract",
  "br-llm-messages 2.1.0",
  "serde",
  "thiserror",

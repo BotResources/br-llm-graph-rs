@@ -28,7 +28,39 @@ fn sources() -> Result<Vec<(PathBuf, String)>, Box<dyn Error>> {
 fn given_the_library_when_its_sources_are_read_then_it_defines_no_port()
 -> Result<(), Box<dyn Error>> {
     for (path, text) in sources()? {
-        assert!(!text.contains("pub trait"), "{}", path.display());
+        for line in text.lines().map(str::trim_start) {
+            let declaration = line.strip_prefix("pub ").unwrap_or(line);
+            let declaration = declaration.strip_prefix("(crate) ").unwrap_or(declaration);
+            assert!(
+                !declaration.starts_with("trait ") && !line.contains("#[async_trait"),
+                "{line} in {}",
+                path.display()
+            );
+        }
+        for name in [
+            "PromptPort",
+            "OutputSchemaPort",
+            "AuthorPort",
+            "ReactOutcomePort",
+            "GeneratorCriticOutcomePort",
+            "CriticRequestPort",
+            "ProgrammaticCriticPort",
+            "ProgrammaticVerdict",
+            "ReactOutcome",
+            "GeneratorCriticOutcome",
+            "Judgement",
+            "CriticRequest",
+        ] {
+            for keyword in ["struct", "enum", "type", "trait"] {
+                let definition = format!("{keyword} {name}");
+                let defined = text.match_indices(&definition).any(|(at, _)| {
+                    !text[at + definition.len()..]
+                        .starts_with(|next: char| next.is_alphanumeric() || next == '_')
+                });
+                assert!(!defined, "{definition} in {}", path.display());
+            }
+        }
+        assert!(!text.contains("fn structured_reply"), "{}", path.display());
     }
     Ok(())
 }

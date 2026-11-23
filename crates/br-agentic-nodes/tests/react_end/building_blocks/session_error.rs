@@ -5,7 +5,7 @@ use br_llm_messages::{ClosureReason, Conversation, TurnClosure};
 use crate::building_blocks::common::*;
 
 #[test]
-fn given_an_apply_error_of_the_rules_when_it_converts_then_it_is_a_rules_error_with_the_same_source()
+fn given_an_apply_error_of_a_wrong_turn_when_it_converts_then_it_is_a_wrong_turn_error_of_the_same_turn()
  {
     let turn = AiTurnRef {
         id: turn_id(),
@@ -20,6 +20,17 @@ fn given_an_apply_error_of_the_rules_when_it_converts_then_it_is_a_rules_error_w
     let converted = SessionError::from(refused);
 
     assert!(matches!(converted, SessionError::WrongTurn(id) if id == turn.id));
+}
+
+#[test]
+fn given_an_apply_error_of_the_rules_when_it_converts_then_it_is_a_rules_error_with_the_same_source()
+ {
+    let source = br_llm_messages::PlainText::new("   ").unwrap_err();
+    let text = source.to_string();
+
+    let converted = SessionError::from(ApplyError::from(source));
+
+    assert!(matches!(converted, SessionError::Rules(error) if error.to_string() == text));
 }
 
 #[test]
