@@ -88,7 +88,7 @@ RunContext { instance, thread, agent, author, conversation }
 Not on crates.io. Pin the git tag with the matching `version` beside it, and pin the other libraries on the same git URLs and tags as this crate, or the types split in two copies:
 
 ```toml
-br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.1.0", version = "0.1.0" }
+br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.1.1", version = "0.1.1" }
 br-agentic-harness-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness-contract", tag = "br-agentic-harness-contract/v0.1.0", version = "0.1.0" }
 br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.3.0", version = "0.3.0" }
 br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
