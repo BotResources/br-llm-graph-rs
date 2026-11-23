@@ -8,4 +8,5 @@ mod mail_set;
 mod prompt_history;
 mod rules;
 mod send_mail;
+mod spy;
 mod tools;

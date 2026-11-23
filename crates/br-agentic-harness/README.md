@@ -32,6 +32,7 @@ let harness = Harness::builder(history, prompt, tools)
 ## Mail set and mail gate
 
 - The mail set holds the ids of the mail entries (`AgentMail`) of each thread. It is filled only from the history of the run: on every `read`, `add_input_turn` and `add_entry` through the history adapter, once the write succeeded. Mail listed by the mail port is never added.
+- `close` clears the mail set of every thread that the tools port saw for that instance (the thread of the run context of each tools call); a thread that no tools call named stays in the set. A mail of the thread is accepted again only after the history adapter reads or writes it again.
 - `get_mail_files` accepts only an id of the mail set of the thread of the run context. Any other id gets the same error text, asks the mail port nothing and reveals nothing. The gate is not in `RunContext`; the harness keeps it.
 - The incoming adapter marks a mail read through the mail port only after `stored(thread, entry)` answers `Stored`. `mark_read` returns at once; a background task waits and marks. `Dropped`, a fault, a refusal, an unknown entry or thread and a closed channel leave the mail unread, so that it comes again. The waiting tasks end when the last handle of the incoming port (the harness and every `Arc` clone given by `Harness::incoming()`) is dropped. A crash between the write and the mark can deliver a mail twice and cannot lose it; this holds for mail only.
 
@@ -47,7 +48,7 @@ Names, texts and answers are those of the mail tools of `br-agentic-nodes` 0.3. 
 ## Run lifecycle and rules between ports
 
 - `open`, with a sandbox port: `SandboxPort::open(instance, web)`; `web` is the `WebAccess` given to the builder, unchanged, and `None` when the node gave none. The harness never enforces it and never adds one. An instance already open is refused.
-- `close`, with a sandbox port, whatever the `RunEnd`: `kill` of each process registered with `track_background`, then `save`, then `release`. A failed step does not skip the next ones; the first failure is returned. A close with no open box does nothing.
+- `close`, with a sandbox port, whatever the `RunEnd`: `kill` of each process registered with `track_background`, then `save`, then `release`. A failed step does not skip the next ones; the first failure is returned. A close with no open box does nothing. A close that arrives while an `open` is in flight makes that `open` save and release the box it opened, and it answers `PortError::Refused`. A dropped or cancelled `open` gives its reservation back, so the instance can be opened again.
 - Deny by default: into the box go only the web access setting, the attachments of a mail that passes the gate of `get_mail_files`, and nothing else. The harness never writes the runner credential, a prompt, a tool or a skill file to the box.
 - The harness cannot check two rules of the contract: a runner with internet holds no internal data in the box (runner author), and a provider-side store of the work folder does not go around the per-thread authorization of Threads (provider).
 
@@ -66,7 +67,21 @@ The box tools (run, read, write, list), the description of the box in the prompt
 | `track_background` exists | the port gives no list of processes and the harness builds no run tool in 0.1, so the runner that starts a background command tells the harness |
 | `close` goes on after a failed step | a box that is not released is a leak; a folder that is not saved is lost work |
 | copy to `mail/{id}/{name}` | the place that the reference driver of `br-agentic-harness-contract` uses; the copy is best effort and the text result is always given |
-| `RunContext` is only received | it is `#[non_exhaustive]`; the harness never builds one, the runner does with `RunContext::new` |
+| `RunContext` is only received | it is `#[non_exhaustive]`; the harness never builds one, the runner does with `RunContext::new`; the doc-test below proves that a struct literal does not compile outside its crate |
+
+```compile_fail,E0639
+# use br_agentic_contract::{InstanceId, RunContext, ThreadRef};
+# use br_llm_messages::{AgentId, Author, ConversationId};
+# fn literal(
+#     instance: InstanceId,
+#     thread: ThreadRef,
+#     agent: AgentId,
+#     author: Author,
+#     conversation: ConversationId,
+# ) -> RunContext {
+RunContext { instance, thread, agent, author, conversation }
+# }
+```
 
 ## Install
 

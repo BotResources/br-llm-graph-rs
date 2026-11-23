@@ -8,6 +8,21 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.1.1 - 2026-11-23
+
+Patch of the audit of 0.1.0 (findings F1, F2, F3, F6); no public surface change.
+
+### Fixed
+
+- A dropped or cancelled `open` gave its reservation back never, so every later `open` of the instance was refused; a reservation guard now releases it.
+- A `close` during an `open` in flight found no run and the box that `open` then committed was never released; that `open` now saves and releases the box and answers `PortError::Refused`.
+- `close` clears the mail set of the threads of the instance (see the README).
+
+### Tests
+
+- A doc-test proves that `RunContext` cannot be built by a struct literal outside its crate (`E0639`).
+- The credential test is rewritten: the secret is in the prompt text, a tool name, a mail subject and body, an attachment name and an attachment body; every sandbox call is asserted on its full content.
+
 ## 0.1.0 - 2026-11-23
 
 First release, to the sealed intent of minor 0.1, on `br-agentic-contract` 0.3.0 and `br-agentic-harness-contract` 0.1.0.
