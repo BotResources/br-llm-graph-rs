@@ -54,7 +54,7 @@ async fn given_a_thread_the_adapter_has_no_slot_for_when_the_signal_is_asked_the
 }
 
 #[tokio::test]
-async fn given_an_entry_that_will_never_be_stored_when_the_signal_is_asked_then_it_answers_dropped()
+async fn given_an_entry_that_will_not_be_stored_when_the_signal_is_asked_then_it_answers_dropped()
 -> Res {
     let world = World::new()?;
     let entry = entry_id()?;
