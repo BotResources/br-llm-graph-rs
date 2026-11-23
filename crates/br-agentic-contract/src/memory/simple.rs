@@ -10,8 +10,8 @@ use crate::error::PortError;
 use crate::future::PortFuture;
 use crate::ids::{AgentLabel, ThreadRef};
 use crate::ports::{AgentPort, ThreadPort, ToolsPort};
+use crate::run_context::RunContext;
 use crate::tool::Tool;
-use crate::workspace::{WorkspaceFile, WorkspacePort};
 
 pub struct FixedThreadPort {
     record: Record,
@@ -52,9 +52,11 @@ impl<F: Fields> ToolsPort<F> for FixedToolsPort {
     fn tools<'a>(
         &'a self,
         _snapshot: &'a F,
-        instance: InstanceId,
+        context: &'a RunContext,
     ) -> PortFuture<'a, Result<Vec<Tool>, PortError>> {
-        self.record.push(Call::ToolsPort { instance });
+        self.record.push(Call::ToolsPort {
+            context: context.clone(),
+        });
         Box::pin(async move { Ok(self.tools.clone()) })
     }
 }
@@ -102,51 +104,6 @@ impl<F: Fields> AgentPort<F> for MemoryAgentPort<F> {
             let agent = AgentId::from_uuid(Uuid::now_v7()).map_err(PortError::fault)?;
             agents.insert(label.clone(), agent);
             Ok(agent)
-        })
-    }
-}
-
-pub struct MemoryWorkspace {
-    record: Record,
-    files: Mutex<Vec<WorkspaceFile>>,
-}
-
-impl MemoryWorkspace {
-    pub fn new(record: &Record, files: Vec<WorkspaceFile>) -> Self {
-        Self {
-            record: record.clone(),
-            files: Mutex::new(files),
-        }
-    }
-
-    pub fn files(&self) -> Vec<WorkspaceFile> {
-        self.files
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-}
-
-impl<F: Fields> WorkspacePort<F> for MemoryWorkspace {
-    fn load<'a>(
-        &'a self,
-        _snapshot: &'a F,
-    ) -> PortFuture<'a, Result<Vec<WorkspaceFile>, PortError>> {
-        self.record.push(Call::WorkspaceLoad);
-        Box::pin(async move { Ok(self.files()) })
-    }
-
-    fn save<'a>(
-        &'a self,
-        _snapshot: &'a F,
-        files: Vec<WorkspaceFile>,
-    ) -> PortFuture<'a, Result<(), PortError>> {
-        self.record.push(Call::WorkspaceSave {
-            files: files.clone(),
-        });
-        Box::pin(async move {
-            *self.files.lock().unwrap_or_else(PoisonError::into_inner) = files;
-            Ok(())
         })
     }
 }

@@ -3,30 +3,30 @@ use std::num::NonZeroUsize;
 use br_graph_contract::InstanceId;
 use br_llm_messages::{AgentId, EntryId};
 
+use crate::entry_item::EntryItem;
 use crate::error::PortError;
 use crate::future::PortFuture;
-use crate::ids::{MailId, ThreadRef};
-use crate::inbox_entry::InboxEntry;
-use crate::mail::{MailDocument, MailItem, NewMail};
+use crate::ids::ThreadRef;
+use crate::mail::MailItem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InboxContext {
+pub struct IncomingContext {
     pub instance: InstanceId,
     pub thread: ThreadRef,
     pub agent: AgentId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum InboxItem {
+pub enum IncomingItem {
     Mail(MailItem),
-    Entry(InboxEntry),
+    Entry(EntryItem),
 }
 
-impl InboxItem {
+impl IncomingItem {
     pub fn id(&self) -> EntryId {
         match self {
-            InboxItem::Mail(item) => item.id().entry_id(),
-            InboxItem::Entry(entry) => entry.id(),
+            IncomingItem::Mail(item) => item.id().entry_id(),
+            IncomingItem::Entry(entry) => entry.id(),
         }
     }
 }
@@ -45,36 +45,22 @@ impl Cursor {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct InboxBatch {
-    pub items: Vec<InboxItem>,
+pub struct IncomingBatch {
+    pub items: Vec<IncomingItem>,
     pub next: Option<Cursor>,
 }
 
-pub trait InboxPort: Send + Sync {
+pub trait IncomingPort: Send + Sync {
     fn items<'a>(
         &'a self,
-        context: &'a InboxContext,
+        context: &'a IncomingContext,
         after: Option<&'a Cursor>,
         limit: NonZeroUsize,
-    ) -> PortFuture<'a, Result<InboxBatch, PortError>>;
-
-    fn wait<'a>(&'a self, context: &'a InboxContext) -> PortFuture<'a, Result<(), PortError>>;
+    ) -> PortFuture<'a, Result<IncomingBatch, PortError>>;
 
     fn mark_read<'a>(
         &'a self,
-        context: &'a InboxContext,
+        context: &'a IncomingContext,
         item: EntryId,
     ) -> PortFuture<'a, Result<(), PortError>>;
-
-    fn send<'a>(
-        &'a self,
-        context: &'a InboxContext,
-        mail: NewMail,
-    ) -> PortFuture<'a, Result<(), PortError>>;
-
-    fn documents<'a>(
-        &'a self,
-        context: &'a InboxContext,
-        mail: MailId,
-    ) -> PortFuture<'a, Result<Vec<MailDocument>, PortError>>;
 }

@@ -8,6 +8,20 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-23
+
+Breaking minor, to the sealed intent of minor 0.3. It opens its own line.
+
+### Breaking
+
+- The seven ports of the node library move in: `PromptPort`, `OutputSchemaPort`, `AuthorPort`, `ReactOutcomePort`, `GeneratorCriticOutcomePort`, `CriticRequestPort`, `ProgrammaticCriticPort`, with `CriticRequest`, `ProgrammaticVerdict`, `ReactOutcome`, `GeneratorCriticOutcome` (public constructors), `Judgement` and `structured_reply`.
+- `InboxPort` becomes `IncomingPort` with two operations, `items` and `mark_read`; `wait`, `send` and `documents` are removed. `InboxContext`, `InboxBatch`, `InboxItem` become `IncomingContext`, `IncomingBatch`, `IncomingItem`; `InboxEntry` and `InvalidInboxEntry` become `EntryItem` and `InvalidEntryItem`. `Cursor` and the mail types keep their names. `AgenticNode::has_inbox` becomes `has_incoming`.
+- `ToolsPort::tools` takes `&RunContext` (instance, thread, agent, author, conversation id; `#[non_exhaustive]`, made by `RunContext::new`) in place of the instance id.
+- The five rules that apply an addition to a conversation are public: `apply_input_turn`, `apply_entry`, `apply_closure`, `apply_response`, `apply_results`. They give the new `ApplyError` (`Rules`, `WrongTurn`).
+- Removed, to `br-agentic-nodes`: `Session`, `SessionError`, `store_at_boundary`, `Boundary`, `BoundaryError`, `MailEntryBuilder`, `Queue`, `result`, `failed`, `cancelled`, `mail_documents`.
+- Removed: `WorkspacePort`, `WorkspaceFile`, `FileSystemMode`, `save_files`, `MemoryWorkspace`.
+- In memory: `MemoryInbox` becomes `MemoryIncoming` (no wait, send, documents or `put_document`; `deliver_entry`, `deliver_mail`, `is_read` stay); `Call::Inbox*` become `Call::Incoming*` and `Call::InboxWait`, `InboxSend`, `InboxDocuments`, `WorkspaceLoad`, `WorkspaceSave` are removed; `Call::ToolsPort` holds the `RunContext`.
+
 ## 0.2.0 - 2026-10-31
 
 Rework of the thread access, the ports, the in-memory ports and the queue rules to the sealed intent of minor 0.2. Breaking: the 0.1 API of the thread access, the inbox, the agent port and the tool content does not compile against 0.2.

@@ -3,55 +3,49 @@ use br_llm_messages::{
     TurnEntry, TurnId,
 };
 
-use crate::error::PortError;
-use crate::ids::MailId;
 use crate::thread_access::AiTurnRef;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SessionError {
+pub enum ApplyError {
     #[error("the rules of br-llm-messages refuse the change: {0}")]
     Rules(#[source] Error),
     #[error("the turn {0} is not the AI turn of that agent and author")]
     WrongTurn(TurnId),
-    #[error("the entry built for the mail {0} is not the entry of that mail")]
-    WrongMailEntry(MailId),
-    #[error(transparent)]
-    Port(PortError),
 }
 
-impl From<Error> for SessionError {
+impl From<Error> for ApplyError {
     fn from(error: Error) -> Self {
         Self::Rules(error)
     }
 }
 
-pub(crate) fn apply_input_turn(
+pub fn apply_input_turn(
     conversation: &mut Conversation,
     turn: &InputTurn,
-) -> Result<(), SessionError> {
+) -> Result<(), ApplyError> {
     conversation
         .push_turn(Turn::from(turn.clone()))
-        .map_err(SessionError::Rules)
+        .map_err(ApplyError::Rules)
 }
 
-fn existing(conversation: &Conversation, turn: &AiTurnRef) -> Result<bool, SessionError> {
+fn existing(conversation: &Conversation, turn: &AiTurnRef) -> Result<bool, ApplyError> {
     match conversation.turn(&turn.id) {
         Ok(Turn::AITurn(ai)) if ai.agent() == turn.agent && ai.author() == &turn.author => Ok(true),
-        Ok(_) => Err(SessionError::WrongTurn(turn.id)),
+        Ok(_) => Err(ApplyError::WrongTurn(turn.id)),
         Err(_) => Ok(false),
     }
 }
 
-pub(crate) fn apply_entry(
+pub fn apply_entry(
     conversation: &mut Conversation,
     turn: &AiTurnRef,
     entry: TurnEntry,
-) -> Result<(), SessionError> {
+) -> Result<(), ApplyError> {
     if existing(conversation, turn)? {
         return conversation
             .push_entry(&turn.id, entry)
-            .map_err(SessionError::Rules);
+            .map_err(ApplyError::Rules);
     }
     let mut created = AITurn::open(turn.id, turn.agent, turn.author.clone());
     created.push_entry(entry)?;
@@ -59,31 +53,31 @@ pub(crate) fn apply_entry(
     Ok(())
 }
 
-pub(crate) fn apply_closure(
+pub fn apply_closure(
     conversation: &mut Conversation,
     turn: &AiTurnRef,
     closure: TurnClosure,
-) -> Result<(), SessionError> {
+) -> Result<(), ApplyError> {
     if !existing(conversation, turn)? {
-        return Err(SessionError::WrongTurn(turn.id));
+        return Err(ApplyError::WrongTurn(turn.id));
     }
     conversation
         .push_entry(&turn.id, TurnEntry::from(closure))
-        .map_err(SessionError::Rules)
+        .map_err(ApplyError::Rules)
 }
 
-pub(crate) fn apply_response(
+pub fn apply_response(
     conversation: &mut Conversation,
     turn: &AiTurnRef,
     response: ModelResponse,
-) -> Result<(), SessionError> {
+) -> Result<(), ApplyError> {
     apply_entry(conversation, turn, TurnEntry::from(response))
 }
 
-pub(crate) fn apply_results(
+pub fn apply_results(
     conversation: &mut Conversation,
     turn: &AiTurnRef,
     results: RuntimeToolResults,
-) -> Result<(), SessionError> {
+) -> Result<(), ApplyError> {
     apply_entry(conversation, turn, TurnEntry::from(results))
 }

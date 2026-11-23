@@ -6,11 +6,10 @@ use br_llm_messages::{
     EntryId, InputTurn, ModelResponse, ResponseDelta, RuntimeToolResults, TurnClosure, TurnEntry,
 };
 
-use crate::ids::{AgentLabel, MailId, ThreadRef};
-use crate::inbox::{Cursor, InboxContext};
-use crate::mail::NewMail;
+use crate::ids::{AgentLabel, ThreadRef};
+use crate::incoming::{Cursor, IncomingContext};
+use crate::run_context::RunContext;
 use crate::thread_access::AiTurnRef;
-use crate::workspace::WorkspaceFile;
 
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -21,11 +20,7 @@ pub enum Call {
         label: AgentLabel,
     },
     ToolsPort {
-        instance: InstanceId,
-    },
-    WorkspaceLoad,
-    WorkspaceSave {
-        files: Vec<WorkspaceFile>,
+        context: RunContext,
     },
     Read {
         thread: ThreadRef,
@@ -80,25 +75,14 @@ pub enum Call {
         thread: ThreadRef,
         entry: EntryId,
     },
-    InboxItems {
-        context: InboxContext,
+    IncomingItems {
+        context: IncomingContext,
         after: Option<Cursor>,
         limit: NonZeroUsize,
     },
-    InboxWait {
-        context: InboxContext,
-    },
-    InboxMarkRead {
-        context: InboxContext,
+    IncomingMarkRead {
+        context: IncomingContext,
         item: EntryId,
-    },
-    InboxSend {
-        context: InboxContext,
-        mail: NewMail,
-    },
-    InboxDocuments {
-        context: InboxContext,
-        mail: MailId,
     },
 }
 

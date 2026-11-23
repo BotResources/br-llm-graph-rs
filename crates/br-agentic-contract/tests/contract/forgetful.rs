@@ -132,3 +132,45 @@ impl ThreadAccess for ForgetfulThreadAccess {
         accepted()
     }
 }
+
+#[tokio::test]
+async fn given_a_thread_access_that_keeps_nothing_then_every_call_is_accepted_and_the_read_gives_an_empty_conversation()
+ {
+    use br_llm_messages::{ClosureReason, TurnClosure};
+
+    use crate::common::*;
+
+    let identity = conversation_id();
+    let access = ForgetfulThreadAccess::new(identity);
+    let thread = thread_ref();
+    let turn = AiTurnRef {
+        id: turn_id(),
+        agent: agent_id(),
+        author: author("agent"),
+    };
+
+    access
+        .add_entry(
+            &thread,
+            turn.clone(),
+            TurnEntry::from(response_text(entry_id(), "one")),
+        )
+        .await
+        .unwrap();
+    access
+        .close_turn(
+            &thread,
+            turn.clone(),
+            TurnClosure::new(entry_id(), ClosureReason::completed()),
+        )
+        .await
+        .unwrap();
+    let mut stream = access.open_result(&thread, turn, entry_id()).await.unwrap();
+    stream.send("ignored".to_owned()).await;
+    access.discard_result(&thread, entry_id()).await.unwrap();
+    let read = access.read(&thread).await.unwrap();
+
+    assert!(read.turns().is_empty());
+    assert_eq!(read.id(), identity);
+    assert_eq!(access.reads(), 1);
+}

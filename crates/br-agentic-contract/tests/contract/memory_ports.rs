@@ -1,9 +1,8 @@
 use br_agentic_contract::memory::{
-    Call, FixedThreadPort, FixedToolsPort, MemoryAgentPort, MemoryThreadAccess, MemoryWorkspace,
-    Record,
+    Call, FixedThreadPort, FixedToolsPort, MemoryAgentPort, MemoryThreadAccess, Record,
 };
 use br_agentic_contract::{
-    AgentLabel, AgentPort, FileSystemMode, InboxPort, ThreadAccess, ThreadPort, ToolsPort,
+    AgentLabel, AgentPort, IncomingPort, ThreadAccess, ThreadPort, ToolsPort,
 };
 use br_llm_messages::{Conversation, TurnEntry};
 
@@ -92,7 +91,7 @@ async fn given_the_simple_thread_port_and_tools_port_then_they_give_what_the_tes
         thread
     );
     assert!(
-        ToolsPort::<Doc>::tools(&tools, &fields(), instance_id())
+        ToolsPort::<Doc>::tools(&tools, &fields(), &run_context(thread, agent_id()))
             .await
             .unwrap()
             .is_empty()
@@ -148,7 +147,6 @@ async fn given_calls_on_every_in_memory_port_then_one_shared_record_keeps_them_i
     let threads = FixedThreadPort::new(&world.record, world.thread);
     let agents = MemoryAgentPort::<Doc>::new(&world.record);
     let tools = FixedToolsPort::new(&world.record, Vec::new());
-    let workspace = MemoryWorkspace::new(&world.record, Vec::new());
 
     ThreadPort::<Doc>::thread(&threads, &fields())
         .await
@@ -157,16 +155,12 @@ async fn given_calls_on_every_in_memory_port_then_one_shared_record_keeps_them_i
         .agent(&fields(), instance_id(), &label("agent"))
         .await
         .unwrap();
-    ToolsPort::<Doc>::tools(&tools, &fields(), instance_id())
-        .await
-        .unwrap();
-    FileSystemMode::Always
-        .start(&workspace, &fields())
+    ToolsPort::<Doc>::tools(&tools, &fields(), &run_context(world.thread, world.agent))
         .await
         .unwrap();
     world.access.read(&world.thread).await.unwrap();
     world
-        .inbox
+        .incoming
         .items(&world.context(), None, limit(1))
         .await
         .unwrap();
@@ -179,30 +173,41 @@ async fn given_calls_on_every_in_memory_port_then_one_shared_record_keeps_them_i
             Call::ThreadPort => "thread",
             Call::AgentPort { .. } => "agent",
             Call::ToolsPort { .. } => "tools",
-            Call::WorkspaceLoad => "load",
             Call::Read { .. } => "read",
-            Call::InboxItems { .. } => "items",
+            Call::IncomingItems { .. } => "items",
             _ => "other",
         })
         .collect();
-    assert_eq!(&kinds[..5], ["thread", "agent", "tools", "load", "read"]);
+    assert_eq!(&kinds[..4], ["thread", "agent", "tools", "read"]);
 }
 
 #[tokio::test]
 async fn given_deltas_and_fragments_sent_to_the_streams_when_the_test_reads_the_record_then_they_are_in_it_in_order()
  {
     let world = World::new();
-    let mut session = world.session().await;
-    let (turn, call) = world.open_turn_with_call(&mut session).await;
+    let (turn, call) = world.open_turn_with_call().await;
     let response = entry_id();
     let result = entry_id();
 
-    let mut result_stream = session.open_result(&turn, result).await.unwrap();
+    let mut result_stream = world
+        .access
+        .open_result(&world.thread, turn.clone(), result)
+        .await
+        .unwrap();
     result_stream.send("one".to_owned()).await;
     result_stream.send("two".to_owned()).await;
-    let _ = session.open_response(&turn, response).await.unwrap();
-    session
-        .complete_result(&turn, tool_results(result, call, "lookup", "done"))
+    let _ = world
+        .access
+        .open_response(&world.thread, turn.clone(), response)
+        .await
+        .unwrap();
+    world
+        .access
+        .complete_result(
+            &world.thread,
+            turn,
+            tool_results(result, call, "lookup", "done"),
+        )
         .await
         .unwrap();
 
@@ -219,10 +224,10 @@ async fn given_deltas_and_fragments_sent_to_the_streams_when_the_test_reads_the_
 }
 
 #[tokio::test]
-async fn given_an_item_delivered_to_the_in_memory_inbox_then_the_in_memory_thread_access_does_not_know_it()
+async fn given_an_item_delivered_to_the_in_memory_incoming_port_then_the_in_memory_thread_access_does_not_know_it()
  {
     let world = World::new();
-    world.inbox.deliver_entry(world.agent, human("hello"));
+    world.incoming.deliver_entry(world.agent, human("hello"));
 
     let conversation = world.access.read(&world.thread).await.unwrap();
 
@@ -230,27 +235,28 @@ async fn given_an_item_delivered_to_the_in_memory_inbox_then_the_in_memory_threa
 }
 
 #[tokio::test]
-async fn given_an_addition_to_the_in_memory_thread_access_then_the_in_memory_inbox_is_not_changed()
-{
+async fn given_an_addition_to_the_in_memory_thread_access_then_the_in_memory_incoming_port_is_not_changed()
+ {
     let world = World::new();
     let item = human("hello");
-    world.inbox.deliver_entry(world.agent, item.clone());
-    let mut session = world.session().await;
+    world.incoming.deliver_entry(world.agent, item.clone());
     let turn = world.ai(turn_id());
-    session
+    world
+        .access
         .add_entry(
-            &turn,
+            &world.thread,
+            turn,
             TurnEntry::try_from(item.clone().into_entry()).unwrap(),
         )
         .await
         .unwrap();
 
     let batch = world
-        .inbox
+        .incoming
         .items(&world.context(), None, limit(10))
         .await
         .unwrap();
 
     assert_eq!(batch.items.len(), 1);
-    assert!(!world.inbox.is_read(world.agent, item.id()));
+    assert!(!world.incoming.is_read(world.agent, item.id()));
 }

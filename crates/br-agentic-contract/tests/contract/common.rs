@@ -1,15 +1,16 @@
 use std::num::NonZeroUsize;
 
-use br_agentic_contract::memory::{MemoryInbox, MemoryThreadAccess, Record};
+use br_agentic_contract::ThreadAccess;
+use br_agentic_contract::memory::{MemoryIncoming, MemoryThreadAccess, Record};
 use br_agentic_contract::{
-    AiTurnRef, InboxContext, InboxEntry, InstanceId, MailId, MailItem, NewMail, Session, ThreadRef,
+    AiTurnRef, EntryItem, IncomingContext, InstanceId, MailId, NewMail, RunContext, ThreadRef,
 };
 use br_graph_contract::{Fields, Reason};
 use br_llm_messages::{
-    AgentId, AgentMail, Author, BlockId, ContentBlock, Conversation, ConversationId, EntryId,
-    HumanId, HumanMessage, IncomingEntry, ModelResponse, OpaqueJson, PlainBlock, RequestId,
-    ResponseEnding, ResponseMetadata, RuntimeNotice, RuntimeToolCall, RuntimeToolResult,
-    RuntimeToolResults, TaskId, TaskStarted, TextBlock, ToolName, TurnEntry, TurnId, Uuid,
+    AgentId, Author, BlockId, ContentBlock, Conversation, ConversationId, EntryId, HumanId,
+    HumanMessage, IncomingEntry, ModelResponse, OpaqueJson, PlainBlock, RequestId, ResponseEnding,
+    ResponseMetadata, RuntimeNotice, RuntimeToolCall, RuntimeToolResult, RuntimeToolResults,
+    TaskId, TaskStarted, TextBlock, ToolName, TurnEntry, TurnId, Uuid,
 };
 use serde::{Deserialize, Serialize};
 
@@ -61,30 +62,30 @@ pub fn text_block(text: &str) -> PlainBlock {
     PlainBlock::Text(TextBlock::new(block_id(), text).unwrap())
 }
 
-pub fn human(text: &str) -> InboxEntry {
+pub fn human(text: &str) -> EntryItem {
     let message = HumanMessage::new(
         entry_id(),
         HumanId::from_uuid(uuid()).unwrap(),
         vec![text_block(text)],
     )
     .unwrap();
-    InboxEntry::new(IncomingEntry::from(message)).unwrap()
+    EntryItem::new(IncomingEntry::from(message)).unwrap()
 }
 
-pub fn notice(text: &str) -> InboxEntry {
-    InboxEntry::new(IncomingEntry::from(
+pub fn notice(text: &str) -> EntryItem {
+    EntryItem::new(IncomingEntry::from(
         RuntimeNotice::new(entry_id(), text).unwrap(),
     ))
     .unwrap()
 }
 
-pub fn notification() -> InboxEntry {
+pub fn notification() -> EntryItem {
     let started = TaskStarted::new(
         entry_id(),
         RequestId::from_uuid(uuid()).unwrap(),
         TaskId::from_uuid(uuid()).unwrap(),
     );
-    InboxEntry::new(IncomingEntry::from(started)).unwrap()
+    EntryItem::new(IncomingEntry::from(started)).unwrap()
 }
 
 pub fn response_text(entry: EntryId, text: &str) -> ModelResponse {
@@ -140,31 +141,6 @@ pub fn new_mail(to: &[AgentId], cc: &[AgentId], subject: &str) -> NewMail {
     }
 }
 
-pub fn mail_entry(item: &MailItem) -> Result<IncomingEntry, br_llm_messages::Error> {
-    match item {
-        MailItem::To {
-            id,
-            sender,
-            author,
-            source,
-            subject,
-            body,
-            ..
-        } => AgentMail::new(
-            id.entry_id(),
-            *sender,
-            author.clone(),
-            *source,
-            vec![text_block(&format!("{subject}: {body}"))],
-        )
-        .map(IncomingEntry::from),
-        MailItem::Cc { id, subject } => {
-            RuntimeNotice::new(id.entry_id(), format!("in copy: {subject}"))
-                .map(IncomingEntry::from)
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Doc {
     pub n: i64,
@@ -193,7 +169,7 @@ pub struct World {
     pub agent: AgentId,
     pub author: Author,
     pub access: MemoryThreadAccess,
-    pub inbox: MemoryInbox,
+    pub incoming: MemoryIncoming,
 }
 
 impl World {
@@ -206,7 +182,7 @@ impl World {
         let thread = thread_ref();
         Self {
             access: MemoryThreadAccess::new(&record, thread, conversation),
-            inbox: MemoryInbox::new(&record),
+            incoming: MemoryIncoming::new(&record),
             record,
             thread,
             agent: agent_id(),
@@ -214,16 +190,30 @@ impl World {
         }
     }
 
-    pub fn context(&self) -> InboxContext {
+    pub fn context(&self) -> IncomingContext {
         self.context_of(self.agent)
     }
 
-    pub fn context_of(&self, agent: AgentId) -> InboxContext {
-        InboxContext {
+    pub fn context_of(&self, agent: AgentId) -> IncomingContext {
+        IncomingContext {
             instance: instance_id(),
             thread: self.thread,
             agent,
         }
+    }
+
+    pub async fn open_turn_with_call(&self) -> (AiTurnRef, BlockId) {
+        let turn = self.ai(turn_id());
+        let call = block_id();
+        self.access
+            .add_entry(
+                &self.thread,
+                turn.clone(),
+                TurnEntry::from(response_call(entry_id(), call, "lookup")),
+            )
+            .await
+            .unwrap();
+        (turn, call)
     }
 
     pub fn ai(&self, id: TurnId) -> AiTurnRef {
@@ -233,23 +223,16 @@ impl World {
             author: self.author.clone(),
         }
     }
+}
 
-    pub async fn session(&self) -> Session<'_> {
-        Session::start(&self.access, self.thread).await.unwrap()
-    }
-
-    pub async fn open_turn_with_call(&self, session: &mut Session<'_>) -> (AiTurnRef, BlockId) {
-        let turn = self.ai(turn_id());
-        let call = block_id();
-        session
-            .add_entry(
-                &turn,
-                TurnEntry::from(response_call(entry_id(), call, "lookup")),
-            )
-            .await
-            .unwrap();
-        (turn, call)
-    }
+pub fn run_context(thread: ThreadRef, agent: AgentId) -> RunContext {
+    RunContext::new(
+        instance_id(),
+        thread,
+        agent,
+        author("agent"),
+        conversation_id(),
+    )
 }
 
 pub fn fields() -> Doc {

@@ -1,14 +1,14 @@
 use br_llm_messages::{EntryId, IncomingEntry};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct InboxEntry(IncomingEntry);
+pub struct EntryItem(IncomingEntry);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("an inbox entry is a human message, a runtime notification or a runtime notice")]
-pub struct InvalidInboxEntry;
+#[error("an entry item is a human message, a runtime notification or a runtime notice")]
+pub struct InvalidEntryItem;
 
-impl InboxEntry {
-    pub fn new(entry: IncomingEntry) -> Result<Self, InvalidInboxEntry> {
+impl EntryItem {
+    pub fn new(entry: IncomingEntry) -> Result<Self, InvalidEntryItem> {
         match entry {
             IncomingEntry::HumanMessage(_)
             | IncomingEntry::RequestAccepted(_)
@@ -17,7 +17,7 @@ impl InboxEntry {
             | IncomingEntry::TaskCompleted(_)
             | IncomingEntry::TaskFailed(_)
             | IncomingEntry::RuntimeNotice(_) => Ok(Self(entry)),
-            _ => Err(InvalidInboxEntry),
+            _ => Err(InvalidEntryItem),
         }
     }
 
