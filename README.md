@@ -296,7 +296,7 @@ The public API names types of the libraries it builds on, so pin them beside it 
 | `FallbackList`, `Ladder`, `Slot`, `ModelClient`, `ThinkingExpectation` | the first call of a pass goes to the next client when it fails, times out or breaks the thinking rule; a client that worked is kept for the pass (the round, for the critic); one client means no retry |
 | `check_thinking`, `holds_thinking`, `warning_text`, `WARNING_WINDOW` | the thinking rule and the text that is sent with the tool results when at most 10 steps remain (never stored) |
 | `check_structure` | the structure rule; `structured_reply` comes from `br-agentic-contract` |
-| `Worker`, `WorkerParts`, `Drained` | the conversation copy, step, tool round, drain (`drain_at_start` for the awaited read of Start) and turn closing, to write an agentic node of your own|
+| `Worker`, `WorkerParts`, `Drained` | the conversation copy, step, tool round, drain (`drain_at_start` for the awaited read of Start) and turn closing, to write an agentic node of your own. |
 
 Behaviour to know:
 
@@ -304,7 +304,7 @@ Behaviour to know:
 - A fault (a model error the fallback does not solve, a tool fault, a port error) closes the open AI turn as `Failed`, discards the open objects and sends `Failed`; a cancel closes it as `Cancelled`. What was stored stays.
 - A tool call over its timeout, or for a tool the node does not hold, ends with a result that has the error flag set; a tool fault or panic fails the instance.
 - A client that should think is declared by the runner; `br-llm-clients-core` gives no such report. The declaration is required: `ModelClient::new` takes a `ThinkingExpectation` (`Expected` or `NotExpected`) and has no default. The node never reads the settings of a client.
-- The sealed intent asks the instance to enforce the web access. Version 0.4.0 holds `Settings::web_access` and enforces nothing: a `ToolCode` gets only its arguments, a cancel view and a result stream, and the provider-side web tools of a client are not covered. Until a later minor, the runner must give only tools and clients that respect the web access.
+- The node holds the web access setting and enforces nothing. Version 0.4.0 holds `Settings::web_access` and does not apply it: a `ToolCode` gets only its arguments, a cancel view and a result stream, and the provider-side web tools of a client are not covered. Until a later minor, the runner must give only tools and clients that respect the web access.
 - The shape of the critic answer follows the `ThinkingExpectation` of the client of each attempt; there is no thinking-field switch.
 - With the output-schema port, every step of the agent (`agent`, or `generator`) asks for a structured reply in its shape, tools included. A final response with no structured block is a failed call (`CallFailure::NoStructuredReply`): the fallback applies when the step is covered, otherwise it is a fault. A refusal, a filter or an exhaustion is exempt; a response restored at Start is not checked; the block is not checked against the shape. The critic keeps its own shape.
 - In a generator-critic the round counter and the programmatic-refusal counter go back to 0 only when a drain stores a request item.
