@@ -4,6 +4,7 @@ use br_llm_messages::AgentId;
 use crate::error::PortError;
 use crate::future::PortFuture;
 use crate::ids::{AgentLabel, ThreadRef};
+use crate::run_context::RunContext;
 use crate::tool::Tool;
 
 pub trait ThreadPort<F: Fields>: Send + Sync {
@@ -23,6 +24,6 @@ pub trait ToolsPort<F: Fields>: Send + Sync {
     fn tools<'a>(
         &'a self,
         snapshot: &'a F,
-        instance: InstanceId,
+        context: &'a RunContext,
     ) -> PortFuture<'a, Result<Vec<Tool>, PortError>>;
 }

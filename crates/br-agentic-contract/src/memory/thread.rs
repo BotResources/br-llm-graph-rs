@@ -13,7 +13,7 @@ use crate::error::PortError;
 use crate::future::PortFuture;
 use crate::ids::ThreadRef;
 use crate::rules::{
-    SessionError, apply_closure, apply_entry, apply_input_turn, apply_response, apply_results,
+    ApplyError, apply_closure, apply_entry, apply_input_turn, apply_response, apply_results,
 };
 use crate::stream::{ResponseStream, ResultStreamBox};
 use crate::thread_access::{AiTurnRef, ThreadAccess};
@@ -69,7 +69,7 @@ impl MemoryThreadAccess {
     fn store(
         &self,
         thread: &ThreadRef,
-        apply: impl FnOnce(&mut Conversation) -> Result<(), SessionError>,
+        apply: impl FnOnce(&mut Conversation) -> Result<(), ApplyError>,
     ) -> Result<(), PortError> {
         self.check(thread)?;
         apply(&mut self.lock().conversation).map_err(PortError::fault)

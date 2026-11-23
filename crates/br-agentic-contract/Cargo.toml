@@ -1,7 +1,7 @@
 [package]
 name = "br-agentic-contract"
-version = "0.2.0"
-description = "Contract of the agentic nodes: the ports a runner gives a node, the inbox and the mail, the tool, the web access and the file system mode, the rules every agentic instance follows, and in-memory ports for tests"
+version = "0.3.0"
+description = "Contract of the agentic nodes: the ports a runner gives a node (thread, agent, thread access, tools, prompt, output schema, author, outcome, critic, incoming), the mail items, the tool, the web access, the five rules that apply an addition to a conversation, and in-memory ports for tests"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -12,7 +12,6 @@ br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", p
 br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-core", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
 br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", package = "br-llm-messages", tag = "br-llm-messages/v2.1.0", version = "2.1.0" }
 thiserror = "2"
-tokio = { version = "1", features = ["sync"] }
 uuid = { version = "1", features = ["v7"] }
 
 [dev-dependencies]

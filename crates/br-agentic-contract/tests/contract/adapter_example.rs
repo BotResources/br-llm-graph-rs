@@ -3,8 +3,8 @@ use std::num::NonZeroUsize;
 use std::sync::Mutex;
 
 use br_agentic_contract::{
-    AgentLabel, AgentPort, Cursor, Fields, InboxBatch, InboxContext, InboxPort, InstanceId,
-    MailDocument, MailId, NewMail, PortError, PortFuture, ThreadPort, ThreadRef, Tool, ToolsPort,
+    AgentLabel, AgentPort, Cursor, Fields, IncomingBatch, IncomingContext, IncomingPort,
+    InstanceId, PortError, PortFuture, RunContext, ThreadPort, ThreadRef, Tool, ToolsPort,
 };
 use br_llm_messages::{AgentId, EntryId, Uuid};
 
@@ -52,60 +52,35 @@ impl<F: Fields> ToolsPort<F> for ExampleToolsPort {
     fn tools<'a>(
         &'a self,
         _snapshot: &'a F,
-        _instance: InstanceId,
+        _context: &'a RunContext,
     ) -> PortFuture<'a, Result<Vec<Tool>, PortError>> {
         Box::pin(async { Ok(Vec::new()) })
     }
 }
 
-struct ExampleInbox;
+struct ExampleIncoming;
 
-impl InboxPort for ExampleInbox {
+impl IncomingPort for ExampleIncoming {
     fn items<'a>(
         &'a self,
-        _context: &'a InboxContext,
+        _context: &'a IncomingContext,
         _after: Option<&'a Cursor>,
         _limit: NonZeroUsize,
-    ) -> PortFuture<'a, Result<InboxBatch, PortError>> {
+    ) -> PortFuture<'a, Result<IncomingBatch, PortError>> {
         Box::pin(async {
-            Ok(InboxBatch {
+            Ok(IncomingBatch {
                 items: Vec::new(),
                 next: None,
             })
         })
     }
 
-    fn wait<'a>(&'a self, _context: &'a InboxContext) -> PortFuture<'a, Result<(), PortError>> {
-        Box::pin(std::future::pending())
-    }
-
     fn mark_read<'a>(
         &'a self,
-        _context: &'a InboxContext,
+        _context: &'a IncomingContext,
         _item: EntryId,
     ) -> PortFuture<'a, Result<(), PortError>> {
         Box::pin(async { Ok(()) })
-    }
-
-    fn send<'a>(
-        &'a self,
-        _context: &'a InboxContext,
-        mail: NewMail,
-    ) -> PortFuture<'a, Result<(), PortError>> {
-        Box::pin(async move {
-            match mail.refusal() {
-                Some(reason) => Err(PortError::Refused(reason)),
-                None => Ok(()),
-            }
-        })
-    }
-
-    fn documents<'a>(
-        &'a self,
-        _context: &'a InboxContext,
-        _mail: MailId,
-    ) -> PortFuture<'a, Result<Vec<MailDocument>, PortError>> {
-        Box::pin(async { Err(PortError::refused("the agent is not a recipient in to")) })
     }
 }
 
@@ -118,7 +93,7 @@ async fn given_an_adapter_written_with_the_imports_of_the_contract_alone_then_it
         saved: Mutex::new(HashMap::new()),
     });
     let tools: Box<dyn ToolsPort<Doc>> = Box::new(ExampleToolsPort);
-    let inbox: Box<dyn InboxPort> = Box::new(ExampleInbox);
+    let incoming: Box<dyn IncomingPort> = Box::new(ExampleIncoming);
     let label = AgentLabel::new("agent").unwrap();
 
     assert_eq!(threads.thread(&fields()).await.unwrap(), thread);
@@ -133,19 +108,17 @@ async fn given_an_adapter_written_with_the_imports_of_the_contract_alone_then_it
     assert_eq!(first, again);
     assert!(
         tools
-            .tools(&fields(), instance_id())
+            .tools(&fields(), &run_context(thread, first))
             .await
             .unwrap()
             .is_empty()
     );
-    let context = InboxContext {
+    let context = IncomingContext {
         instance: instance_id(),
         thread,
         agent: first,
     };
-    let refused = inbox
-        .send(&context, new_mail(&[], &[], "nobody"))
-        .await
-        .unwrap_err();
-    assert!(refused.is_refusal());
+    let batch = incoming.items(&context, None, limit(5)).await.unwrap();
+    assert!(batch.items.is_empty() && batch.next.is_none());
+    incoming.mark_read(&context, entry_id()).await.unwrap();
 }

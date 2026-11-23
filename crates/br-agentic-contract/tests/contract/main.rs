@@ -1,21 +1,19 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod adapter_example;
-mod boundary;
 mod common;
-mod concurrent;
 mod dyn_compat;
-mod ending;
+mod entry_item;
 mod errors;
-mod failing_inbox;
-mod flaky;
 mod forgetful;
-mod inbox_items;
-mod inbox_mail;
-mod mail_documents;
+mod incoming_items;
+mod incoming_mail;
 mod memory_ports;
-mod session;
+mod node;
+mod node_ports;
+mod outcomes;
+mod rules;
+mod run_context;
 mod thread_access;
 mod tools;
 mod values;
-mod workspace;
