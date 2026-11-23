@@ -24,7 +24,7 @@ All ports are public, object-safe, `Send + Sync` and asynchronous (`PortFuture` 
 
 `HarnessHistory` is a subtrait of `ThreadAccess`, not a supertrait of it (a supertrait would make `br-agentic-contract` depend on this crate). An adapter of the history port serves as the node history port too, and `&dyn HarnessHistory` coerces to `&dyn ThreadAccess`.
 
-`stored(thread, entry)` answers `StoredAnswer::Stored` (the thread holds the entry) or `StoredAnswer::Dropped` (it never will). An entry the adapter has no record of, a thread it has no slot for, and a closed change channel are a `PortError`, never `Stored`. The future ends when the answer is known; dropping it loses nothing.
+`stored(thread, entry)` answers `StoredAnswer::Stored` (the thread holds the entry) or `StoredAnswer::Dropped` (this item of the entry will not be stored; a later Run can store the entry again). An entry the adapter has no record of, a thread it has no slot for, and a closed change channel are a `PortError`, never `Stored`. The future ends when the answer is known; dropping it loses nothing.
 
 The harness marks a mail read only after `Stored` for the entry of that mail. After `Dropped`, a fault or a refusal it does not mark: the mail stays unread. A crash between the store and the mark gives a second delivery, never a lost mail.
 
