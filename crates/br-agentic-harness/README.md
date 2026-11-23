@@ -9,7 +9,7 @@ The logic of the harness of an agentic node. The sealed intent of the minor is i
 
 ## Build
 
-```rust
+```text
 let harness = Harness::builder(history, prompt, tools)
     .mail(mail)
     .sandbox(sandbox)
