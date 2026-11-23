@@ -1,12 +1,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use br_agentic_contract::memory::MemoryWorkspace;
 use br_agentic_contract::{
-    AgentLabel, AgentPort, PortError, PortFuture, ThreadPort, Tool, ToolsPort, WorkspaceFile,
-    WorkspacePort,
+    AgentLabel, AgentPort, PortError, PortFuture, RunContext, ThreadPort, Tool, ToolsPort,
 };
-use br_agentic_nodes::{AuthorPort, ReactOutcome, ReactOutcomePort};
+use br_agentic_contract::{AuthorPort, ReactOutcome, ReactOutcomePort};
 use br_graph_contract::InstanceId;
 use br_llm_messages::AgentId;
 
@@ -75,7 +73,7 @@ impl ToolsPort<Doc> for FailingToolsPort {
     fn tools<'a>(
         &'a self,
         _snapshot: &'a Doc,
-        _instance: InstanceId,
+        _context: &'a RunContext,
     ) -> PortFuture<'a, Result<Vec<Tool>, PortError>> {
         Box::pin(self.0.fire())
     }
@@ -83,7 +81,7 @@ impl ToolsPort<Doc> for FailingToolsPort {
 
 pub struct FailingPrompt(pub Arc<Trip>);
 
-impl br_agentic_nodes::PromptPort<Doc> for FailingPrompt {
+impl br_agentic_contract::PromptPort<Doc> for FailingPrompt {
     fn prompt<'a>(
         &'a self,
         _snapshot: &'a Doc,
@@ -180,7 +178,7 @@ impl SnapshotPrompt {
     }
 }
 
-impl br_agentic_nodes::PromptPort<Doc> for SnapshotPrompt {
+impl br_agentic_contract::PromptPort<Doc> for SnapshotPrompt {
     fn prompt<'a>(
         &'a self,
         snapshot: &'a Doc,
@@ -188,58 +186,5 @@ impl br_agentic_nodes::PromptPort<Doc> for SnapshotPrompt {
     ) -> PortFuture<'a, Result<String, PortError>> {
         self.notes.lock().unwrap().push(snapshot.note.clone());
         Box::pin(async { Ok("a prompt".to_owned()) })
-    }
-}
-
-pub struct FlakyWorkspace {
-    inner: Arc<MemoryWorkspace>,
-    fail_load: bool,
-    fail_save: bool,
-    loads: AtomicUsize,
-    saves: AtomicUsize,
-}
-
-impl FlakyWorkspace {
-    pub fn new(inner: Arc<MemoryWorkspace>, fail_load: bool, fail_save: bool) -> Arc<Self> {
-        Arc::new(Self {
-            inner,
-            fail_load,
-            fail_save,
-            loads: AtomicUsize::new(0),
-            saves: AtomicUsize::new(0),
-        })
-    }
-
-    pub fn loads(&self) -> usize {
-        self.loads.load(Ordering::SeqCst)
-    }
-
-    pub fn saves(&self) -> usize {
-        self.saves.load(Ordering::SeqCst)
-    }
-}
-
-impl WorkspacePort<Doc> for FlakyWorkspace {
-    fn load<'a>(
-        &'a self,
-        snapshot: &'a Doc,
-    ) -> PortFuture<'a, Result<Vec<WorkspaceFile>, PortError>> {
-        self.loads.fetch_add(1, Ordering::SeqCst);
-        if self.fail_load {
-            return Box::pin(async { Err(PortError::fault("the load failed")) });
-        }
-        self.inner.load(snapshot)
-    }
-
-    fn save<'a>(
-        &'a self,
-        snapshot: &'a Doc,
-        files: Vec<WorkspaceFile>,
-    ) -> PortFuture<'a, Result<(), PortError>> {
-        self.saves.fetch_add(1, Ordering::SeqCst);
-        if self.fail_save {
-            return Box::pin(async { Err(PortError::fault("the save failed")) });
-        }
-        self.inner.save(snapshot, files)
     }
 }

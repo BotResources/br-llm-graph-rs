@@ -21,4 +21,3 @@ mod timeout;
 mod tool_run;
 mod tool_run_more;
 mod warning;
-mod workspace;

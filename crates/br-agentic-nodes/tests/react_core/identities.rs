@@ -83,7 +83,7 @@ async fn given_tools_when_each_step_is_called_then_the_request_offers_exactly_th
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_node_without_inbox_when_the_step_is_called_then_no_mail_tool_is_offered() {
+async fn given_a_node_without_incoming_when_the_step_is_called_then_no_mail_tool_is_offered() {
     let (alpha, _) = echo("alpha");
     let rig = Rig::new().with_tools(vec![alpha]);
     let model = Model::new(vec![Act::text("done")]);
@@ -133,7 +133,7 @@ async fn given_a_prompt_when_the_step_is_called_then_the_request_carries_the_sys
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_react_agent_when_the_node_is_asked_its_metadata_then_it_is_agentic_react_agent_without_inbox()
+async fn given_a_react_agent_when_the_node_is_asked_its_metadata_then_it_is_agentic_react_agent_without_incoming()
  {
     let rig = Rig::new();
     let model = Model::new(vec![]);
@@ -143,17 +143,17 @@ async fn given_a_react_agent_when_the_node_is_asked_its_metadata_then_it_is_agen
     assert_eq!(node.subkind(), "react_agent");
     assert_eq!(REACT_AGENT, "react_agent");
     assert_eq!(node.name(), "agent");
-    assert!(!node.has_inbox());
+    assert!(!node.has_incoming());
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_react_agent_with_an_inbox_when_the_node_is_asked_its_metadata_then_it_has_an_inbox()
+async fn given_a_react_agent_with_an_incoming_when_the_node_is_asked_its_metadata_then_it_has_an_incoming()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let model = Model::new(vec![]);
     let node = node(&rig, plains(&[&model]));
 
-    assert!(node.has_inbox());
+    assert!(node.has_incoming());
     assert_eq!(node.kind(), "agentic");
     assert_eq!(node.subkind(), "react_agent");
 }
@@ -166,7 +166,6 @@ async fn given_a_web_access_value_when_the_settings_are_built_then_the_node_hold
         rig.settings.step_limit,
         rig.settings.timeouts,
         access.clone(),
-        rig.settings.file_system,
     );
     let model = Model::new(vec![Act::text("done")]);
     let node = node(&rig, plains(&[&model]));

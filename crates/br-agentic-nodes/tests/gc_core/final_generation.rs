@@ -1,4 +1,5 @@
-use br_agentic_nodes::{Judgement, StepLimitEnding};
+use br_agentic_contract::Judgement;
+use br_agentic_nodes::StepLimitEnding;
 
 use crate::common::*;
 use crate::items::*;
@@ -213,7 +214,7 @@ async fn given_no_step_left_when_the_critic_rejects_at_the_round_limit_then_it_a
 
 #[tokio::test(start_paused = true)]
 async fn given_an_item_arriving_during_the_last_pass_when_it_ends_then_the_queue_is_not_drained() {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let (id, deliver) = human_item(&rig, "late");
     let first = Scripted::new(vec![Reply::text("d1")]);
     let last = Scripted::new(vec![Reply::text("d2")]);
@@ -225,7 +226,7 @@ async fn given_an_item_arriving_during_the_last_pass_when_it_ends_then_the_queue
     let update = outcome_of(&node).await;
 
     assert_eq!(update.judgement, Some(Judgement::NotJudged));
-    assert!(!rig.inbox.is_read(rig.generator, id));
+    assert!(!rig.incoming.is_read(rig.generator, id));
     assert!(!timeline(&rig).iter().any(|line| line.contains("late")));
 }
 
@@ -233,7 +234,7 @@ async fn given_an_item_arriving_during_the_last_pass_when_it_ends_then_the_queue
 async fn given_a_request_item_drained_after_a_tool_run_of_the_last_pass_when_the_pass_ends_then_it_is_still_the_last_pass()
  {
     let (tool, _) = echo("lookup");
-    let rig = Rig::new().with_inbox().with_tools(vec![tool]);
+    let rig = Rig::new().with_incoming().with_tools(vec![tool]);
     let (id, deliver) = human_item(&rig, "late");
     let first = Scripted::new(vec![Reply::text("d1")]);
     let last = Scripted::new(vec![Reply::call("lookup"), Reply::text("d2")]);
@@ -244,7 +245,7 @@ async fn given_a_request_item_drained_after_a_tool_run_of_the_last_pass_when_the
 
     let update = outcome_of(&node).await;
 
-    assert!(rig.inbox.is_read(rig.generator, id));
+    assert!(rig.incoming.is_read(rig.generator, id));
     assert!(timeline(&rig).iter().any(|line| line.contains("in:late")));
     assert_eq!(critic.calls(), 1);
     assert_eq!(update.judgement, Some(Judgement::NotJudged));

@@ -78,7 +78,7 @@ fn pending_execution_node(rig: &Rig, spy: &Arc<Spy>, rest: &Arc<Scripted>) -> Re
     spec.author = AuthorSource::Fixed(author("Agent"));
     ReactAgent::new(
         "agent",
-        rig.ports().with_inbox(spy.clone()),
+        rig.ports().with_incoming(spy.clone()),
         rig.settings.clone(),
         spec,
     )
@@ -117,7 +117,7 @@ async fn given_an_item_read_beside_the_loop_when_a_tool_run_ends_then_it_goes_in
     );
     assert!(!history_text(&model.requests()[0]).contains("marker-after-a-tool-run"));
     assert!(history_text(&model.requests()[1]).contains("marker-after-a-tool-run"));
-    assert!(rig.inbox.is_read(rig.agent, x_id) || spy.times_marked(x_id) == 1);
+    assert!(rig.incoming.is_read(rig.agent, x_id) || spy.times_marked(x_id) == 1);
     assert_eq!(spy.times_marked(x_id), 1);
 }
 

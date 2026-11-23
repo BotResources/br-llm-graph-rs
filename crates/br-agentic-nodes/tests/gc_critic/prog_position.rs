@@ -12,8 +12,8 @@ async fn given_a_refused_pass_whose_drain_reset_the_round_counter_when_the_gener
         "slow",
         Behavior::Slow(Duration::from_millis(10), "slept".to_owned()),
     );
-    let rig = Rig::new().with_inbox().with_tools(vec![slow]);
-    let inbox = rig.inbox.clone();
+    let rig = Rig::new().with_incoming().with_tools(vec![slow]);
+    let incoming = rig.incoming.clone();
     let agent = rig.generator;
     let g1 = Scripted::new(vec![Reply::text("a")]);
     let g2 = Scripted::new(vec![
@@ -25,7 +25,7 @@ async fn given_a_refused_pass_whose_drain_reset_the_round_counter_when_the_gener
     let seen_calls = AtomicUsize::new(0);
     g2.on_call(move |_| {
         if seen_calls.fetch_add(1, Ordering::SeqCst) == 0 {
-            inbox.deliver_entry(agent, inbox_entry("a request in the middle of the pass"));
+            incoming.deliver_entry(agent, incoming_entry("a request in the middle of the pass"));
         }
     });
     let c1 = Scripted::new(vec![Reply::answer(false, "improve")]);

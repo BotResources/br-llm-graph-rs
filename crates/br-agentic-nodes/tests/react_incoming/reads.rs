@@ -26,7 +26,7 @@ async fn given_a_slow_first_read_when_the_agent_starts_then_the_first_request_ho
     let rig = Rig::new();
     let spy = Spy::new(&rig);
     let (entry, _) = human("marker-awaited-at-start");
-    rig.inbox.deliver_entry(rig.agent, entry);
+    rig.incoming.deliver_entry(rig.agent, entry);
     spy.plan_items(vec![Items::Sleep(Duration::from_secs(5))]);
     let model = Scripted::new(vec![Reply::text("ok")]);
     let node = spied(&rig, &spy, &model);
@@ -37,7 +37,7 @@ async fn given_a_slow_first_read_when_the_agent_starts_then_the_first_request_ho
     let calls = names_of(&rig);
     let read = calls
         .iter()
-        .position(|name| *name == "inbox_items")
+        .position(|name| *name == "incoming_items")
         .unwrap();
     let step = calls
         .iter()
@@ -76,19 +76,6 @@ async fn given_reads_that_end_quickly_when_boundaries_pass_then_one_new_read_sta
 
     assert_eq!(spy.reads(), 1 + 1 + 4);
     assert_eq!(spy.peak_reads(), 1);
-}
-
-#[tokio::test(start_paused = true)]
-async fn given_an_inbox_when_the_agent_runs_then_the_wait_of_the_inbox_is_never_used() {
-    let rig = rig_with_noop();
-    let spy = Spy::new(&rig);
-    let model = Scripted::new(rounds(3));
-    let node = spied(&rig, &spy, &model);
-
-    Driver::result(&node).await;
-
-    assert_eq!(spy.waits(), 0);
-    assert!(!names_of(&rig).contains(&"inbox_wait"));
 }
 
 #[tokio::test(start_paused = true)]
@@ -148,7 +135,7 @@ async fn given_a_drain_when_a_new_read_starts_then_its_items_wait_for_the_next_b
     let spy = Spy::new(&rig);
     let (a, a_id) = human("queued-at-the-first-boundary");
     let (b, b_id) = human("read-during-the-first-boundary");
-    rig.inbox.deliver_entry(rig.agent, b);
+    rig.incoming.deliver_entry(rig.agent, b);
     spy.plan_items(vec![
         Items::Give(empty_batch()),
         Items::Give(batch(vec![item(&a)], None)),
@@ -169,36 +156,41 @@ async fn given_a_drain_when_a_new_read_starts_then_its_items_wait_for_the_next_b
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_an_item_that_arrives_while_a_read_runs_when_the_agent_ends_then_the_item_stays_in_the_inbox()
+async fn given_an_item_that_arrives_while_a_read_runs_when_the_agent_ends_then_the_item_stays_in_the_incoming()
  {
     let rig = Rig::new();
     let spy = Spy::new(&rig);
     spy.plan_items(vec![Items::Pass, Items::Sleep(Duration::from_secs(1000))]);
     let (x, x_id) = human("arrives-too-late");
-    let inbox = rig.inbox.clone();
+    let incoming = rig.incoming.clone();
     let agent = rig.agent;
     let model = Scripted::new(vec![Reply::text("ok")]);
-    on_nth_call(&model, 1, move || inbox.deliver_entry(agent, x.clone()));
+    on_nth_call(&model, 1, move || incoming.deliver_entry(agent, x.clone()));
     let node = spied(&rig, &spy, &model);
 
     let update = Driver::result(&node).await;
 
     assert_eq!(update.steps, Some(1));
     assert_eq!(count_of(&rig.conversation(), x_id), 0);
-    assert!(!rig.inbox.is_read(rig.agent, x_id));
+    assert!(!rig.incoming.is_read(rig.agent, x_id));
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_no_inbox_when_the_agent_runs_then_the_inbox_is_never_called_and_nothing_is_stored() {
+async fn given_no_incoming_when_the_agent_runs_then_the_incoming_is_never_called_and_nothing_is_stored()
+ {
     let rig = rig_with_noop();
-    let (entry, x_id) = human("not-for-a-node-without-inbox");
-    rig.inbox.deliver_entry(rig.agent, entry);
+    let (entry, x_id) = human("not-for-a-node-without-incoming");
+    rig.incoming.deliver_entry(rig.agent, entry);
     let model = Scripted::new(rounds(2));
     let node = rig.react(&[&model]);
 
     Driver::result(&node).await;
 
-    assert!(!names_of(&rig).iter().any(|name| name.starts_with("inbox")));
+    assert!(
+        !names_of(&rig)
+            .iter()
+            .any(|name| name.starts_with("incoming"))
+    );
     assert_eq!(count_of(&rig.conversation(), x_id), 0);
-    assert!(!rig.inbox.is_read(rig.agent, x_id));
+    assert!(!rig.incoming.is_read(rig.agent, x_id));
 }

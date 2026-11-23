@@ -1,10 +1,9 @@
-use br_agentic_contract::{AgentLabel, ToolSet, save_files};
+use br_agentic_contract::{AgentLabel, RunContext, ToolSet};
 use br_graph_contract::{Fields, InstanceId};
 use br_llm_messages::{ClosureReason, PlainText};
 
 use crate::config::Common;
 use crate::fault::Fault;
-use crate::sandbox::FileSystem;
 use crate::seats::{Seat, SeatSpec, Seats};
 use crate::worker::Worker;
 
@@ -56,30 +55,16 @@ impl Worker<'_> {
         self.system = main.system.clone();
         self.shape = main.shape.clone();
         self.known = vec![(main.agent, main.author.clone())];
-        let tools = common.ports.tools.tools(snapshot, instance).await?;
-        let mail = self.mail_tools()?;
-        self.tools = ToolSet::new(tools, mail)?;
-        let loaded = common
-            .settings
-            .file_system
-            .start(&*common.ports.workspace, snapshot)
-            .await?;
-        self.files = loaded
-            .map(FileSystem::from_files)
-            .transpose()
-            .map_err(|error| Fault::Sandbox(error.to_string()))?;
+        let run_context = RunContext::new(
+            instance,
+            self.context.thread,
+            main.agent,
+            main.author.clone(),
+            self.session.conversation().id(),
+        );
+        let tools = common.ports.tools.tools(snapshot, &run_context).await?;
+        self.tools = ToolSet::new(tools, Vec::new())?;
         self.drain_at_start().await?;
         Ok(seats)
-    }
-
-    pub(crate) async fn finish<F: Fields>(
-        &mut self,
-        common: &Common<F>,
-        snapshot: &F,
-        update: F::Update,
-    ) -> Result<F::Update, Fault> {
-        let files = self.files.take().map(FileSystem::into_files);
-        save_files(&*common.ports.workspace, snapshot, files).await?;
-        Ok(update)
     }
 }

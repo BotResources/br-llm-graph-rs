@@ -177,17 +177,6 @@ pub fn closed_turn_ids(record: &Record) -> Vec<br_llm_messages::TurnId> {
         .collect()
 }
 
-pub fn saves(record: &Record) -> Vec<Vec<br_agentic_contract::WorkspaceFile>> {
-    record
-        .calls()
-        .iter()
-        .filter_map(|call| match call {
-            Call::WorkspaceSave { files } => Some(files.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
 pub fn agent_labels(record: &Record) -> Vec<String> {
     record
         .calls()

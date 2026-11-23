@@ -1,23 +1,16 @@
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use br_agentic_contract::{
-    AiTurnRef, InboxContext, InboxPort, Queue, Session, ThreadAccess, Tool, ToolSet,
-};
+use br_agentic_contract::{AiTurnRef, IncomingContext, IncomingPort, ThreadAccess, ToolSet};
 use br_graph_contract::CancelView;
 use br_llm_clients_core::StructuredShape;
-use br_llm_messages::{
-    AgentId, Author, ClosureReason, Conversation, EntryId, PlainText, TurnClosure,
-};
+use br_llm_messages::{AgentId, Author, ClosureReason, Conversation, PlainText, TurnClosure};
 
 use crate::fault::Fault;
 use crate::ids::entry_id;
 use crate::limits::{StepLimit, Steps, Timeouts};
-use crate::mail_tools::mail_tools;
+use crate::queue::Queue;
 use crate::read::RunningRead;
-use crate::sandbox::FileSystem;
-
-pub(crate) type MailGate = Arc<Mutex<HashSet<EntryId>>>;
+use crate::session::Session;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Counters {
@@ -33,28 +26,26 @@ impl Counters {
 
 pub struct Worker<'a> {
     pub(crate) session: Session<'a>,
-    pub(crate) inbox: Option<Arc<dyn InboxPort>>,
-    pub(crate) context: InboxContext,
+    pub(crate) incoming: Option<Arc<dyn IncomingPort>>,
+    pub(crate) context: IncomingContext,
     pub(crate) queue: Queue,
     pub(crate) read: Option<RunningRead>,
     pub(crate) author: Option<Author>,
     pub(crate) system: Option<PlainText>,
     pub(crate) shape: Option<StructuredShape>,
     pub(crate) tools: ToolSet,
-    pub(crate) files: Option<FileSystem>,
     pub(crate) steps: Steps,
     pub(crate) timeouts: Timeouts,
     pub(crate) cancel: CancelView,
     pub(crate) counters: Counters,
     pub(crate) agents: Vec<AgentId>,
     pub(crate) known: Vec<(AgentId, Author)>,
-    pub(crate) gate: MailGate,
 }
 
 pub struct WorkerParts<'a> {
     pub access: &'a dyn ThreadAccess,
-    pub inbox: Option<Arc<dyn InboxPort>>,
-    pub context: InboxContext,
+    pub incoming: Option<Arc<dyn IncomingPort>>,
+    pub context: IncomingContext,
     pub step_limit: StepLimit,
     pub timeouts: Timeouts,
     pub cancel: CancelView,
@@ -65,7 +56,7 @@ impl<'a> Worker<'a> {
         let session = Session::start(parts.access, parts.context.thread).await?;
         Ok(Self {
             session,
-            inbox: parts.inbox,
+            incoming: parts.incoming,
             context: parts.context,
             queue: Queue::new(),
             read: None,
@@ -73,14 +64,12 @@ impl<'a> Worker<'a> {
             system: None,
             shape: None,
             tools: ToolSet::new(Vec::new(), Vec::new())?,
-            files: None,
             steps: Steps::new(parts.step_limit),
             timeouts: parts.timeouts,
             cancel: parts.cancel,
             counters: Counters::default(),
             agents: vec![parts.context.agent],
             known: Vec::new(),
-            gate: Arc::default(),
         })
     }
 
@@ -118,25 +107,12 @@ impl<'a> Worker<'a> {
         self.steps.made()
     }
 
-    pub fn has_inbox(&self) -> bool {
-        self.inbox.is_some()
+    pub fn has_incoming(&self) -> bool {
+        self.incoming.is_some()
     }
 
     pub fn conversation(&self) -> &Conversation {
         self.session.conversation()
-    }
-
-    pub fn mail_tools(&self) -> Result<Vec<Tool>, Fault> {
-        match &self.inbox {
-            Some(inbox) => mail_tools(
-                Arc::clone(inbox),
-                self.context,
-                self.author()?.clone(),
-                self.session.conversation().id(),
-                Arc::clone(&self.gate),
-            ),
-            None => Ok(Vec::new()),
-        }
     }
 
     pub(crate) fn author(&self) -> Result<&Author, Fault> {

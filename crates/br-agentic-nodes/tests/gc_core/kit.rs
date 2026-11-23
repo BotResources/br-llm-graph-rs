@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use br_agentic_contract::Judgement;
 use br_agentic_nodes::{
-    GeneratorCritic, Judgement, Ladder, ModelClient, RoundLimitEnding, StepLimitEnding,
-    ThinkingExpectation,
+    GeneratorCritic, Ladder, ModelClient, RoundLimitEnding, StepLimitEnding, ThinkingExpectation,
 };
 use br_graph_contract::Event;
 use br_llm_clients_core::{

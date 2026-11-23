@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 
-use br_agentic_contract::{PortError, PortFuture};
-use br_agentic_nodes::{
+use br_agentic_contract::{
     GeneratorCriticOutcome, GeneratorCriticOutcomePort, Judgement, ReactOutcome, ReactOutcomePort,
 };
+use br_agentic_contract::{PortError, PortFuture};
 use br_graph_contract::{Fields, Reason};
 use br_llm_messages::{ContentBlock, ModelResponse};
 use serde::{Deserialize, Serialize};

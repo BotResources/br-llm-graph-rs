@@ -1,15 +1,7 @@
-use br_agentic_contract::WorkspaceFile;
 use br_llm_messages::{ClosureReason, IncomingEntry, InputTurn, ResponseEnding, Turn};
 
 use crate::common::*;
 use crate::kit::*;
-
-fn file(path: &str, content: &str) -> WorkspaceFile {
-    WorkspaceFile {
-        path: path.to_owned(),
-        content: content.as_bytes().to_vec(),
-    }
-}
 
 fn interrupted(reason: &Option<ClosureReason>) -> bool {
     matches!(reason, Some(ClosureReason::Interrupted { .. }))

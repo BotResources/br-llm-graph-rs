@@ -1,5 +1,5 @@
-use br_agentic_contract::FileSystemMode;
-use br_agentic_nodes::{Judgement, RoundLimitEnding};
+use br_agentic_contract::Judgement;
+use br_agentic_nodes::RoundLimitEnding;
 
 use crate::common::*;
 use crate::items::*;
@@ -41,7 +41,7 @@ async fn given_keep_the_rejected_generation_when_the_critic_rejects_at_the_round
 #[tokio::test(start_paused = true)]
 async fn given_keep_the_rejected_generation_when_an_item_is_waiting_at_the_round_limit_then_the_queue_is_not_drained()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let (id, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::text("d1")]);
     deliver_on(&generator, 1, deliver);
@@ -57,14 +57,14 @@ async fn given_keep_the_rejected_generation_when_an_item_is_waiting_at_the_round
     let update = outcome_of(&node).await;
 
     assert_eq!(update.judgement, Some(Judgement::Rejected));
-    assert!(!rig.inbox.is_read(rig.generator, id));
+    assert!(!rig.incoming.is_read(rig.generator, id));
     assert!(!timeline(&rig).contains(&"in:later".to_owned()));
 }
 
 #[tokio::test(start_paused = true)]
 async fn given_fail_when_the_critic_rejects_at_the_round_limit_then_the_instance_fails_with_the_message_and_stores_nothing_of_the_call()
  {
-    let rig = Rig::new().with_files(FileSystemMode::Always, Vec::new());
+    let rig = Rig::new();
     let generator = Scripted::new(vec![Reply::text("d1")]);
     let critic = Scripted::new(vec![Reply::answer(false, "Too long by 3 characters")]);
     let node = build(
@@ -82,7 +82,6 @@ async fn given_fail_when_the_critic_rejects_at_the_round_limit_then_the_instance
     assert_eq!(turns_of(&rig, "critic"), 0);
     assert_eq!(timeline(&rig), vec!["in:start", "generator[Completed]:d1"]);
     assert_eq!(rig.outcome.calls(), 0);
-    assert_eq!(count(&rig, "workspace_save"), 0);
 }
 
 #[tokio::test(start_paused = true)]

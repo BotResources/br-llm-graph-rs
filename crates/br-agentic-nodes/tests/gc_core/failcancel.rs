@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use br_agentic_contract::FileSystemMode;
 use br_agentic_contract::memory::Call;
 use br_graph_contract::{CancelToken, Event, Node};
 use br_llm_clients_core::ClientError;
@@ -27,7 +26,7 @@ fn closures_of_the_critic(rig: &Rig) -> Vec<String> {
 #[tokio::test(start_paused = true)]
 async fn given_a_critic_error_the_fallback_cannot_solve_when_the_pair_runs_then_the_instance_fails_and_the_work_stays()
  {
-    let rig = Rig::new().with_files(FileSystemMode::Always, Vec::new());
+    let rig = Rig::new();
     let generator = Scripted::new(vec![Reply::text("draft")]);
     let critic = Scripted::new(vec![Reply::Fail(ClientError::Transport)]);
     let node = build(&rig, one(&generator), one(&critic), 3, Setup::default());
@@ -40,7 +39,6 @@ async fn given_a_critic_error_the_fallback_cannot_solve_when_the_pair_runs_then_
         vec!["in:start", "generator[Completed]:draft"]
     );
     assert_eq!(rig.outcome.calls(), 0);
-    assert_eq!(count(&rig, "workspace_save"), 0);
 }
 
 #[tokio::test(start_paused = true)]
@@ -98,7 +96,7 @@ async fn given_a_critic_turn_open_when_the_instance_is_cancelled_then_the_turn_i
 
 #[tokio::test(start_paused = true)]
 async fn given_a_critic_call_running_when_the_instance_is_cancelled_then_nothing_of_it_is_stored() {
-    let rig = Rig::new().with_files(FileSystemMode::Always, Vec::new());
+    let rig = Rig::new();
     let generator = Scripted::new(vec![Reply::text("draft")]);
     let critic = Scripted::new(vec![Reply::Hang]);
     let token = CancelToken::new();
@@ -123,5 +121,4 @@ async fn given_a_critic_call_running_when_the_instance_is_cancelled_then_nothing
         vec!["in:start", "generator[Completed]:draft"]
     );
     assert_eq!(rig.outcome.calls(), 0);
-    assert_eq!(count(&rig, "workspace_save"), 0);
 }

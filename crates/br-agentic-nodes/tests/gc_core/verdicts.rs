@@ -1,4 +1,5 @@
-use br_agentic_nodes::{Judgement, StepLimitEnding};
+use br_agentic_contract::Judgement;
+use br_agentic_nodes::StepLimitEnding;
 use br_llm_messages::ResponseEnding;
 
 use crate::common::*;
@@ -121,7 +122,7 @@ async fn given_a_rejection_and_no_step_left_when_the_pair_runs_then_the_loop_sto
 #[tokio::test(start_paused = true)]
 async fn given_a_rejection_and_no_step_left_when_an_item_is_waiting_then_the_queue_is_not_drained()
 {
-    let rig = Rig::new().with_inbox().with_step_limit(1);
+    let rig = Rig::new().with_incoming().with_step_limit(1);
     let (id, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::text("draft")]);
     deliver_on(&generator, 1, deliver);
@@ -136,14 +137,14 @@ async fn given_a_rejection_and_no_step_left_when_an_item_is_waiting_then_the_que
 
     outcome_of(&node).await;
 
-    assert!(!rig.inbox.is_read(rig.generator, id));
+    assert!(!rig.incoming.is_read(rig.generator, id));
     assert!(!timeline(&rig).contains(&"in:later".to_owned()));
 }
 
 #[tokio::test(start_paused = true)]
 async fn given_a_rejection_and_a_step_left_when_items_are_waiting_then_they_form_one_input_turn_after_the_turn_of_the_critic()
  {
-    let rig = Rig::new().with_inbox().with_step_limit(2);
+    let rig = Rig::new().with_incoming().with_step_limit(2);
     let (first_id, first) = human_item(&rig, "first");
     let (second_id, second) = human_item(&rig, "second");
     let generator = Scripted::new(vec![Reply::text("draft"), Reply::text("better")]);
@@ -179,8 +180,8 @@ async fn given_a_rejection_and_a_step_left_when_items_are_waiting_then_they_form
     let conversation = rig.conversation();
     let last_input = input_turns(&conversation).pop().unwrap();
     assert_eq!(last_input.entries().len(), 2);
-    assert!(rig.inbox.is_read(rig.generator, first_id));
-    assert!(rig.inbox.is_read(rig.generator, second_id));
+    assert!(rig.incoming.is_read(rig.generator, first_id));
+    assert!(rig.incoming.is_read(rig.generator, second_id));
     let seen = generator.requests().pop().unwrap();
     assert!(format!("{:?}", seen.history()).contains("second"));
 }
@@ -188,7 +189,7 @@ async fn given_a_rejection_and_a_step_left_when_items_are_waiting_then_they_form
 #[tokio::test(start_paused = true)]
 async fn given_a_validation_and_a_step_left_when_an_item_is_waiting_then_one_more_pass_uses_that_drain_and_stores_the_item_once()
  {
-    let rig = Rig::new().with_inbox().with_step_limit(2);
+    let rig = Rig::new().with_incoming().with_step_limit(2);
     let (id, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::text("d1"), Reply::text("d2")]);
     deliver_on(&generator, 1, deliver);
@@ -212,16 +213,16 @@ async fn given_a_validation_and_a_step_left_when_an_item_is_waiting_then_one_mor
             "generator[Completed]:d2"
         ]
     );
-    assert!(rig.inbox.is_read(rig.generator, id));
+    assert!(rig.incoming.is_read(rig.generator, id));
     assert_eq!(update.iterations, Some(2));
     assert_eq!(update.judgement, Some(Judgement::Validated));
-    assert_eq!(count(&rig, "inbox_mark_read"), 1);
+    assert_eq!(count(&rig, "incoming_mark_read"), 1);
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_validation_and_no_step_left_when_an_item_is_waiting_then_the_item_stays_in_the_inbox()
+async fn given_a_validation_and_no_step_left_when_an_item_is_waiting_then_the_item_stays_in_the_incoming()
  {
-    let rig = Rig::new().with_inbox().with_step_limit(1);
+    let rig = Rig::new().with_incoming().with_step_limit(1);
     let (id, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::text("d1")]);
     deliver_on(&generator, 1, deliver);
@@ -238,13 +239,13 @@ async fn given_a_validation_and_no_step_left_when_an_item_is_waiting_then_the_it
 
     assert_eq!(update.judgement, Some(Judgement::Validated));
     assert_eq!(generator.calls(), 1);
-    assert!(!rig.inbox.is_read(rig.generator, id));
+    assert!(!rig.incoming.is_read(rig.generator, id));
     assert_eq!(timeline(&rig), vec!["in:start", "generator[Completed]:d1"]);
 }
 
 #[tokio::test(start_paused = true)]
 async fn given_a_validation_and_an_empty_queue_when_a_step_is_left_then_the_instance_ends() {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let generator = Scripted::new(vec![Reply::text("d1")]);
     let critic = Scripted::new(vec![Reply::answer(true, "")]);
     let node = build(
@@ -265,7 +266,7 @@ async fn given_a_validation_and_an_empty_queue_when_a_step_is_left_then_the_inst
 #[tokio::test(start_paused = true)]
 async fn given_a_validation_and_a_new_pass_that_hits_the_step_limit_when_the_ending_has_no_critic_call_then_the_judgement_is_not_judged()
  {
-    let rig = Rig::new().with_inbox().with_step_limit(2);
+    let rig = Rig::new().with_incoming().with_step_limit(2);
     let (_, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::text("d1"), Reply::call("lookup")]);
     deliver_on(&generator, 1, deliver);

@@ -1,13 +1,13 @@
 use br_agentic_contract::NewMail;
-use br_agentic_contract::memory::MemoryInbox;
+use br_agentic_contract::memory::MemoryIncoming;
 use br_llm_messages::{AgentId, ConversationId};
 
 use crate::prelude::*;
 
-pub fn deliver_mails(inbox: &MemoryInbox, generator: AgentId) {
+pub fn deliver_mails(incoming: &MemoryIncoming, generator: AgentId) {
     let sender = agent_id();
     let source = ConversationId::from_uuid(uuid()).unwrap();
-    inbox
+    incoming
         .deliver_mail(
             sender,
             NewMail {
@@ -22,7 +22,7 @@ pub fn deliver_mails(inbox: &MemoryInbox, generator: AgentId) {
             },
         )
         .unwrap();
-    inbox
+    incoming
         .deliver_mail(
             sender,
             NewMail {

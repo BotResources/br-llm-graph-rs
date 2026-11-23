@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use br_agentic_contract::{FileSystemMode, WorkspaceFile};
 use br_agentic_nodes::{CallFailure, Fault};
 use br_graph_contract::Event;
 use br_llm_clients_core::ClientError;
@@ -10,16 +9,9 @@ use br_llm_messages::ClosureReason;
 use crate::access_spy::{AccessSpy, Op};
 use crate::common::*;
 use crate::drive::*;
-use crate::hanging::ProbeInbox;
+use crate::hanging::ProbeIncoming;
 use crate::kit::{Parts, react_list, react_over, react_spec};
 use crate::ports_kit::*;
-
-fn file(path: &str) -> WorkspaceFile {
-    WorkspaceFile {
-        path: path.to_owned(),
-        content: b"kept".to_vec(),
-    }
-}
 
 fn failed_detail(reason: &ClosureReason) -> Option<&str> {
     match reason {
@@ -29,9 +21,9 @@ fn failed_detail(reason: &ClosureReason) -> Option<&str> {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_an_outcome_port_that_fails_when_the_agent_ends_then_the_instance_fails_without_a_retry_and_saves_no_files()
+async fn given_an_outcome_port_that_fails_when_the_agent_ends_then_the_instance_fails_without_a_retry()
  {
-    let rig = Rig::new().with_files(FileSystemMode::Always, vec![file("a.txt")]);
+    let rig = Rig::new();
     let model = Scripted::new(vec![Reply::text("done")]);
     let trip = Trip::failing();
     let spy = Arc::new(AccessSpy::over(rig.access.clone()));
@@ -47,29 +39,12 @@ async fn given_an_outcome_port_that_fails_when_the_agent_ends_then_the_instance_
 
     assert!(is_failed(&event), "{event:?}");
     assert_eq!(trip.calls(), 1);
-    assert!(!names(&rig.record).contains(&"workspace_save"));
     assert_eq!(spy.closures(rig.agent).len(), 1);
     assert!(matches!(
         spy.closures(rig.agent)[0],
         ClosureReason::Completed { .. }
     ));
     assert!(input_is_closed(&driver));
-}
-
-#[tokio::test(start_paused = true)]
-async fn given_a_workspace_save_that_fails_when_the_agent_ends_then_the_instance_fails_without_a_retry()
- {
-    let rig = Rig::new().with_files(FileSystemMode::Always, vec![file("a.txt")]);
-    let model = Scripted::new(vec![Reply::text("done")]);
-    let flaky = FlakyWorkspace::new(rig.workspace.clone(), false, true);
-    let mut parts = Parts::of(&rig);
-    parts.workspace = flaky.clone();
-    let node = react_over(&rig, parts, &[&model]);
-
-    let cause = Driver::failure(&node).await;
-
-    assert!(cause.contains("the save failed"), "{cause}");
-    assert_eq!(flaky.saves(), 1);
 }
 
 #[tokio::test(start_paused = true)]
@@ -111,9 +86,7 @@ async fn given_a_tool_that_faults_next_to_a_tool_that_hangs_when_the_agent_runs_
  {
     let (broken, broken_probe) = tool("broken", Behavior::Fault);
     let (stuck, stuck_probe) = tool("stuck", Behavior::Hang);
-    let rig = Rig::new()
-        .with_tools(vec![broken, stuck])
-        .with_files(FileSystemMode::Always, vec![file("a.txt")]);
+    let rig = Rig::new().with_tools(vec![broken, stuck]);
     let spy = Arc::new(AccessSpy::over(rig.access.clone()));
     let model = Scripted::new(vec![Reply::calls(&["broken", "stuck"])]);
     let node = react_over(&rig, Parts::of(&rig).with_access(spy.clone()), &[&model]);
@@ -132,7 +105,6 @@ async fn given_a_tool_that_faults_next_to_a_tool_that_hangs_when_the_agent_runs_
     let conversation = rig.conversation();
     assert_eq!(ai_turns(&conversation).len(), 1);
     assert_eq!(responses(ai_turns(&conversation)[0]).len(), 1);
-    assert!(!names(&rig.record).contains(&"workspace_save"));
     assert_eq!(rig.outcome.calls(), 0);
     assert!(input_is_closed(&driver));
 }
@@ -214,24 +186,24 @@ async fn given_a_closure_and_discards_that_fail_when_the_instance_fails_then_tho
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_running_inbox_read_when_the_instance_fails_then_the_read_is_dropped() {
+async fn given_a_running_incoming_read_when_the_instance_fails_then_the_read_is_dropped() {
     let (quick, _) = echo("quick");
     let (broken, _) = tool("broken", Behavior::Fault);
-    let rig = Rig::new().with_inbox().with_tools(vec![quick, broken]);
-    let inbox = ProbeInbox::hanging_from(rig.inbox.clone(), 1);
+    let rig = Rig::new().with_incoming().with_tools(vec![quick, broken]);
+    let incoming = ProbeIncoming::hanging_from(rig.incoming.clone(), 1);
     let mut parts = Parts::of(&rig);
-    parts.inbox = Some(inbox.clone());
+    parts.incoming = Some(incoming.clone());
     let model = Scripted::new(vec![Reply::call("quick"), Reply::call("broken")]);
     let node = react_over(&rig, parts, &[&model]);
 
     let event = Driver::run(&node).await.1;
 
     assert!(is_failed(&event), "{event:?}");
-    tokio::time::timeout(Duration::from_secs(1), inbox.started.notified())
+    tokio::time::timeout(Duration::from_secs(1), incoming.started.notified())
         .await
         .expect("the read had started");
     tokio::time::sleep(Duration::from_millis(1)).await;
-    assert_eq!(inbox.dropped(), 1);
+    assert_eq!(incoming.dropped(), 1);
 }
 
 #[tokio::test(start_paused = true)]

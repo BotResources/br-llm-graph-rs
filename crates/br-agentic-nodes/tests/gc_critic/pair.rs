@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
+use br_agentic_contract::CriticRequest;
 use br_agentic_contract::memory::{FixedThreadPort, FixedToolsPort};
 use br_agentic_nodes::{
-    AuthorSource, CriticRequest, CriticRequestSource, GeneratorCritic, Ladder, Ports,
-    ProgrammaticCritic, ProgrammaticRefusalLimit, RoundLimitEnding, StepLimitEnding,
+    AuthorSource, CriticRequestSource, GeneratorCritic, Ladder, Ports, ProgrammaticCritic,
+    ProgrammaticRefusalLimit, RoundLimitEnding, StepLimitEnding,
 };
 use br_llm_messages::AgentId;
 
@@ -113,7 +114,6 @@ pub fn ports_over(rig: &Rig, access: Arc<dyn br_agentic_contract::ThreadAccess>)
         access,
         rig.prompts.clone(),
         Arc::new(FixedToolsPort::new(&rig.record, rig.tools.clone())),
-        rig.workspace.clone(),
     )
 }
 

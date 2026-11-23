@@ -1,4 +1,5 @@
-use br_agentic_nodes::{Judgement, RoundLimitEnding};
+use br_agentic_contract::Judgement;
+use br_agentic_nodes::RoundLimitEnding;
 
 use crate::common::*;
 use crate::items::*;
@@ -22,7 +23,7 @@ fn arrival(rig: &Rig, kind: Kind) -> Box<dyn Fn() + Send + Sync> {
 }
 
 async fn item_during_round_two(kind: Kind) -> (Vec<usize>, Vec<usize>) {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let generators = [
         Scripted::new(vec![Reply::text("d1"), Reply::text("d4")]),
         Scripted::new(vec![Reply::text("d2")]),
@@ -158,7 +159,7 @@ async fn given_a_runtime_notice_stored_at_a_pass_start_when_the_pass_picks_its_e
 #[tokio::test(start_paused = true)]
 async fn given_a_validation_with_a_waiting_request_item_when_the_new_pass_starts_then_the_counter_is_back_to_zero()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let (_, deliver) = human_item(&rig, "item");
     let first = Scripted::new(vec![Reply::text("d1"), Reply::text("d3")]);
     let second = Scripted::new(vec![Reply::text("d2")]);
@@ -185,7 +186,7 @@ async fn given_a_validation_with_a_waiting_request_item_when_the_new_pass_starts
 async fn given_a_request_item_drained_after_a_tool_run_when_the_round_ends_then_the_critic_still_uses_the_entry_read_at_the_pass_start()
  {
     let (tool, _) = echo("lookup");
-    let rig = Rig::new().with_inbox().with_tools(vec![tool]);
+    let rig = Rig::new().with_incoming().with_tools(vec![tool]);
     let (_, deliver) = human_item(&rig, "item");
     let g1 = Scripted::new(vec![Reply::text("d1")]);
     let g2 = Scripted::new(vec![
@@ -214,7 +215,7 @@ async fn given_a_request_item_drained_after_a_tool_run_when_the_round_ends_then_
 async fn given_a_request_item_waiting_at_the_start_of_the_last_pass_when_it_is_drained_then_the_pass_is_ordinary_and_the_counter_is_back_to_zero()
  {
     for kind in [Kind::Human, Kind::MailTo, Kind::MailCc] {
-        let rig = Rig::new().with_inbox();
+        let rig = Rig::new().with_incoming();
         let first = Scripted::new(vec![Reply::text("d1"), Reply::text("d2")]);
         let second = Scripted::new(vec![]);
         deliver_on(&first, 1, arrival(&rig, kind));
@@ -240,7 +241,7 @@ async fn given_a_request_item_waiting_at_the_start_of_the_last_pass_when_it_is_d
 #[tokio::test(start_paused = true)]
 async fn given_a_notice_waiting_at_the_start_of_the_last_pass_when_it_is_drained_then_the_pass_stays_the_last_pass()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let first = Scripted::new(vec![Reply::text("d1")]);
     let second = Scripted::new(vec![Reply::text("d2")]);
     deliver_on(&first, 1, arrival(&rig, Kind::Notice));

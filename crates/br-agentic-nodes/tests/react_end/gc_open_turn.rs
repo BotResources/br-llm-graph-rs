@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use br_agentic_contract::PortError;
 use br_agentic_contract::PortFuture;
+use br_agentic_contract::{ProgrammaticCriticPort, ProgrammaticVerdict};
 use br_agentic_nodes::{
-    AuthorSource, GeneratorCritic, ProgrammaticCritic, ProgrammaticCriticPort,
-    ProgrammaticRefusalLimit, ProgrammaticVerdict,
+    AuthorSource, GeneratorCritic, ProgrammaticCritic, ProgrammaticRefusalLimit,
 };
 use br_llm_messages::{AgentId, ClosureReason, ModelResponse};
 

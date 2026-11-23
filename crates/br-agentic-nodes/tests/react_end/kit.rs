@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
 use br_agentic_contract::memory::{FixedThreadPort, FixedToolsPort};
-use br_agentic_contract::{
-    AgentPort, InboxPort, ThreadAccess, ThreadPort, ToolsPort, WorkspacePort,
-};
-use br_agentic_nodes::{
-    AuthorSource, FallbackList, Ports, PromptPort, ReactAgent, ReactOutcomePort,
-};
+use br_agentic_contract::{AgentPort, IncomingPort, ThreadAccess, ThreadPort, ToolsPort};
+use br_agentic_contract::{PromptPort, ReactOutcomePort};
+use br_agentic_nodes::{AuthorSource, FallbackList, Ports, ReactAgent};
 
 use crate::common::{Doc, Rig, Scripted, list};
 
@@ -16,8 +13,7 @@ pub struct Parts {
     pub access: Arc<dyn ThreadAccess>,
     pub prompt: Arc<dyn PromptPort<Doc>>,
     pub tools: Arc<dyn ToolsPort<Doc>>,
-    pub workspace: Arc<dyn WorkspacePort<Doc>>,
-    pub inbox: Option<Arc<dyn InboxPort>>,
+    pub incoming: Option<Arc<dyn IncomingPort>>,
 }
 
 impl Parts {
@@ -28,10 +24,9 @@ impl Parts {
             access: rig.access.clone(),
             prompt: rig.prompts.clone(),
             tools: Arc::new(FixedToolsPort::new(&rig.record, rig.tools.clone())),
-            workspace: rig.workspace.clone(),
-            inbox: rig
-                .with_inbox
-                .then(|| rig.inbox.clone() as Arc<dyn InboxPort>),
+            incoming: rig
+                .with_incoming
+                .then(|| rig.incoming.clone() as Arc<dyn IncomingPort>),
         }
     }
 
@@ -47,10 +42,9 @@ impl Parts {
             self.access,
             self.prompt,
             self.tools,
-            self.workspace,
         );
-        match self.inbox {
-            Some(inbox) => ports.with_inbox(inbox),
+        match self.incoming {
+            Some(incoming) => ports.with_incoming(incoming),
             None => ports,
         }
     }

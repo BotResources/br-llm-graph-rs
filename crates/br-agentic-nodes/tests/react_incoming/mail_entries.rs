@@ -49,7 +49,7 @@ async fn deliver_and_run(
     mail: br_agentic_contract::NewMail,
 ) -> IncomingEntry {
     let id = mail.id.entry_id();
-    rig.inbox.deliver_mail(sender, mail).unwrap();
+    rig.incoming.deliver_mail(sender, mail).unwrap();
     let model = Scripted::new(vec![Reply::text("done")]);
     let node = plain(rig, &model, NODE_NAME);
     Driver::result(&node).await;

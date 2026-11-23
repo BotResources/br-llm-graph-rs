@@ -1,3 +1,4 @@
+use br_agentic_contract::{GeneratorCriticOutcome, Judgement, ProgrammaticVerdict};
 use br_graph_contract::Fields;
 use br_llm_messages::{ModelResponse, PlainText};
 
@@ -10,9 +11,7 @@ use super::{
 use crate::config::Common;
 use crate::drain::Drained;
 use crate::fault::{Fault, Stop};
-use crate::outcome::{GeneratorCriticOutcome, Judgement};
 use crate::pass::PassEnd;
-use crate::ports::ProgrammaticVerdict;
 use crate::run::Body;
 use crate::seats::{SeatSpec, Seats};
 use crate::slot::Slot;
@@ -156,7 +155,7 @@ impl<F: Fields> GcBody<F> {
         state: &mut Loop,
         end: Next,
     ) -> Result<Next, Fault> {
-        if worker.has_inbox() && worker.steps_remaining() > 0 {
+        if worker.has_incoming() && worker.steps_remaining() > 0 {
             let drained = worker.drain().await?;
             if drained.stored > 0 {
                 state.drain_first = false;
@@ -287,6 +286,6 @@ impl<F: Fields> Body<F> for GcBody<F> {
             .update(snapshot, &outcome)
             .await
             .map_err(Fault::from)?;
-        Ok(worker.finish(&self.common, snapshot, update).await?)
+        Ok(update)
     }
 }

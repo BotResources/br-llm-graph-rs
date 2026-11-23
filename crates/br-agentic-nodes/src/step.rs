@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use br_agentic_contract::{AiTurnRef, Session};
+use br_agentic_contract::AiTurnRef;
 use br_llm_clients_core::{BoxFuture, ClientRequest, OutputMode, StructuredShape, ToolSpec};
 use br_llm_messages::{
     AITurn, ModelResponse, PlainText, ProjectedThread, ResponseEnding, RuntimeNotice, TurnEntry,
@@ -10,6 +10,7 @@ use br_llm_messages::{
 use crate::client::ModelClient;
 use crate::fault::{AttemptError, CallFailure, Fault};
 use crate::ids::{entry_id, turn_id};
+use crate::session::Session;
 use crate::slot::{Attempt, Slot, drive};
 use crate::structure::check_structure;
 use crate::thinking::check_thinking;
@@ -81,7 +82,6 @@ impl Attempt for StepAttempt<'_, '_> {
 }
 
 impl StepAttempt<'_, '_> {
-    /// Whether the response would be a final response once added to the AI turn of the step.
     fn ends(&self, response: &ModelResponse) -> bool {
         if response.runtime_calls().next().is_some() {
             return false;

@@ -2,15 +2,13 @@ use std::time::Duration;
 
 use br_agentic_contract::{AiTurnRef, ResultStreamBox, ToolContent, ToolFault};
 use br_llm_messages::{
-    BlockId, EntryId, EntryView, ModelResponse, RuntimeToolCall, RuntimeToolResults, ToolName,
-    TurnId,
+    BlockId, EntryId, ModelResponse, RuntimeToolCall, RuntimeToolResults, ToolName, TurnId,
 };
 use tokio::task::JoinSet;
 use tokio::time::error::Elapsed;
 
 use crate::fault::{Fault, Stop};
 use crate::ids::{block_id, entry_id};
-use crate::mail_tools::SEND_MAIL;
 use crate::worker::Worker;
 
 struct Finished {
@@ -29,37 +27,14 @@ struct Immediate {
 }
 
 fn timeout_text(name: &ToolName, timeout: Duration) -> String {
-    let mut text = format!(
+    format!(
         "the call to the tool {} exceeded its timeout of {timeout:?}",
         name.as_str()
-    );
-    if name.as_str() == SEND_MAIL {
-        text.push_str("; it is not known whether the mail was sent");
-    }
-    text
+    )
 }
 
 impl Worker<'_> {
-    fn refresh_gate(&self) {
-        let mut ids = self
-            .gate
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        ids.clear();
-        for placed in self.session.conversation().entries() {
-            let incoming = match placed.entry() {
-                EntryView::Incoming(_) => true,
-                EntryView::Turn(entry) => entry.is_incoming(),
-                _ => false,
-            };
-            if incoming {
-                ids.insert(placed.entry().id());
-            }
-        }
-    }
-
     pub async fn tool_round(&mut self, turn: TurnId, response: &ModelResponse) -> Result<(), Stop> {
-        self.refresh_gate();
         let target = self.turn_ref(turn)?;
         let mut opened = Vec::new();
         for call in response.runtime_calls() {

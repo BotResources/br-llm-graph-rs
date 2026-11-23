@@ -1,22 +1,23 @@
 #![doc = include_str!("../README.md")]
 
+mod boundary;
 mod client;
 mod config;
 mod drain;
+mod ending;
 mod fault;
 mod generator_critic;
 mod ids;
 mod limits;
 mod mail_entry;
-mod mail_tools;
-mod outcome;
 mod pass;
-mod ports;
+mod queue;
 mod react;
 mod read;
 mod run;
-mod sandbox;
 mod seats;
+mod session;
+mod session_error;
 mod signals;
 mod sink;
 mod slot;
@@ -28,9 +29,11 @@ mod tool_round;
 mod warning;
 mod worker;
 
+pub use boundary::{Boundary, BoundaryError, MailEntryBuilder, store_at_boundary};
 pub use client::{EmptyList, FallbackList, Ladder, ModelClient, ThinkingExpectation};
 pub use config::{AuthorSource, Ports, Settings};
 pub use drain::Drained;
+pub use ending::{cancelled, failed, result};
 pub use fault::{CallFailure, Fault, Stop};
 pub use generator_critic::{
     CRITIC_LABEL, CriticRequestSource, GENERATOR_CRITIC, GENERATOR_LABEL, GeneratorCritic,
@@ -38,16 +41,12 @@ pub use generator_critic::{
     StepLimitEnding,
 };
 pub use limits::{InvalidLimit, ProgrammaticRefusalLimit, RoundLimit, StepLimit, Timeouts};
-pub use mail_tools::{GET_MAIL_FILES, SEND_MAIL};
-pub use outcome::{GeneratorCriticOutcome, Judgement, ReactOutcome};
-pub use ports::{
-    AuthorPort, CriticRequest, CriticRequestPort, GeneratorCriticOutcomePort, OutputSchemaPort,
-    ProgrammaticCriticPort, ProgrammaticVerdict, PromptPort, ReactOutcomePort,
-};
+pub use queue::Queue;
 pub use react::{AGENT_LABEL, REACT_AGENT, ReactAgent, ReactSpec};
-pub use sandbox::{FileSystem, SandboxError, SandboxPath};
+pub use session::Session;
+pub use session_error::SessionError;
 pub use slot::Slot;
-pub use structure::{check_structure, structured_reply};
+pub use structure::check_structure;
 pub use thinking::{check_thinking, holds_thinking};
 pub use warning::{WARNING_WINDOW, warning_text};
 pub use worker::{Worker, WorkerParts};

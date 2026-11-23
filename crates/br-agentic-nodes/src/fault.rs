@@ -1,8 +1,11 @@
 use std::error::Error;
 use std::time::Duration;
 
-use br_agentic_contract::{BoundaryError, DuplicateTool, PortError, SessionError, ToolFault};
+use br_agentic_contract::{DuplicateTool, PortError, ToolFault};
 use br_llm_clients_core::ClientError;
+
+use crate::boundary::BoundaryError;
+use crate::session_error::SessionError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CallFailure {
@@ -36,8 +39,6 @@ pub enum Fault {
     Model(#[from] CallFailure),
     #[error("a value is refused: {0}")]
     Value(String),
-    #[error("the workspace port gave a path outside the sandbox: {0}")]
-    Sandbox(String),
     #[error("the critic did not validate at the step limit: {message}")]
     CriticAtStepLimit { message: String },
     #[error("the critic did not validate at the round limit: {message}")]

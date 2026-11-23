@@ -5,19 +5,19 @@ use crate::common::*;
 pub fn human_item(rig: &Rig, text: &str) -> (EntryId, impl Fn() + Send + Sync + 'static) {
     let message = human_message(text);
     let id = message.id();
-    let entry = br_agentic_contract::InboxEntry::new(IncomingEntry::from(message)).unwrap();
-    let inbox = rig.inbox.clone();
+    let entry = br_agentic_contract::EntryItem::new(IncomingEntry::from(message)).unwrap();
+    let incoming = rig.incoming.clone();
     let agent = rig.generator;
-    (id, move || inbox.deliver_entry(agent, entry.clone()))
+    (id, move || incoming.deliver_entry(agent, entry.clone()))
 }
 
 pub fn notice_item(rig: &Rig, text: &str) -> (EntryId, impl Fn() + Send + Sync + 'static) {
     let notice = br_llm_messages::RuntimeNotice::new(entry_id(), text).unwrap();
     let id = notice.id();
-    let entry = br_agentic_contract::InboxEntry::new(IncomingEntry::RuntimeNotice(notice)).unwrap();
-    let inbox = rig.inbox.clone();
+    let entry = br_agentic_contract::EntryItem::new(IncomingEntry::RuntimeNotice(notice)).unwrap();
+    let incoming = rig.incoming.clone();
     let agent = rig.generator;
-    (id, move || inbox.deliver_entry(agent, entry.clone()))
+    (id, move || incoming.deliver_entry(agent, entry.clone()))
 }
 
 pub fn mail_item(rig: &Rig, copy: bool) -> (EntryId, impl Fn() + Send + Sync + 'static) {
@@ -39,9 +39,9 @@ pub fn mail_item(rig: &Rig, copy: bool) -> (EntryId, impl Fn() + Send + Sync + '
         body: "body".to_owned(),
         attachments: Vec::new(),
     };
-    let inbox = rig.inbox.clone();
+    let incoming = rig.incoming.clone();
     let sender = agent_id();
     (id.entry_id(), move || {
-        inbox.deliver_mail(sender, mail.clone()).unwrap();
+        incoming.deliver_mail(sender, mail.clone()).unwrap();
     })
 }

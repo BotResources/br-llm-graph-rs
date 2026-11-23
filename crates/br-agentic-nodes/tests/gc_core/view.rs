@@ -124,7 +124,7 @@ pub fn read_for(rig: &Rig) -> Vec<AgentId> {
         .calls()
         .iter()
         .filter_map(|call| match call {
-            Call::InboxItems { context, .. } => Some(context.agent),
+            Call::IncomingItems { context, .. } => Some(context.agent),
             _ => None,
         })
         .collect()

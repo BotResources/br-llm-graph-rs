@@ -5,8 +5,8 @@ use crate::prelude::*;
 #[tokio::test(start_paused = true)]
 async fn given_refusals_in_a_row_when_a_request_item_is_stored_then_the_programmatic_refusal_counter_goes_back_to_zero()
  {
-    let rig = Rig::new().with_inbox();
-    let inbox = rig.inbox.clone();
+    let rig = Rig::new().with_incoming();
+    let incoming = rig.incoming.clone();
     let agent = rig.generator;
     let generator = Scripted::new(vec![
         Reply::text("one"),
@@ -25,7 +25,7 @@ async fn given_refusals_in_a_row_when_a_request_item_is_stored_then_the_programm
         ],
         move |call| {
             if call == 1 {
-                inbox.deliver_entry(agent, inbox_entry("a late request"));
+                incoming.deliver_entry(agent, incoming_entry("a late request"));
             }
         },
     );
@@ -45,7 +45,7 @@ async fn given_refusals_in_a_row_when_a_request_item_is_stored_then_the_programm
 #[tokio::test(start_paused = true)]
 async fn given_refusals_in_a_row_when_no_request_item_is_stored_then_the_counter_keeps_growing_until_the_limit()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let generator = Scripted::new(vec![
         Reply::text("one"),
         Reply::text("two"),
