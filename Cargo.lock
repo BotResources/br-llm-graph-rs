@@ -29,6 +29,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-agentic-harness-contract"
+version = "0.1.0"
+dependencies = [
+ "br-agentic-contract 0.3.0",
+ "br-llm-messages 2.1.0",
+ "serde",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "br-agentic-nodes"
 version = "0.3.0"
 dependencies = [
