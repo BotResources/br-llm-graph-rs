@@ -274,6 +274,15 @@ br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs",
 br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", package = "br-llm-messages", tag = "br-llm-messages/v2.1.0", version = "2.1.0" }
 ```
 
+## br-agentic-harness
+
+The logic of the harness of an agentic node: it fills the history, prompt, tools and incoming node ports from the harness ports of a runner, builds the mail tools (`send_mail`, `get_mail_files`), keeps the mail gate (a mail is marked read only after its entry is stored) and runs the run lifecycle (open and close of the sandbox). It defines no port. The contract of the crate is `crates/br-agentic-harness/README.md`. It depends on `br-agentic-harness-contract`, `br-agentic-contract`, `br-graph-contract`, `br-llm-clients-core` and `br-llm-messages`, and needs a Tokio runtime. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+
+```toml
+[dependencies]
+br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.1.0", version = "0.1.0" }
+```
+
 ## br-agentic-nodes
 
 The agent nodes: the ReAct agent (`ReactAgent`, subkind `react_agent`) and the generator-critic (`GeneratorCritic`, subkind `generator_critic`), and the building blocks they are made of. A ReAct agent runs its own loop in one node: it calls the model, runs the tool calls, drains its incoming items and calls the model again until a final response. A generator-critic is one node with two agents on one thread: a generator that is a ReAct pass, and a critic that judges with one structured call and no tool. The models are clients that the runner built; the node never reads or changes their settings. It depends on `br-agentic-contract`, `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`. It needs a Tokio runtime. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
@@ -320,7 +329,7 @@ Why:
 
 ## Releases
 
-Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The crates `crates/br-llm-graph`, `crates/br-graph-contract`, `crates/br-flow-nodes`, `crates/br-graph-executor`, `crates/br-agentic-contract`, `crates/br-agentic-nodes` and `crates/br-agentic-harness-contract` are tracked, each by its own tag `{crate}/v{version}`. The pull request that bumps a crate's `Cargo.toml` (with a `## X.Y.Z - date` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/{crate}-<major>.<minor>` line) the release workflow asks the registry again, tags `{crate}/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
+Releases: a version ships only once the BotResources libraries registry holds it as a sealed patch. The crates `crates/br-llm-graph`, `crates/br-graph-contract`, `crates/br-flow-nodes`, `crates/br-graph-executor`, `crates/br-agentic-contract`, `crates/br-agentic-nodes`, `crates/br-agentic-harness-contract` and `crates/br-agentic-harness` are tracked, each by its own tag `{crate}/v{version}`. The pull request that bumps a crate's `Cargo.toml` (with a `## X.Y.Z - date` heading in its CHANGELOG) is gated by the registry; on merge to `main` (or a `release/{crate}-<major>.<minor>` line) the release workflow asks the registry again, tags `{crate}/vX.Y.Z`, creates the GitHub release, then records the API listing, the dependencies and the release in the registry.
 
 Coverage: every CI run measures the test coverage with `cargo-llvm-cov` and keeps it as the `coverage` artifact (a `coverage-summary.json` per crate and per file, the lcov file and the HTML report); on a pull request the run's summary compares it with the base branch and warns when line coverage drops. Each release attaches its `coverage-summary.json` to the GitHub release and compares it with the previous release that carries one.
 
