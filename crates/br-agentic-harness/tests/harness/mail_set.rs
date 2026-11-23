@@ -1,5 +1,5 @@
 use br_agentic_contract::IncomingItem;
-use br_agentic_harness::GET_MAIL_FILES;
+use br_agentic_harness::{GET_MAIL_FILES, RunLifecycle};
 use br_llm_messages::TurnEntry;
 
 use crate::common::*;
@@ -151,5 +151,27 @@ async fn given_a_conversation_with_no_mail_when_any_id_is_asked_then_it_fails_cl
     let result = files_result(&harness, &world, entry_id()?).await?;
 
     assert!(result.is_error());
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_a_run_that_saw_a_mail_when_it_closes_then_the_mail_set_of_its_thread_is_empty() -> Res
+{
+    let world = World::new()?;
+    let harness = world.full().build();
+    let mail = new_mail(&[world.agent], "work")?;
+    let id = mail.id.entry_id();
+    world.deliver(mail)?;
+    store_mail(harness.history().as_ref(), &world.thread, id).await?;
+    let tools = offered(&harness, &world).await?;
+    let files = find(&tools, GET_MAIL_FILES)?;
+    assert!(!call(&files, &files_arguments(id)).await?.is_error());
+
+    harness
+        .close(world.instance, br_agentic_harness::RunEnd::Completed)
+        .await?;
+
+    let after = call(&files, &files_arguments(id)).await?;
+    assert!(after.is_error());
     Ok(())
 }

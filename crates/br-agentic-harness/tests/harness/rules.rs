@@ -1,8 +1,13 @@
-use br_agentic_contract::{Attachment, DocumentRef, WebAccess};
+use std::sync::Arc;
+
+use br_agentic_contract::memory::FixedToolsPort;
+use br_agentic_contract::{AgentLabel, Attachment, DocumentRef, WebAccess};
 use br_agentic_harness::{GET_MAIL_FILES, RunEnd, RunLifecycle, SEND_MAIL};
+use br_agentic_harness::{Harness, HarnessHistory, MailPort};
 use br_agentic_harness_contract::memory::HarnessCall;
 
 use crate::common::*;
+use crate::spy::{Seen, spy};
 
 const CREDENTIAL: &str = "runner-credential-7f3a91";
 
@@ -38,22 +43,46 @@ async fn mail_in_thread(
 }
 
 #[tokio::test]
-async fn given_a_runner_whose_prompt_tools_and_mails_hold_its_credential_when_a_whole_run_goes_through_the_harness_then_the_credential_never_reaches_the_box()
+async fn given_a_runner_whose_prompt_tools_and_mails_hold_its_credential_when_a_whole_run_goes_through_the_harness_then_the_credential_never_reaches_the_box_except_as_the_exact_attachment_that_carries_it()
 -> Res {
     let world = World::new()?;
+    let seen = Seen::default();
     let secret_tool = runner_tool(&format!("tool_{CREDENTIAL}"))?;
-    let harness = world
-        .full_with(vec![secret_tool])
-        .web_access(WebAccess::Full)
-        .build();
-    let id = mail_in_thread(&world, &["a.txt"]).await?;
+    let harness = Harness::builder(
+        Arc::new(world.history.clone()) as Arc<dyn HarnessHistory>,
+        Arc::new(FixedPrompt(format!("the key is {CREDENTIAL}"))),
+        Arc::new(FixedToolsPort::new(
+            &world.contract_record,
+            vec![secret_tool],
+        )),
+    )
+    .mail(Arc::new(world.mail.clone()) as Arc<dyn MailPort>)
+    .sandbox(spy(&world.sandbox, &seen))
+    .web_access(WebAccess::Full)
+    .build();
+    let name = format!("{CREDENTIAL}.txt");
+    let body = format!("body {CREDENTIAL}");
+    let mut mail = new_mail(&[world.agent], "files")?;
+    mail.attachments
+        .push(Attachment::new(&name, DocumentRef::new("ref-secret")));
+    world
+        .mail
+        .put_document(DocumentRef::new("ref-secret"), body.clone().into_bytes());
+    let id = mail.id.entry_id();
+    world.deliver(mail)?;
+    store_mail(&world.history, &world.thread, id).await?;
+
     harness.open(world.instance).await?;
+    harness
+        .prompt()
+        .prompt(&Doc { n: 0 }, &AgentLabel::new("main")?)
+        .await?;
     let tools = offered(&harness, &world).await?;
     let to = agent_id()?;
     call(
         &find(&tools, SEND_MAIL)?,
         &format!(
-            "{{\"to\":[\"{}\"],\"subject\":\"{CREDENTIAL}\",\"body\":\"b\"}}",
+            "{{\"to\":[\"{}\"],\"subject\":\"{CREDENTIAL}\",\"body\":\"{CREDENTIAL}\"}}",
             to.as_uuid()
         ),
     )
@@ -64,21 +93,23 @@ async fn given_a_runner_whose_prompt_tools_and_mails_hold_its_credential_when_a_
         &format!("{{\"mail_id\":\"{id}\"}}"),
     )
     .await?;
-
     harness.close(world.instance, RunEnd::Completed).await?;
 
-    let sandbox_calls: Vec<String> = world
-        .record
-        .calls()
-        .iter()
-        .filter(|call| format!("{call:?}").starts_with("Sandbox"))
-        .map(|call| format!("{call:?}"))
-        .collect();
-    assert!(!sandbox_calls.is_empty());
+    let calls = seen.all();
+    let (carriers, others): (Vec<&String>, Vec<&String>) =
+        calls.iter().partition(|call| call.starts_with("write "));
+    assert_eq!(carriers.len(), 1, "{calls:?}");
     assert!(
-        sandbox_calls.iter().all(|call| !call.contains(CREDENTIAL)),
-        "{sandbox_calls:?}"
+        others.iter().all(|call| !call.contains(CREDENTIAL)),
+        "{others:?}"
     );
+    let kinds: Vec<&str> = others
+        .iter()
+        .filter_map(|call| call.split(' ').next())
+        .collect();
+    assert_eq!(kinds, vec!["open", "save", "release"]);
+    let expected = format!("write BoxId(\"box-1\") FilePath(\"mail/{id}/{name}\") {body}");
+    assert_eq!(carriers[0].as_str(), expected);
     Ok(())
 }
 

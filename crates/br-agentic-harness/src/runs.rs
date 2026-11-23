@@ -1,8 +1,50 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use br_agentic_contract::InstanceId;
 use br_agentic_harness_contract::{BoxId, ProcessId};
+
+pub(crate) enum Closing {
+    Open(Run),
+    Opening,
+    Nothing,
+}
+
+pub(crate) enum Committed {
+    Kept,
+    ClosedMeanwhile(Run),
+}
+
+pub(crate) struct Reservation<'a> {
+    runs: &'a Runs,
+    instance: InstanceId,
+    settled: bool,
+}
+
+impl Reservation<'_> {
+    pub(crate) fn commit(mut self, boxed: BoxId) -> Committed {
+        self.settled = true;
+        let mut state = self.runs.state();
+        let closed = state.opening.remove(&self.instance).unwrap_or(false);
+        let run = Run {
+            boxed,
+            background: Vec::new(),
+        };
+        if closed {
+            return Committed::ClosedMeanwhile(run);
+        }
+        state.open.insert(self.instance, run);
+        Committed::Kept
+    }
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        if !self.settled {
+            self.runs.state().opening.remove(&self.instance);
+        }
+    }
+}
 
 pub(crate) struct Run {
     pub(crate) boxed: BoxId,
@@ -17,7 +59,7 @@ pub(crate) struct Runs {
 #[derive(Default)]
 struct State {
     open: HashMap<InstanceId, Run>,
-    opening: HashSet<InstanceId>,
+    opening: HashMap<InstanceId, bool>,
 }
 
 impl Runs {
@@ -25,32 +67,31 @@ impl Runs {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(crate) fn reserve(&self, instance: InstanceId) -> bool {
+    pub(crate) fn reserve(&self, instance: InstanceId) -> Option<Reservation<'_>> {
         let mut state = self.state();
-        if state.open.contains_key(&instance) {
-            return false;
+        if state.open.contains_key(&instance) || state.opening.contains_key(&instance) {
+            return None;
         }
-        state.opening.insert(instance)
-    }
-
-    pub(crate) fn cancel(&self, instance: InstanceId) {
-        self.state().opening.remove(&instance);
-    }
-
-    pub(crate) fn commit(&self, instance: InstanceId, boxed: BoxId) {
-        let mut state = self.state();
-        state.opening.remove(&instance);
-        state.open.insert(
+        state.opening.insert(instance, false);
+        Some(Reservation {
+            runs: self,
             instance,
-            Run {
-                boxed,
-                background: Vec::new(),
-            },
-        );
+            settled: false,
+        })
     }
 
-    pub(crate) fn take(&self, instance: InstanceId) -> Option<Run> {
-        self.state().open.remove(&instance)
+    pub(crate) fn close(&self, instance: InstanceId) -> Closing {
+        let mut state = self.state();
+        if let Some(run) = state.open.remove(&instance) {
+            return Closing::Open(run);
+        }
+        match state.opening.get_mut(&instance) {
+            Some(closed) => {
+                *closed = true;
+                Closing::Opening
+            }
+            None => Closing::Nothing,
+        }
     }
 
     pub(crate) fn boxed(&self, instance: InstanceId) -> Option<BoxId> {

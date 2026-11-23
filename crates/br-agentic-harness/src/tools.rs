@@ -36,6 +36,7 @@ impl<F: Fields> ToolsPort<F> for ToolsAdapter<F> {
         context: &'a RunContext,
     ) -> PortFuture<'a, Result<Vec<Tool>, PortError>> {
         Box::pin(async move {
+            self.shared.mails.bind(context.instance, context.thread);
             let runner = self.inner.tools(snapshot, context).await?;
             let harness = match &self.mail {
                 Some(mail) => mail_tools(mail, &self.sandbox, &self.shared, context)?,

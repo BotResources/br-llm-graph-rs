@@ -213,3 +213,42 @@ async fn given_two_concurrent_opens_of_one_instance_when_both_run_then_one_box_i
     assert_eq!(steps(&world), vec!["open", "save", "release"]);
     Ok(())
 }
+
+#[tokio::test]
+async fn given_an_open_future_dropped_in_flight_when_the_instance_is_opened_again_then_the_open_is_accepted()
+-> Res {
+    let world = World::new()?;
+    let harness = world.builder().sandbox(slow_open(&world.sandbox)).build();
+
+    tokio::select! {
+        biased;
+        _ = harness.open(world.instance) => {}
+        _ = tokio::task::yield_now() => {}
+    }
+    let again = harness.open(world.instance).await;
+
+    assert!(again.is_ok(), "{again:?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_a_close_while_an_open_is_in_flight_when_the_open_commits_then_the_box_is_saved_and_released_and_the_open_is_refused()
+-> Res {
+    let world = World::new()?;
+    let harness = world.builder().sandbox(slow_open(&world.sandbox)).build();
+
+    let (opened, closed) = tokio::join!(
+        harness.open(world.instance),
+        harness.close(world.instance, RunEnd::Cancelled)
+    );
+
+    assert!(closed.is_ok());
+    assert!(
+        matches!(opened, Err(ref error) if error.is_refusal()),
+        "{opened:?}"
+    );
+    assert_eq!(steps(&world), vec!["open", "save", "release"]);
+    let reopened = harness.open(world.instance).await;
+    assert!(reopened.is_ok(), "{reopened:?}");
+    Ok(())
+}

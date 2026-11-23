@@ -1,6 +1,6 @@
 [package]
 name = "br-agentic-harness"
-version = "0.1.0"
+version = "0.1.1"
 description = "The harness of an agentic node: it fills the node ports from the harness ports of a runner, builds the mail tools, holds the mail gate and the stored-signal wait, and enforces the rules between ports"
 edition.workspace = true
 rust-version.workspace = true

@@ -280,7 +280,7 @@ The logic of the harness of an agentic node: it fills the history, prompt, tools
 
 ```toml
 [dependencies]
-br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.1.0", version = "0.1.0" }
+br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.1.1", version = "0.1.1" }
 ```
 
 ## br-agentic-nodes
