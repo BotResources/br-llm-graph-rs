@@ -23,12 +23,19 @@ impl<F: Fields> RunLifecycle for Harness<F> {
             let Some(sandbox) = &self.sandbox else {
                 return Ok(());
             };
-            if self.shared.runs.boxed(instance).is_some() {
+            if !self.shared.runs.reserve(instance) {
                 return Err(PortError::refused("the instance is open already"));
             }
-            let boxed = sandbox.open(instance, self.web.as_ref()).await?;
-            self.shared.runs.insert(instance, boxed);
-            Ok(())
+            match sandbox.open(instance, self.web.as_ref()).await {
+                Ok(boxed) => {
+                    self.shared.runs.commit(instance, boxed);
+                    Ok(())
+                }
+                Err(failure) => {
+                    self.shared.runs.cancel(instance);
+                    Err(failure)
+                }
+            }
         })
     }
 

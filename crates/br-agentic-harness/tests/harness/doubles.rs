@@ -119,6 +119,7 @@ pub struct Broken {
     pub inner: MemorySandbox,
     pub kill: bool,
     pub save: bool,
+    pub slow_open: bool,
 }
 
 pub fn broken(inner: &MemorySandbox, kill: bool, save: bool) -> Arc<dyn SandboxPort> {
@@ -126,6 +127,16 @@ pub fn broken(inner: &MemorySandbox, kill: bool, save: bool) -> Arc<dyn SandboxP
         inner: inner.clone(),
         kill,
         save,
+        slow_open: false,
+    })
+}
+
+pub fn slow_open(inner: &MemorySandbox) -> Arc<dyn SandboxPort> {
+    Arc::new(Broken {
+        inner: inner.clone(),
+        kill: false,
+        save: false,
+        slow_open: true,
     })
 }
 
@@ -135,7 +146,15 @@ impl SandboxPort for Broken {
         instance: InstanceId,
         web: Option<&'a WebAccess>,
     ) -> PortFuture<'a, Result<BoxId, PortError>> {
-        self.inner.open(instance, web)
+        let slow = self.slow_open;
+        Box::pin(async move {
+            if slow {
+                for _ in 0..8 {
+                    tokio::task::yield_now().await;
+                }
+            }
+            self.inner.open(instance, web).await
+        })
     }
 
     fn run<'a>(

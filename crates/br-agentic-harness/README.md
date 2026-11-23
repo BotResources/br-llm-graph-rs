@@ -33,7 +33,7 @@ let harness = Harness::builder(history, prompt, tools)
 
 - The mail set holds the ids of the mail entries (`AgentMail`) of each thread. It is filled only from the history of the run: on every `read`, `add_input_turn` and `add_entry` through the history adapter, once the write succeeded. Mail listed by the mail port is never added.
 - `get_mail_files` accepts only an id of the mail set of the thread of the run context. Any other id gets the same error text, asks the mail port nothing and reveals nothing. The gate is not in `RunContext`; the harness keeps it.
-- The incoming adapter marks a mail read through the mail port only after `stored(thread, entry)` answers `Stored`. `mark_read` returns at once; a background task waits and marks. `Dropped`, a fault, a refusal, an unknown entry or thread and a closed channel leave the mail unread, so that it comes again. The waiting tasks end when the harness is dropped. A crash between the write and the mark can deliver a mail twice and cannot lose it; this holds for mail only.
+- The incoming adapter marks a mail read through the mail port only after `stored(thread, entry)` answers `Stored`. `mark_read` returns at once; a background task waits and marks. `Dropped`, a fault, a refusal, an unknown entry or thread and a closed channel leave the mail unread, so that it comes again. The waiting tasks end when the last handle of the incoming port (the harness and every `Arc` clone given by `Harness::incoming()`) is dropped. A crash between the write and the mark can deliver a mail twice and cannot lose it; this holds for mail only.
 
 ## Tools
 
@@ -42,7 +42,7 @@ let harness = Harness::builder(history, prompt, tools)
 | `send_mail` | `to` (at least one agent), `subject`, `body`; optional `cc` and `attachments` (`name`, `document`). The author, the sender agent and the source conversation come from the run context. Answers with the id of the mail |
 | `get_mail_files` | `mail_id`; gives each attachment as a text block, a binary one as its name and size. With an open box, also copies each attachment to `mail/{mail id}/{name}` of the work folder; a name that is not a safe relative path is not copied and the result says so |
 
-Names, texts and answers are those of the mail tools of `br-agentic-nodes` 0.3. The mail tools are built per call of the tools port from the `RunContext` of that call. A runner tool that has the name of a mail tool makes the call refuse (`PortError::Refused`, naming the clash); nothing is dropped silently. A fault of the runner tools port is returned as is. An argument error or a port refusal is an error result of the tool, never a panic.
+Names, texts and answers are those of the mail tools of `br-agentic-nodes` 0.3. The mail tools are built per call of the tools port from the `RunContext` of that call. A runner tool that has the name of a mail tool makes the call refuse (`PortError::Refused`, naming the clash); nothing is dropped silently. A fault of the runner tools port is returned as is. A `RunContext` has only required fields, so it cannot lack a value a mail tool needs: there is no fault path for that case. An attachment whose name is empty, `.`, `..` or holds a path separator is not copied to the work folder (it is listed as left out; the text result is still given). Two concurrent opens of one instance open one box; the other is refused. An argument error or a port refusal is an error result of the tool, never a panic.
 
 ## Run lifecycle and rules between ports
 
@@ -61,7 +61,7 @@ The box tools (run, read, write, list), the description of the box in the prompt
 |---|---|
 | the mail set is per thread | a harness that serves several threads must not let a mail seen on one thread open the files on another |
 | the mail set holds `AgentMail` entries only | a copy notice and a runtime notice carry no attachment the agent may fetch; an id outside the set fails closed |
-| `mark_read` spawns a task | the node must not wait for the history; a task that outlives the harness would mark after the run ended, so the harness aborts its tasks on drop |
+| `mark_read` spawns a task | the node must not wait for the history; a task that outlives the harness would mark after the run ended, so the incoming adapter aborts its tasks when its last handle is dropped |
 | an unknown answer is never `Stored` | a mail marked read before its entry is stored is lost on a crash |
 | `track_background` exists | the port gives no list of processes and the harness builds no run tool in 0.1, so the runner that starts a background command tells the harness |
 | `close` goes on after a failed step | a box that is not released is a leak; a folder that is not saved is lost work |

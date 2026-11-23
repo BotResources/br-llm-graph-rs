@@ -36,6 +36,10 @@ fn document_block(document: &MailDocument) -> Result<ToolBlock, ToolFault> {
     ToolBlock::text(text).map_err(ToolFault::new)
 }
 
+fn placeable(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains(['/', '\\'])
+}
+
 impl GetMailFiles {
     async fn copy_to_work_folder(&self, mail: MailId, documents: &[MailDocument]) -> Vec<String> {
         let (Some(sandbox), Some(boxed)) =
@@ -45,12 +49,14 @@ impl GetMailFiles {
         };
         let mut left = Vec::new();
         for document in documents {
-            let placed = match FilePath::new(&format!("mail/{mail}/{}", document.name)) {
-                Ok(path) => sandbox
+            let placed = match placeable(&document.name)
+                .then(|| FilePath::new(&format!("mail/{mail}/{}", document.name)))
+            {
+                Some(Ok(path)) => sandbox
                     .write(&boxed, &path, document.content.clone())
                     .await
                     .is_ok(),
-                Err(_) => false,
+                _ => false,
             };
             if !placed {
                 left.push(document.name.clone());

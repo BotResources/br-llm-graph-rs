@@ -4,7 +4,7 @@ use br_agentic_harness_contract::BoxId;
 use br_agentic_harness_contract::memory::{HarnessCall, Network};
 
 use crate::common::*;
-use crate::doubles::broken;
+use crate::doubles::{broken, slow_open};
 
 fn opened_web(world: &World) -> Vec<Option<WebAccess>> {
     world
@@ -192,5 +192,24 @@ async fn given_an_instance_with_no_open_box_when_a_background_process_is_tracked
     let tracked = harness.track_background(world.instance, ProcessId::new("p"));
 
     assert!(matches!(tracked, Err(ref error) if error.is_refusal()));
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_two_concurrent_opens_of_one_instance_when_both_run_then_one_box_is_opened_one_is_refused_and_close_releases_it()
+-> Res {
+    let world = World::new()?;
+    let harness = world.builder().sandbox(slow_open(&world.sandbox)).build();
+
+    let (first, second) = tokio::join!(harness.open(world.instance), harness.open(world.instance));
+
+    assert_eq!(first.is_ok() as u8 + second.is_ok() as u8, 1);
+    assert!(matches!(
+        first.err().or(second.err()),
+        Some(ref error) if error.is_refusal()
+    ));
+    assert_eq!(steps(&world), vec!["open"]);
+    harness.close(world.instance, RunEnd::Completed).await?;
+    assert_eq!(steps(&world), vec!["open", "save", "release"]);
     Ok(())
 }

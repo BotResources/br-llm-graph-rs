@@ -1,5 +1,6 @@
 use br_agentic_contract::{Attachment, DocumentRef, ThreadAccess};
-use br_agentic_harness::GET_MAIL_FILES;
+use br_agentic_harness::{GET_MAIL_FILES, RunLifecycle};
+use br_agentic_harness_contract::memory::HarnessCall;
 
 use crate::common::*;
 
@@ -145,5 +146,36 @@ async fn given_a_mail_the_agent_is_only_in_copy_of_when_its_files_are_asked_then
     let result = files(&world, &harness, &format!("{{\"mail_id\":\"{id}\"}}")).await?;
 
     assert!(result.is_error());
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_attachment_names_that_are_empty_dots_or_hold_a_separator_when_its_files_are_asked_then_nothing_is_written_and_the_text_is_still_given()
+-> Res {
+    let world = World::new()?;
+    let id = with_attachments(
+        &world,
+        &[
+            ("", b"a"),
+            (".", b"b"),
+            ("..", b"c"),
+            ("x/y.txt", b"d"),
+            ("x\\y.txt", b"e"),
+        ],
+    )
+    .await?;
+    let harness = world.full().build();
+    harness.open(world.instance).await?;
+
+    let result = files(&world, &harness, &format!("{{\"mail_id\":\"{id}\"}}")).await?;
+
+    assert!(!result.is_error());
+    assert!(text_of(&result).contains("x/y.txt"));
+    let written = world
+        .record
+        .calls()
+        .iter()
+        .any(|call| matches!(call, HarnessCall::SandboxWrite { .. }));
+    assert!(!written);
     Ok(())
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
 
 use br_agentic_contract::InstanceId;
@@ -11,47 +11,57 @@ pub(crate) struct Run {
 
 #[derive(Default)]
 pub(crate) struct Runs {
-    open: Mutex<HashMap<InstanceId, Run>>,
+    state: Mutex<State>,
+}
+
+#[derive(Default)]
+struct State {
+    open: HashMap<InstanceId, Run>,
+    opening: HashSet<InstanceId>,
 }
 
 impl Runs {
-    pub(crate) fn insert(&self, instance: InstanceId, boxed: BoxId) -> bool {
-        let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-        if open.contains_key(&instance) {
+    fn state(&self) -> std::sync::MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn reserve(&self, instance: InstanceId) -> bool {
+        let mut state = self.state();
+        if state.open.contains_key(&instance) {
             return false;
         }
-        open.insert(
+        state.opening.insert(instance)
+    }
+
+    pub(crate) fn cancel(&self, instance: InstanceId) {
+        self.state().opening.remove(&instance);
+    }
+
+    pub(crate) fn commit(&self, instance: InstanceId, boxed: BoxId) {
+        let mut state = self.state();
+        state.opening.remove(&instance);
+        state.open.insert(
             instance,
             Run {
                 boxed,
                 background: Vec::new(),
             },
         );
-        true
     }
 
     pub(crate) fn take(&self, instance: InstanceId) -> Option<Run> {
-        self.open
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&instance)
+        self.state().open.remove(&instance)
     }
 
     pub(crate) fn boxed(&self, instance: InstanceId) -> Option<BoxId> {
-        self.open
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        self.state()
+            .open
             .get(&instance)
             .map(|run| run.boxed.clone())
     }
 
     pub(crate) fn track(&self, instance: InstanceId, process: ProcessId) -> bool {
-        match self
-            .open
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get_mut(&instance)
-        {
+        match self.state().open.get_mut(&instance) {
             Some(run) => {
                 run.background.push(process);
                 true
