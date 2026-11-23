@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use br_agentic_contract::{PortError, PortFuture};
-use br_agentic_nodes::{
+use br_agentic_contract::{
     CriticRequest, CriticRequestPort, ProgrammaticCriticPort, ProgrammaticVerdict,
 };
+use br_agentic_contract::{PortError, PortFuture};
 use br_llm_messages::ModelResponse;
 
 use crate::common::{Doc, human_id, text_of};

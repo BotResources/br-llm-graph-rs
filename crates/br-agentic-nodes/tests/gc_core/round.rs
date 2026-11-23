@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use br_agentic_nodes::Judgement;
+use br_agentic_contract::Judgement;
 use br_llm_messages::{IncomingEntry, Turn};
 
 use crate::common::*;
@@ -152,9 +152,9 @@ async fn given_a_pass_of_three_steps_when_the_critic_validates_then_the_critic_i
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_an_item_in_the_inbox_when_a_pass_ends_with_a_final_response_then_the_critic_is_called_before_the_queue_is_drained()
+async fn given_an_item_in_the_incoming_when_a_pass_ends_with_a_final_response_then_the_critic_is_called_before_the_queue_is_drained()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let (_, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::text("d1"), Reply::text("d2")]);
     deliver_on(&generator, 1, deliver);

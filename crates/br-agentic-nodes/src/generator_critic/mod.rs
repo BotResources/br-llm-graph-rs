@@ -4,15 +4,15 @@ mod execute;
 
 use std::sync::Arc;
 
-use br_agentic_contract::{AGENTIC, AgenticNode};
+use br_agentic_contract::{
+    AGENTIC, AgenticNode, CriticRequest, CriticRequestPort, GeneratorCriticOutcomePort,
+    ProgrammaticCriticPort,
+};
 use br_graph_contract::{CancelView, CreateFuture, Fields, Instance, InstanceId, Node};
 
 use crate::client::Ladder;
 use crate::config::{AuthorSource, Common, Ports, Settings};
 use crate::limits::{ProgrammaticRefusalLimit, RoundLimit};
-use crate::ports::{
-    CriticRequest, CriticRequestPort, GeneratorCriticOutcomePort, ProgrammaticCriticPort,
-};
 use crate::run::run;
 
 pub const GENERATOR_CRITIC: &str = "generator_critic";
@@ -137,7 +137,7 @@ impl<F: Fields> Node<F> for GeneratorCritic<F> {
 }
 
 impl<F: Fields> AgenticNode<F> for GeneratorCritic<F> {
-    fn has_inbox(&self) -> bool {
-        self.body.common.ports.has_inbox()
+    fn has_incoming(&self) -> bool {
+        self.body.common.ports.has_incoming()
     }
 }

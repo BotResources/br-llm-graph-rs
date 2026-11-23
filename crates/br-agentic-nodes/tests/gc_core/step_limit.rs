@@ -1,5 +1,5 @@
-use br_agentic_contract::FileSystemMode;
-use br_agentic_nodes::{Judgement, StepLimitEnding};
+use br_agentic_contract::Judgement;
+use br_agentic_nodes::StepLimitEnding;
 
 use crate::common::*;
 use crate::items::*;
@@ -42,7 +42,7 @@ async fn given_the_default_ending_when_a_pass_is_stopped_by_the_step_limit_then_
 #[tokio::test(start_paused = true)]
 async fn given_a_pass_stopped_by_the_step_limit_when_an_item_is_waiting_then_no_drain_and_no_new_pass_happen()
  {
-    let rig = Rig::new().with_inbox().with_step_limit(1);
+    let rig = Rig::new().with_incoming().with_step_limit(1);
     let (id, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::call("lookup")]);
     deliver_on(&generator, 1, deliver);
@@ -59,7 +59,7 @@ async fn given_a_pass_stopped_by_the_step_limit_when_an_item_is_waiting_then_no_
 
     assert!(update.step_limit);
     assert_eq!(generator.calls(), 1);
-    assert!(!rig.inbox.is_read(rig.generator, id));
+    assert!(!rig.incoming.is_read(rig.generator, id));
     assert!(!timeline(&rig).contains(&"in:later".to_owned()));
 }
 
@@ -83,7 +83,7 @@ async fn given_the_ending_with_critic_call_when_the_critic_validates_at_the_step
 #[tokio::test(start_paused = true)]
 async fn given_the_ending_with_critic_call_when_the_critic_validates_at_the_step_limit_then_the_queue_is_not_drained()
  {
-    let rig = Rig::new().with_inbox().with_step_limit(1);
+    let rig = Rig::new().with_incoming().with_step_limit(1);
     let (id, deliver) = human_item(&rig, "later");
     let generator = Scripted::new(vec![Reply::call("lookup")]);
     deliver_on(&generator, 1, deliver);
@@ -99,15 +99,13 @@ async fn given_the_ending_with_critic_call_when_the_critic_validates_at_the_step
     outcome_of(&node).await;
 
     assert_eq!(generator.calls(), 1);
-    assert!(!rig.inbox.is_read(rig.generator, id));
+    assert!(!rig.incoming.is_read(rig.generator, id));
 }
 
 #[tokio::test(start_paused = true)]
 async fn given_the_ending_with_critic_call_when_the_critic_rejects_at_the_step_limit_then_the_instance_fails_and_stores_nothing_of_the_call()
  {
-    let rig = Rig::new()
-        .with_step_limit(1)
-        .with_files(FileSystemMode::Always, Vec::new());
+    let rig = Rig::new().with_step_limit(1);
     let generator = Scripted::new(vec![Reply::call("lookup")]);
     let critic = Scripted::new(vec![Reply::answer(false, "Not finished at all")]);
     let node = build(&rig, one(&generator), one(&critic), 3, with_critic_call());
@@ -118,7 +116,6 @@ async fn given_the_ending_with_critic_call_when_the_critic_rejects_at_the_step_l
     assert!(reason.contains("Not finished at all"), "{reason}");
     assert_eq!(turns_of(&rig, "critic"), 0);
     assert_eq!(rig.outcome.calls(), 0);
-    assert_eq!(count(&rig, "workspace_save"), 0);
 }
 
 #[tokio::test(start_paused = true)]

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use br_agentic_contract::memory::{FixedThreadPort, FixedToolsPort};
 use br_agentic_contract::{
-    Attachment, DocumentRef, InboxBatch, InboxEntry, InboxItem, InboxPort, MailId, NewMail,
+    Attachment, DocumentRef, EntryItem, IncomingBatch, IncomingItem, IncomingPort, MailId, NewMail,
     ThreadAccess,
 };
 use br_agentic_nodes::{
@@ -49,12 +49,12 @@ pub fn lagging(scripted: &Arc<Scripted>) -> FallbackList {
 
 pub fn build(
     rig: &Rig,
-    inbox: Option<Arc<dyn InboxPort>>,
+    incoming: Option<Arc<dyn IncomingPort>>,
     model: &Arc<Scripted>,
     author_name: &str,
 ) -> ReactAgent<Doc> {
-    let ports = match inbox {
-        Some(inbox) => rig.ports().with_inbox(inbox),
+    let ports = match incoming {
+        Some(incoming) => rig.ports().with_incoming(incoming),
         None => rig.ports(),
     };
     let mut spec = rig.react_spec(lagging(model));
@@ -69,7 +69,7 @@ pub fn spied(rig: &Rig, spy: &Arc<crate::spy::Spy>, model: &Arc<Scripted>) -> Re
 pub fn through_access(
     rig: &Rig,
     access: Arc<dyn ThreadAccess>,
-    inbox: Arc<dyn InboxPort>,
+    incoming: Arc<dyn IncomingPort>,
     model: &Arc<Scripted>,
 ) -> ReactAgent<Doc> {
     let ports = Ports::new(
@@ -78,9 +78,8 @@ pub fn through_access(
         access,
         rig.prompts.clone(),
         Arc::new(FixedToolsPort::new(&rig.record, rig.tools.clone())),
-        rig.workspace.clone(),
     )
-    .with_inbox(inbox);
+    .with_incoming(incoming);
     ReactAgent::new(
         "agent",
         ports,
@@ -102,24 +101,24 @@ pub async fn settle() {
     tokio::time::sleep(Duration::from_millis(1)).await;
 }
 
-pub fn human(text: &str) -> (InboxEntry, EntryId) {
+pub fn human(text: &str) -> (EntryItem, EntryId) {
     let message = HumanMessage::new(entry_id(), human_id(), vec![text_block(text)]).unwrap();
     let id = message.id();
-    (InboxEntry::new(IncomingEntry::from(message)).unwrap(), id)
+    (EntryItem::new(IncomingEntry::from(message)).unwrap(), id)
 }
 
-pub fn item(entry: &InboxEntry) -> InboxItem {
-    InboxItem::Entry(entry.clone())
+pub fn item(entry: &EntryItem) -> IncomingItem {
+    IncomingItem::Entry(entry.clone())
 }
 
-pub fn batch(items: Vec<InboxItem>, next: Option<&str>) -> InboxBatch {
-    InboxBatch {
+pub fn batch(items: Vec<IncomingItem>, next: Option<&str>) -> IncomingBatch {
+    IncomingBatch {
         items,
         next: next.map(br_agentic_contract::Cursor::new),
     }
 }
 
-pub fn empty_batch() -> InboxBatch {
+pub fn empty_batch() -> IncomingBatch {
     batch(Vec::new(), None)
 }
 
@@ -264,7 +263,7 @@ pub fn steps(record: &br_agentic_contract::memory::Record) -> Vec<Step> {
             Call::AddInputTurn { turn, .. } => {
                 Step::AddTurn(turn.entries().iter().map(IncomingEntry::id).collect())
             }
-            Call::InboxMarkRead { item, .. } => Step::Mark(item),
+            Call::IncomingMarkRead { item, .. } => Step::Mark(item),
             Call::CloseTurn { .. } => Step::Close,
             _ => Step::Other,
         })
@@ -279,6 +278,6 @@ pub fn index_of(steps: &[Step], wanted: &Step) -> usize {
 }
 
 pub fn plain(rig: &Rig, model: &Arc<Scripted>, author_name: &str) -> ReactAgent<Doc> {
-    let inbox: Arc<dyn InboxPort> = rig.inbox.clone();
-    build(rig, Some(inbox), model, author_name)
+    let incoming: Arc<dyn IncomingPort> = rig.incoming.clone();
+    build(rig, Some(incoming), model, author_name)
 }

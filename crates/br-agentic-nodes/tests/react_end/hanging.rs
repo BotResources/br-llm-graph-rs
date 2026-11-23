@@ -2,10 +2,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use br_agentic_contract::memory::MemoryInbox;
+use br_agentic_contract::memory::MemoryIncoming;
 use br_agentic_contract::{
-    Cursor, InboxBatch, InboxContext, InboxPort, MailDocument, MailId, NewMail, PortError,
-    PortFuture,
+    Cursor, IncomingBatch, IncomingContext, IncomingPort, PortError, PortFuture,
 };
 use br_llm_messages::EntryId;
 use tokio::sync::Notify;
@@ -18,16 +17,16 @@ impl Drop for Guard {
     }
 }
 
-pub struct ProbeInbox {
-    inner: Arc<MemoryInbox>,
+pub struct ProbeIncoming {
+    inner: Arc<MemoryIncoming>,
     hang_from: usize,
     reads: AtomicUsize,
     pub started: Arc<Notify>,
     pub dropped: Arc<AtomicUsize>,
 }
 
-impl ProbeInbox {
-    pub fn hanging_from(inner: Arc<MemoryInbox>, hang_from: usize) -> Arc<Self> {
+impl ProbeIncoming {
+    pub fn hanging_from(inner: Arc<MemoryIncoming>, hang_from: usize) -> Arc<Self> {
         Arc::new(Self {
             inner,
             hang_from,
@@ -46,13 +45,13 @@ impl ProbeInbox {
     }
 }
 
-impl InboxPort for ProbeInbox {
+impl IncomingPort for ProbeIncoming {
     fn items<'a>(
         &'a self,
-        context: &'a InboxContext,
+        context: &'a IncomingContext,
         after: Option<&'a Cursor>,
         limit: NonZeroUsize,
-    ) -> PortFuture<'a, Result<InboxBatch, PortError>> {
+    ) -> PortFuture<'a, Result<IncomingBatch, PortError>> {
         let nth = self.reads.fetch_add(1, Ordering::SeqCst);
         if nth < self.hang_from {
             return self.inner.items(context, after, limit);
@@ -64,31 +63,11 @@ impl InboxPort for ProbeInbox {
         })
     }
 
-    fn wait<'a>(&'a self, context: &'a InboxContext) -> PortFuture<'a, Result<(), PortError>> {
-        self.inner.wait(context)
-    }
-
     fn mark_read<'a>(
         &'a self,
-        context: &'a InboxContext,
+        context: &'a IncomingContext,
         item: EntryId,
     ) -> PortFuture<'a, Result<(), PortError>> {
         self.inner.mark_read(context, item)
-    }
-
-    fn send<'a>(
-        &'a self,
-        context: &'a InboxContext,
-        mail: NewMail,
-    ) -> PortFuture<'a, Result<(), PortError>> {
-        self.inner.send(context, mail)
-    }
-
-    fn documents<'a>(
-        &'a self,
-        context: &'a InboxContext,
-        mail: MailId,
-    ) -> PortFuture<'a, Result<Vec<MailDocument>, PortError>> {
-        self.inner.documents(context, mail)
     }
 }

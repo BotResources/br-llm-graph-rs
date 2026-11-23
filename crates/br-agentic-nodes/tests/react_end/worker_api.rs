@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use br_agentic_contract::{AiTurnRef, InboxContext, ToolSet};
+use br_agentic_contract::{AiTurnRef, IncomingContext, ToolSet};
 use br_agentic_nodes::{Drained, Slot, StepLimit, Timeouts, Worker, WorkerParts};
 use br_graph_contract::CancelToken;
 use br_llm_messages::{ClosureReason, PlainText, TurnId};
@@ -15,8 +15,8 @@ fn parts<'a>(
 ) -> WorkerParts<'a> {
     WorkerParts {
         access,
-        inbox: None,
-        context: InboxContext {
+        incoming: None,
+        context: IncomingContext {
             instance: instance_id(),
             thread: rig.thread,
             agent: rig.agent,
@@ -41,7 +41,7 @@ async fn given_the_public_blocks_when_a_runner_author_drives_one_pass_then_the_b
         .with_author(author("Builder"))
         .with_system(PlainText::new("the system prompt").unwrap())
         .with_tools(ToolSet::new(vec![tool_a], Vec::new()).unwrap());
-    assert!(!worker.has_inbox());
+    assert!(!worker.has_incoming());
     assert_eq!(worker.steps_remaining(), 5);
     assert_eq!(worker.conversation().turns().len(), 1);
     let mut turn: Option<TurnId> = None;

@@ -174,10 +174,10 @@ async fn given_only_items_the_conversation_holds_when_a_final_response_ends_then
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_queued_item_when_the_agent_has_no_inbox_then_the_answer_ends_the_instance() {
+async fn given_a_queued_item_when_the_agent_has_no_incoming_then_the_answer_ends_the_instance() {
     let rig = Rig::new();
     let (x, x_id) = human("nobody-reads-this");
-    rig.inbox.deliver_entry(rig.agent, x);
+    rig.incoming.deliver_entry(rig.agent, x);
     let model = Scripted::new(vec![Reply::text("one")]);
     let node = rig.react(&[&model]);
 

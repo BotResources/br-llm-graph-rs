@@ -1,4 +1,5 @@
-use br_agentic_contract::{PortError, SessionError, ToolFault};
+use br_agentic_contract::{PortError, ToolFault};
+use br_agentic_nodes::SessionError;
 use br_agentic_nodes::{CallFailure, Fault};
 use br_llm_clients_core::ClientError;
 

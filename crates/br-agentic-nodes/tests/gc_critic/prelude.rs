@@ -1,6 +1,5 @@
-pub use br_agentic_nodes::{
-    CriticRequest, FallbackList, Judgement, Ladder, RoundLimitEnding, StepLimitEnding,
-};
+pub use br_agentic_contract::{CriticRequest, Judgement};
+pub use br_agentic_nodes::{FallbackList, Ladder, RoundLimitEnding, StepLimitEnding};
 pub use br_llm_messages::{ClosureReason, ResponseEnding};
 
 pub use crate::common::*;

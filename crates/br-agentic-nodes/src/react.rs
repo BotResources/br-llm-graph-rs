@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use br_agentic_contract::{AGENTIC, AgenticNode};
+use br_agentic_contract::{AGENTIC, AgenticNode, ReactOutcome, ReactOutcomePort};
 use br_graph_contract::{CancelView, CreateFuture, Fields, Instance, InstanceId, Node};
 
 use crate::client::FallbackList;
 use crate::config::{AuthorSource, Common, Ports, Settings};
 use crate::fault::Stop;
-use crate::outcome::ReactOutcome;
 use crate::pass::PassEnd;
-use crate::ports::ReactOutcomePort;
 use crate::run::{Body, run};
 use crate::seats::{SeatSpec, Seats};
 use crate::slot::Slot;
@@ -82,7 +80,7 @@ impl<F: Fields> Body<F> for ReactBody<F> {
             None => loop {
                 let end = worker.pass(&mut slot).await?;
                 if matches!(end, PassEnd::Final(_))
-                    && worker.has_inbox()
+                    && worker.has_incoming()
                     && worker.steps_remaining() > 0
                     && worker.drain().await?.stored > 0
                 {
@@ -98,7 +96,7 @@ impl<F: Fields> Body<F> for ReactBody<F> {
             .update(snapshot, &outcome)
             .await
             .map_err(crate::fault::Fault::from)?;
-        Ok(worker.finish(&self.common, snapshot, update).await?)
+        Ok(update)
     }
 }
 
@@ -126,7 +124,7 @@ impl<F: Fields> Node<F> for ReactAgent<F> {
 }
 
 impl<F: Fields> AgenticNode<F> for ReactAgent<F> {
-    fn has_inbox(&self) -> bool {
-        self.body.common.ports.has_inbox()
+    fn has_incoming(&self) -> bool {
+        self.body.common.ports.has_incoming()
     }
 }

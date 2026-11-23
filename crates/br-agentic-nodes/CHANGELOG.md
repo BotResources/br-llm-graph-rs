@@ -8,6 +8,28 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.4.0 - 2026-11-23
+
+Breaking minor, to the sealed intent of minor 0.4, on `br-agentic-contract` 0.3.0. It opens its own line.
+
+### Breaking
+
+- The library defines no port. The seven ports it defined (`PromptPort`, `OutputSchemaPort`, `AuthorPort`, `ReactOutcomePort`, `GeneratorCriticOutcomePort`, `CriticRequestPort`, `ProgrammaticCriticPort`), with `CriticRequest`, `ProgrammaticVerdict`, `ReactOutcome`, `GeneratorCriticOutcome`, `Judgement` and `structured_reply`, are imported from `br-agentic-contract`; this crate no longer exports them.
+- Removed: `FileSystem`, `SandboxPath`, `SandboxError`, the mail tools (`SEND_MAIL`, `GET_MAIL_FILES`, `Worker::mail_tools`), `Settings::file_system`, the workspace port argument of `Ports::new`, and `Fault::Sandbox`. A node no longer saves files at its end.
+- `Ports::with_inbox` becomes `Ports::with_incoming`, `has_inbox` becomes `has_incoming` (`Ports`, `Worker`, `AgenticNode`), `WorkerParts::inbox` becomes `incoming`; the node uses `IncomingPort`, `IncomingContext` and `IncomingItem`.
+- `ToolsPort::tools` gets a `RunContext`: the node builds it once at Start (instance, thread, main agent, author of the main seat, conversation id) and passes it, in place of the instance id.
+
+### Added
+
+- Received from `br-agentic-contract` 0.2: `Session` and `SessionError` (`Rules`, `WrongTurn`, `WrongMailEntry`, `Port`; converts from `ApplyError`, which the five public `apply_*` rules of the contract give), `Queue`, `store_at_boundary` with `Boundary`, `BoundaryError` and `MailEntryBuilder`, and `result`, `failed` and `cancelled`. `mail_documents` does not move: it goes to the harness.
+- `MailEntries` stays in this crate: the boundary uses it.
+
+### Tests
+
+- The tests of the session, the boundary, the queue and the ending, with the test helpers `FailingIncoming` and `Flaky`, move here from `br-agentic-contract` 0.2 (`tests/react_end/building_blocks`).
+- Removed with their subject: the tests of the mail tools, of the file system and the sandbox, of the workspace save at the end, of `mail_documents` and of the incoming `wait`, `send` and `documents`.
+- Added: the run context of the tools port (ReAct agent and generator-critic), the conversion of `ApplyError` into `SessionError`, and the source scan that finds no port, no file system, no sandbox and no mail tool in the library.
+
 ## 0.3.0 - 2026-11-02
 
 Implements the sealed intent of minor 0.3: a structured reply for the ReAct agent and the generator.

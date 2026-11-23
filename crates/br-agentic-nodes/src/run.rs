@@ -1,11 +1,12 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use br_agentic_contract::{InboxContext, cancelled, failed, result};
+use br_agentic_contract::IncomingContext;
 use br_graph_contract::{CancelView, Event, EventSender, Fields, InputReader, InstanceId};
 use br_llm_messages::{AgentId, ClosureReason};
 
 use crate::config::Common;
+use crate::ending::{cancelled, failed, result};
 use crate::fault::{Fault, Stop};
 use crate::seats::{SeatSpec, Seats};
 use crate::signals::{Raced, Signals, guarded};
@@ -100,14 +101,14 @@ pub(crate) async fn run<F: Fields, B: Body<F>>(
             Event::failed(Fault::Value("the node has no agent".to_owned())),
         );
     };
-    let context = InboxContext {
+    let context = IncomingContext {
         instance,
         thread,
         agent: main,
     };
     let parts = WorkerParts {
         access: &*common.ports.access,
-        inbox: common.ports.inbox.clone(),
+        incoming: common.ports.incoming.clone(),
         context,
         step_limit: common.settings.step_limit,
         timeouts: common.settings.timeouts,

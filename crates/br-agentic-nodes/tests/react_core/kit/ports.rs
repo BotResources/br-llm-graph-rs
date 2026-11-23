@@ -2,12 +2,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use br_agentic_contract::memory::{FixedThreadPort, FixedToolsPort, Record};
-use br_agentic_contract::{AgentLabel, PortError, PortFuture, ThreadAccess, Tool, ToolsPort};
-use br_agentic_nodes::{
-    AuthorPort, AuthorSource, FallbackList, Ports, PromptPort, ReactAgent, ReactOutcome,
-    ReactOutcomePort, ReactSpec,
+use br_agentic_contract::{
+    AgentLabel, PortError, PortFuture, RunContext, ThreadAccess, Tool, ToolsPort,
 };
-use br_graph_contract::InstanceId;
+use br_agentic_contract::{AuthorPort, PromptPort, ReactOutcome, ReactOutcomePort};
+use br_agentic_nodes::{AuthorSource, FallbackList, Ports, ReactAgent, ReactSpec};
 
 use crate::common::{Doc, Recorded, Rig, names, text_of};
 
@@ -150,10 +149,10 @@ impl ToolsPort<Doc> for SnapTools {
     fn tools<'a>(
         &'a self,
         snapshot: &'a Doc,
-        instance: InstanceId,
+        context: &'a RunContext,
     ) -> PortFuture<'a, Result<Vec<Tool>, PortError>> {
         self.seen.lock().unwrap().push(snapshot.note.clone());
-        ToolsPort::<Doc>::tools(&self.inner, snapshot, instance)
+        ToolsPort::<Doc>::tools(&self.inner, snapshot, context)
     }
 }
 
@@ -183,7 +182,6 @@ pub fn ports_over(rig: &Rig, access: Arc<dyn ThreadAccess>) -> Ports<Doc> {
         access,
         rig.prompts.clone(),
         Arc::new(FixedToolsPort::new(&rig.record, rig.tools.clone())),
-        rig.workspace.clone(),
     )
 }
 
@@ -224,7 +222,6 @@ pub fn node_with_ports(
         rig.access.clone(),
         prompt,
         tools,
-        rig.workspace.clone(),
     );
     let spec = ReactSpec {
         fallback,
@@ -246,8 +243,8 @@ impl ToolsPort<Doc> for SnapToolsPort {
     fn tools<'a>(
         &'a self,
         snapshot: &'a Doc,
-        instance: InstanceId,
+        context: &'a RunContext,
     ) -> PortFuture<'a, Result<Vec<Tool>, PortError>> {
-        ToolsPort::<Doc>::tools(&*self.0, snapshot, instance)
+        ToolsPort::<Doc>::tools(&*self.0, snapshot, context)
     }
 }

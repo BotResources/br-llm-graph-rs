@@ -37,10 +37,10 @@ fn notifications() -> Vec<IncomingEntry> {
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_human_message_in_the_inbox_when_the_agent_runs_then_it_is_stored_whole() {
-    let rig = Rig::new().with_inbox();
+async fn given_a_human_message_in_the_incoming_when_the_agent_runs_then_it_is_stored_whole() {
+    let rig = Rig::new().with_incoming();
     let (entry, _) = human("please look at this");
-    rig.inbox.deliver_entry(rig.agent, entry.clone());
+    rig.incoming.deliver_entry(rig.agent, entry.clone());
 
     let conversation = run(&rig).await;
 
@@ -48,13 +48,14 @@ async fn given_a_human_message_in_the_inbox_when_the_agent_runs_then_it_is_store
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_runtime_notifications_in_the_inbox_when_the_agent_runs_then_each_is_stored_whole() {
-    let rig = Rig::new().with_inbox();
+async fn given_runtime_notifications_in_the_incoming_when_the_agent_runs_then_each_is_stored_whole()
+{
+    let rig = Rig::new().with_incoming();
     let entries = notifications();
     for entry in &entries {
-        rig.inbox.deliver_entry(
+        rig.incoming.deliver_entry(
             rig.agent,
-            br_agentic_contract::InboxEntry::new(entry.clone()).unwrap(),
+            br_agentic_contract::EntryItem::new(entry.clone()).unwrap(),
         );
     }
 
@@ -64,12 +65,12 @@ async fn given_runtime_notifications_in_the_inbox_when_the_agent_runs_then_each_
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_runtime_notice_in_the_inbox_when_the_agent_runs_then_it_is_stored_whole() {
-    let rig = Rig::new().with_inbox();
+async fn given_a_runtime_notice_in_the_incoming_when_the_agent_runs_then_it_is_stored_whole() {
+    let rig = Rig::new().with_incoming();
     let entry = notice("the deploy window opened");
-    rig.inbox.deliver_entry(
+    rig.incoming.deliver_entry(
         rig.agent,
-        br_agentic_contract::InboxEntry::new(entry.clone()).unwrap(),
+        br_agentic_contract::EntryItem::new(entry.clone()).unwrap(),
     );
 
     let conversation = run(&rig).await;
@@ -80,11 +81,11 @@ async fn given_a_runtime_notice_in_the_inbox_when_the_agent_runs_then_it_is_stor
 #[tokio::test(start_paused = true)]
 async fn given_a_mail_to_the_agent_when_the_agent_runs_then_an_agent_mail_with_the_mail_id_is_stored()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let sender = agent_id();
     let mail = new_mail(&[rig.agent], &[], "subject", "body");
     let id = mail.id;
-    rig.inbox.deliver_mail(sender, mail).unwrap();
+    rig.incoming.deliver_mail(sender, mail).unwrap();
 
     let conversation = run(&rig).await;
 
@@ -97,11 +98,11 @@ async fn given_a_mail_to_the_agent_when_the_agent_runs_then_an_agent_mail_with_t
 #[tokio::test(start_paused = true)]
 async fn given_a_mail_in_copy_when_the_agent_runs_then_a_runtime_notice_with_the_mail_id_is_stored()
 {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let sender = agent_id();
     let mail = new_mail(&[agent_id()], &[rig.agent], "subject", "body");
     let id = mail.id;
-    rig.inbox.deliver_mail(sender, mail).unwrap();
+    rig.incoming.deliver_mail(sender, mail).unwrap();
 
     let conversation = run(&rig).await;
 
@@ -113,23 +114,23 @@ async fn given_a_mail_in_copy_when_the_agent_runs_then_a_runtime_notice_with_the
 
 #[tokio::test(start_paused = true)]
 async fn given_items_of_every_kind_when_the_agent_runs_then_all_are_stored_in_order_of_arrival() {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let sender = agent_id();
     let (first, first_id) = human("first");
     let mail_to = new_mail(&[rig.agent], &[], "to subject", "to body");
     let mail_cc = new_mail(&[agent_id()], &[rig.agent], "cc subject", "cc body");
     let (last, last_id) = human("last");
     let mut expected: Vec<EntryId> = vec![first_id, mail_to.id.entry_id(), mail_cc.id.entry_id()];
-    rig.inbox.deliver_entry(rig.agent, first);
-    rig.inbox.deliver_mail(sender, mail_to).unwrap();
-    rig.inbox.deliver_mail(sender, mail_cc).unwrap();
+    rig.incoming.deliver_entry(rig.agent, first);
+    rig.incoming.deliver_mail(sender, mail_to).unwrap();
+    rig.incoming.deliver_mail(sender, mail_cc).unwrap();
     let notification = notifications().remove(0);
     expected.push(notification.id());
-    rig.inbox.deliver_entry(
+    rig.incoming.deliver_entry(
         rig.agent,
-        br_agentic_contract::InboxEntry::new(notification).unwrap(),
+        br_agentic_contract::EntryItem::new(notification).unwrap(),
     );
-    rig.inbox.deliver_entry(rig.agent, last);
+    rig.incoming.deliver_entry(rig.agent, last);
     expected.push(last_id);
 
     let conversation = run(&rig).await;

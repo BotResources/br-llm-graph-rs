@@ -84,8 +84,6 @@ pub fn names(record: &Record) -> Vec<&'static str> {
             Call::ThreadPort => "thread_port",
             Call::AgentPort { .. } => "agent_port",
             Call::ToolsPort { .. } => "tools_port",
-            Call::WorkspaceLoad => "workspace_load",
-            Call::WorkspaceSave { .. } => "workspace_save",
             Call::Read { .. } => "read",
             Call::AddInputTurn { .. } => "add_input_turn",
             Call::AddEntry { .. } => "add_entry",
@@ -98,11 +96,8 @@ pub fn names(record: &Record) -> Vec<&'static str> {
             Call::ResultFragment { .. } => "result_fragment",
             Call::CompleteResult { .. } => "complete_result",
             Call::DiscardResult { .. } => "discard_result",
-            Call::InboxItems { .. } => "inbox_items",
-            Call::InboxWait { .. } => "inbox_wait",
-            Call::InboxMarkRead { .. } => "inbox_mark_read",
-            Call::InboxSend { .. } => "inbox_send",
-            Call::InboxDocuments { .. } => "inbox_documents",
+            Call::IncomingItems { .. } => "incoming_items",
+            Call::IncomingMarkRead { .. } => "incoming_mark_read",
             _ => "other",
         })
         .collect()

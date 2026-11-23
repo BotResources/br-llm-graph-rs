@@ -19,7 +19,7 @@ async fn given_a_restart_on_a_final_response_when_the_agent_starts_then_it_ends_
     let rig = rig_with_noop(20);
     first_run(&rig, vec![Reply::text("first answer")]).await;
     let (late, late_id) = human("arrives-after-the-read-at-start");
-    rig.inbox.deliver_entry(rig.agent, late);
+    rig.incoming.deliver_entry(rig.agent, late);
     let spy = Spy::new(&rig);
     spy.plan_items(vec![Items::Give(empty_batch()), Items::Hang]);
     let second = Scripted::new(Vec::new());
@@ -32,7 +32,7 @@ async fn given_a_restart_on_a_final_response_when_the_agent_starts_then_it_ends_
     assert!(!update.step_limit);
     assert_eq!(second.calls(), 0);
     assert_eq!(count_of(&rig.conversation(), late_id), 0);
-    assert!(!rig.inbox.is_read(rig.agent, late_id));
+    assert!(!rig.incoming.is_read(rig.agent, late_id));
     assert_eq!(ai_turns(&rig.conversation()).len(), 1);
 }
 
@@ -42,7 +42,7 @@ async fn given_a_restart_on_a_budget_exhausted_turn_when_the_agent_starts_then_i
     let rig = rig_with_noop(1);
     first_run(&rig, vec![Reply::call("noop")]).await;
     let (late, late_id) = human("arrives-after-the-budget-ended");
-    rig.inbox.deliver_entry(rig.agent, late);
+    rig.incoming.deliver_entry(rig.agent, late);
     let spy = Spy::new(&rig);
     spy.plan_items(vec![Items::Give(empty_batch()), Items::Hang]);
     let second = Scripted::new(Vec::new());
@@ -54,7 +54,7 @@ async fn given_a_restart_on_a_budget_exhausted_turn_when_the_agent_starts_then_i
     assert!(update.step_limit);
     assert_eq!(second.calls(), 0);
     assert_eq!(count_of(&rig.conversation(), late_id), 0);
-    assert!(!rig.inbox.is_read(rig.agent, late_id));
+    assert!(!rig.incoming.is_read(rig.agent, late_id));
 }
 
 #[tokio::test(start_paused = true)]
@@ -63,7 +63,7 @@ async fn given_a_restart_on_a_final_response_when_the_read_at_start_gives_an_ite
     let rig = rig_with_noop(20);
     first_run(&rig, vec![Reply::text("first answer")]).await;
     let (late, late_id) = human("marker-waiting-at-restart");
-    rig.inbox.deliver_entry(rig.agent, late);
+    rig.incoming.deliver_entry(rig.agent, late);
     let second = Scripted::new(vec![Reply::text("second answer")]);
     let node = plain(&rig, &second, "Agent");
 
@@ -72,7 +72,7 @@ async fn given_a_restart_on_a_final_response_when_the_read_at_start_gives_an_ite
     assert_eq!(update.text, "second answer");
     assert_eq!(update.steps, Some(1));
     assert_eq!(count_of(&rig.conversation(), late_id), 1);
-    assert!(rig.inbox.is_read(rig.agent, late_id));
+    assert!(rig.incoming.is_read(rig.agent, late_id));
     assert!(history_text(&second.requests()[0]).contains("marker-waiting-at-restart"));
 }
 

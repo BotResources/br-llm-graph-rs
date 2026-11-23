@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use br_agentic_contract::{
-    AgentLabel, AgentPort, FileSystemMode, InboxPort, ThreadAccess, ThreadPort, ToolsPort,
-    WebAccess, WorkspacePort,
+    AgentLabel, AgentPort, AuthorPort, IncomingPort, OutputSchemaPort, PromptPort, ThreadAccess,
+    ThreadPort, ToolsPort, WebAccess,
 };
 use br_graph_contract::Fields;
 use br_llm_messages::Author;
 
 use crate::fault::Fault;
 use crate::limits::{StepLimit, Timeouts};
-use crate::ports::{AuthorPort, OutputSchemaPort, PromptPort};
 
 pub struct Ports<F: Fields> {
     pub(crate) thread: Arc<dyn ThreadPort<F>>,
@@ -17,8 +16,7 @@ pub struct Ports<F: Fields> {
     pub(crate) access: Arc<dyn ThreadAccess>,
     pub(crate) prompt: Arc<dyn PromptPort<F>>,
     pub(crate) tools: Arc<dyn ToolsPort<F>>,
-    pub(crate) workspace: Arc<dyn WorkspacePort<F>>,
-    pub(crate) inbox: Option<Arc<dyn InboxPort>>,
+    pub(crate) incoming: Option<Arc<dyn IncomingPort>>,
     pub(crate) output_schema: Option<Arc<dyn OutputSchemaPort<F>>>,
 }
 
@@ -29,7 +27,6 @@ impl<F: Fields> Ports<F> {
         access: Arc<dyn ThreadAccess>,
         prompt: Arc<dyn PromptPort<F>>,
         tools: Arc<dyn ToolsPort<F>>,
-        workspace: Arc<dyn WorkspacePort<F>>,
     ) -> Self {
         Self {
             thread,
@@ -37,15 +34,14 @@ impl<F: Fields> Ports<F> {
             access,
             prompt,
             tools,
-            workspace,
-            inbox: None,
+            incoming: None,
             output_schema: None,
         }
     }
 
     #[must_use]
-    pub fn with_inbox(mut self, inbox: Arc<dyn InboxPort>) -> Self {
-        self.inbox = Some(inbox);
+    pub fn with_incoming(mut self, incoming: Arc<dyn IncomingPort>) -> Self {
+        self.incoming = Some(incoming);
         self
     }
 
@@ -55,8 +51,8 @@ impl<F: Fields> Ports<F> {
         self
     }
 
-    pub fn has_inbox(&self) -> bool {
-        self.inbox.is_some()
+    pub fn has_incoming(&self) -> bool {
+        self.incoming.is_some()
     }
 }
 
@@ -65,21 +61,14 @@ pub struct Settings {
     pub step_limit: StepLimit,
     pub timeouts: Timeouts,
     pub web_access: WebAccess,
-    pub file_system: FileSystemMode,
 }
 
 impl Settings {
-    pub fn new(
-        step_limit: StepLimit,
-        timeouts: Timeouts,
-        web_access: WebAccess,
-        file_system: FileSystemMode,
-    ) -> Self {
+    pub fn new(step_limit: StepLimit, timeouts: Timeouts, web_access: WebAccess) -> Self {
         Self {
             step_limit,
             timeouts,
             web_access,
-            file_system,
         }
     }
 }

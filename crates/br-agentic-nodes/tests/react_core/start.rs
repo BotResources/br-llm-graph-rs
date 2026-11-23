@@ -1,18 +1,10 @@
 use std::sync::Arc;
 
-use br_agentic_contract::WorkspaceFile;
 use br_agentic_nodes::AuthorSource;
 use br_llm_messages::ClosureReason;
 
 use crate::common::*;
 use crate::kit::*;
-
-fn file(path: &str, content: &str) -> WorkspaceFile {
-    WorkspaceFile {
-        path: path.to_owned(),
-        content: content.as_bytes().to_vec(),
-    }
-}
 
 fn interrupted(reason: &Option<ClosureReason>) -> bool {
     matches!(reason, Some(ClosureReason::Interrupted { .. }))
@@ -115,4 +107,36 @@ async fn given_a_first_call_that_fails_for_good_when_the_instance_fails_then_no_
     Driver::failure(&node).await;
 
     assert!(ai_turns(&rig.conversation()).is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn given_a_new_instance_when_it_starts_then_the_tools_port_gets_one_run_context_with_the_instance_the_thread_the_agent_its_author_and_the_conversation_id()
+ {
+    let rig = Rig::new();
+    let model = Model::new(vec![Act::text("done")]);
+    let node = node(&rig, plains(&[&model]));
+
+    Driver::result(&node).await;
+
+    let calls = rig.record.calls();
+    let contexts: Vec<_> = calls
+        .iter()
+        .filter_map(|call| match call {
+            br_agentic_contract::memory::Call::ToolsPort { context } => Some(context),
+            _ => None,
+        })
+        .collect();
+    let instances: Vec<_> = calls
+        .iter()
+        .filter_map(|call| match call {
+            br_agentic_contract::memory::Call::AgentPort { instance, .. } => Some(*instance),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(contexts.len(), 1);
+    assert_eq!(contexts[0].instance, instances[0]);
+    assert_eq!(contexts[0].thread, rig.thread);
+    assert_eq!(contexts[0].agent, rig.agent);
+    assert_eq!(contexts[0].author, author("Agent"));
+    assert_eq!(contexts[0].conversation, rig.conversation_id);
 }

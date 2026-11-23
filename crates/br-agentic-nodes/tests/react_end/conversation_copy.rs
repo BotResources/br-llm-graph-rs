@@ -105,11 +105,11 @@ async fn given_a_hand_over_that_returns_at_once_while_storage_is_slow_when_the_a
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_conversation_that_is_empty_when_the_inbox_gives_a_request_then_the_empty_conversation_is_valid_and_the_run_ends()
+async fn given_a_conversation_that_is_empty_when_the_incoming_gives_a_request_then_the_empty_conversation_is_valid_and_the_run_ends()
  {
-    let rig = Rig::empty().with_inbox();
-    rig.inbox
-        .deliver_entry(rig.agent, inbox_entry("the first words"));
+    let rig = Rig::empty().with_incoming();
+    rig.incoming
+        .deliver_entry(rig.agent, incoming_entry("the first words"));
     let model = Scripted::new(vec![Reply::text("answer")]);
     let node = rig.react(&[&model]);
 

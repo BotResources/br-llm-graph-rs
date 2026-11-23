@@ -3,17 +3,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use br_agentic_contract::memory::{
-    FixedThreadPort, FixedToolsPort, MemoryAgentPort, MemoryInbox, MemoryThreadAccess,
-    MemoryWorkspace, Record,
+    FixedThreadPort, FixedToolsPort, MemoryAgentPort, MemoryIncoming, MemoryThreadAccess, Record,
 };
 use br_agentic_contract::{
-    AgentLabel, FileSystemMode, InboxEntry, PortError, PortFuture, ThreadRef, Tool, WebAccess,
-    WorkspaceFile,
+    AgentLabel, CriticRequest, EntryItem, PortError, PortFuture, PromptPort, ThreadRef, Tool,
+    WebAccess,
 };
 use br_agentic_nodes::{
-    AuthorSource, CriticRequest, CriticRequestSource, FallbackList, GeneratorCritic,
-    GeneratorCriticSpec, Ladder, ModelClient, Ports, PromptPort, ReactAgent, ReactSpec, RoundLimit,
-    Settings, StepLimit, ThinkingExpectation, Timeouts,
+    AuthorSource, CriticRequestSource, FallbackList, GeneratorCritic, GeneratorCriticSpec, Ladder,
+    ModelClient, Ports, ReactAgent, ReactSpec, RoundLimit, Settings, StepLimit,
+    ThinkingExpectation, Timeouts,
 };
 use br_llm_messages::{
     AgentId, Conversation, ConversationId, HumanId, HumanMessage, IncomingEntry, InputTurn, Turn,
@@ -66,13 +65,12 @@ pub struct Rig {
     pub record: Record,
     pub thread: ThreadRef,
     pub access: Arc<MemoryThreadAccess>,
-    pub inbox: Arc<MemoryInbox>,
+    pub incoming: Arc<MemoryIncoming>,
     pub outcome: Arc<Recording>,
-    pub workspace: Arc<MemoryWorkspace>,
     pub prompts: Arc<Prompts>,
     pub agents: Arc<MemoryAgentPort<Doc>>,
     pub tools: Vec<Tool>,
-    pub with_inbox: bool,
+    pub with_incoming: bool,
     pub settings: Settings,
     pub agent: AgentId,
     pub generator: AgentId,
@@ -115,8 +113,8 @@ pub fn human_message(text: &str) -> HumanMessage {
     HumanMessage::new(entry_id(), human_id(), vec![text_block(text)]).unwrap()
 }
 
-pub fn inbox_entry(text: &str) -> InboxEntry {
-    InboxEntry::new(IncomingEntry::from(human_message(text))).unwrap()
+pub fn incoming_entry(text: &str) -> EntryItem {
+    EntryItem::new(IncomingEntry::from(human_message(text))).unwrap()
 }
 
 pub fn conversation_with(id: ConversationId, first: &str) -> Conversation {
@@ -162,18 +160,16 @@ impl Rig {
         }
         Self {
             access: Arc::new(MemoryThreadAccess::new(&record, thread, conversation)),
-            inbox: Arc::new(MemoryInbox::new(&record)),
+            incoming: Arc::new(MemoryIncoming::new(&record)),
             outcome: Arc::new(Recording::default()),
-            workspace: Arc::new(MemoryWorkspace::new(&record, Vec::new())),
             prompts: Arc::new(Prompts::default()),
             agents: Arc::new(agents),
             tools: Vec::new(),
-            with_inbox: false,
+            with_incoming: false,
             settings: Settings::new(
                 StepLimit::new(20).unwrap(),
                 Timeouts::new(Duration::from_secs(5), Duration::from_secs(5)).unwrap(),
                 WebAccess::Full,
-                FileSystemMode::Never,
             ),
             record,
             thread,
@@ -185,8 +181,8 @@ impl Rig {
         }
     }
 
-    pub fn with_inbox(mut self) -> Self {
-        self.with_inbox = true;
+    pub fn with_incoming(mut self) -> Self {
+        self.with_incoming = true;
         self
     }
 
@@ -202,12 +198,6 @@ impl Rig {
 
     pub fn with_timeouts(mut self, model: Duration, tool: Duration) -> Self {
         self.settings.timeouts = Timeouts::new(model, tool).unwrap();
-        self
-    }
-
-    pub fn with_files(mut self, mode: FileSystemMode, files: Vec<WorkspaceFile>) -> Self {
-        self.settings.file_system = mode;
-        self.workspace = Arc::new(MemoryWorkspace::new(&self.record, files));
         self
     }
 
@@ -228,10 +218,9 @@ impl Rig {
             self.access.clone(),
             self.prompts.clone(),
             Arc::new(FixedToolsPort::new(&self.record, self.tools.clone())),
-            self.workspace.clone(),
         );
-        if self.with_inbox {
-            ports.with_inbox(self.inbox.clone())
+        if self.with_incoming {
+            ports.with_incoming(self.incoming.clone())
         } else {
             ports
         }

@@ -16,8 +16,8 @@ fn flat(request: &br_llm_clients_core::ClientRequest) -> Vec<Seen> {
 #[tokio::test(start_paused = true)]
 async fn given_mails_and_notices_in_an_input_turn_when_the_critic_is_called_then_it_sees_none_and_keeps_the_human_message()
  {
-    let rig = Rig::new().with_inbox();
-    deliver_mails(&rig.inbox, rig.generator);
+    let rig = Rig::new().with_incoming();
+    deliver_mails(&rig.incoming, rig.generator);
     let generator = Scripted::new(vec![Reply::text("draft")]);
     let critic = Scripted::new(vec![Reply::answer(true, "")]);
     let node = Pair::new(&rig, &generator, &critic).build();
@@ -50,8 +50,8 @@ async fn given_an_input_turn_made_only_of_mails_when_the_critic_is_called_then_t
         conversation_id,
         br_llm_messages::Conversation::new(conversation_id),
     )
-    .with_inbox();
-    deliver_mails(&rig.inbox, rig.generator);
+    .with_incoming();
+    deliver_mails(&rig.incoming, rig.generator);
     let generator = Scripted::new(vec![Reply::text("draft")]);
     let critic = Scripted::new(vec![Reply::answer(true, "")]);
     let node = Pair::new(&rig, &generator, &critic).build();
@@ -79,19 +79,19 @@ async fn given_mails_and_notices_delivered_into_an_ai_turn_of_the_generator_when
         "slow",
         Behavior::Slow(Duration::from_millis(10), "slept".to_owned()),
     );
-    let rig = Rig::new().with_inbox().with_tools(vec![slow]);
+    let rig = Rig::new().with_incoming().with_tools(vec![slow]);
     let generator = Scripted::new(vec![
         Reply::call("slow"),
         Reply::call("slow"),
         Reply::text("final answer"),
     ]);
-    let inbox = rig.inbox.clone();
+    let incoming = rig.incoming.clone();
     let agent = rig.generator;
     let delivered = AtomicBool::new(false);
     generator.on_call(move |_| {
         if !delivered.swap(true, Ordering::SeqCst) {
-            deliver_mails(&inbox, agent);
-            inbox.deliver_entry(agent, inbox_entry("mid-pass human"));
+            deliver_mails(&incoming, agent);
+            incoming.deliver_entry(agent, incoming_entry("mid-pass human"));
         }
     });
     let critic = Scripted::new(vec![Reply::answer(true, "")]);

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use br_agentic_contract::memory::MemoryInbox;
+use br_agentic_contract::memory::MemoryIncoming;
 use br_agentic_contract::{
     PortFuture, ResultStream, Tool, ToolBlock, ToolCode, ToolContent, ToolFault,
 };
@@ -14,7 +14,7 @@ use crate::common::*;
 use crate::kit::{Parts, react_over};
 
 struct Delivers {
-    inbox: Arc<MemoryInbox>,
+    incoming: Arc<MemoryIncoming>,
     agent: AgentId,
     done: AtomicBool,
 }
@@ -28,8 +28,8 @@ impl ToolCode for Delivers {
     ) -> PortFuture<'a, Result<ToolContent, ToolFault>> {
         Box::pin(async move {
             if !self.done.swap(true, Ordering::SeqCst) {
-                self.inbox
-                    .deliver_entry(self.agent, inbox_entry("a late request"));
+                self.incoming
+                    .deliver_entry(self.agent, incoming_entry("a late request"));
             }
             Ok(ToolContent::new(
                 vec![ToolBlock::text("delivered").unwrap()],
@@ -47,8 +47,9 @@ fn spied(rig: &Rig, op: Op) -> (Parts, Arc<AccessSpy>) {
 #[tokio::test(start_paused = true)]
 async fn given_an_add_of_an_input_turn_that_fails_when_the_drain_stores_a_request_then_the_instance_fails()
  {
-    let rig = Rig::new().with_inbox();
-    rig.inbox.deliver_entry(rig.agent, inbox_entry("one more"));
+    let rig = Rig::new().with_incoming();
+    rig.incoming
+        .deliver_entry(rig.agent, incoming_entry("one more"));
     let (parts, spy) = spied(&rig, Op::AddInputTurn);
     let model = Scripted::new(vec![Reply::text("never")]);
     let node = react_over(&rig, parts, &[&model]);
@@ -64,11 +65,11 @@ async fn given_an_add_of_an_input_turn_that_fails_when_the_drain_stores_a_reques
 async fn given_an_add_of_an_entry_that_fails_when_the_drain_stores_a_request_in_the_open_turn_then_the_instance_fails()
  {
     let (quick, _) = echo("a");
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let deliver = Tool::new(
         spec("deliver"),
         Arc::new(Delivers {
-            inbox: rig.inbox.clone(),
+            incoming: rig.incoming.clone(),
             agent: rig.agent,
             done: AtomicBool::new(false),
         }),

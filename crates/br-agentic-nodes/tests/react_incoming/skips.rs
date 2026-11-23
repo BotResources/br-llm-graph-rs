@@ -1,4 +1,4 @@
-use br_agentic_contract::InboxEntry;
+use br_agentic_contract::EntryItem;
 use br_llm_messages::{
     AgentMail, Conversation, ConversationId, EntryId, HumanMessage, IncomingEntry, InputTurn, Turn,
 };
@@ -33,10 +33,10 @@ fn no_turn_added(rig: &Rig) -> bool {
 async fn given_an_item_the_conversation_holds_when_the_agent_starts_then_it_is_skipped_and_marked()
 {
     let (message, id) = held_message("already in the thread");
-    let rig = rig_holding(IncomingEntry::from(message.clone())).with_inbox();
-    rig.inbox.deliver_entry(
+    let rig = rig_holding(IncomingEntry::from(message.clone())).with_incoming();
+    rig.incoming.deliver_entry(
         rig.agent,
-        InboxEntry::new(IncomingEntry::from(message)).unwrap(),
+        EntryItem::new(IncomingEntry::from(message)).unwrap(),
     );
     let model = Scripted::new(vec![Reply::text("done")]);
     let node = rig.react(&[&model]);
@@ -47,7 +47,7 @@ async fn given_an_item_the_conversation_holds_when_the_agent_starts_then_it_is_s
     assert_eq!(count_of(&conversation, id), 1);
     assert_eq!(input_turns(&conversation).len(), 1);
     assert!(no_turn_added(&rig));
-    assert!(rig.inbox.is_read(rig.agent, id));
+    assert!(rig.incoming.is_read(rig.agent, id));
 }
 
 #[tokio::test(start_paused = true)]
@@ -64,11 +64,16 @@ async fn given_a_mail_entry_written_at_first_start_when_the_agent_starts_then_th
         vec![text_block("written by the runner")],
     )
     .unwrap();
-    let rig = rig_holding(IncomingEntry::from(agent_mail)).with_inbox();
-    let mut mail = new_mail(&[rig.agent], &[], "first start", "delivered by the inbox");
+    let rig = rig_holding(IncomingEntry::from(agent_mail)).with_incoming();
+    let mut mail = new_mail(
+        &[rig.agent],
+        &[],
+        "first start",
+        "delivered by the incoming",
+    );
     mail.id = written;
     mail.source = source;
-    rig.inbox.deliver_mail(sender, mail).unwrap();
+    rig.incoming.deliver_mail(sender, mail).unwrap();
     let model = Scripted::new(vec![Reply::text("done")]);
     let node = rig.react(&[&model]);
 
@@ -77,10 +82,10 @@ async fn given_a_mail_entry_written_at_first_start_when_the_agent_starts_then_th
     let conversation = rig.conversation();
     assert_eq!(count_of(&conversation, written.entry_id()), 1);
     assert!(no_turn_added(&rig));
-    assert!(rig.inbox.is_read(rig.agent, written.entry_id()));
+    assert!(rig.incoming.is_read(rig.agent, written.entry_id()));
     let sent = history_text(&model.requests()[0]);
     assert_eq!(sent.matches("written by the runner").count(), 1);
-    assert_eq!(sent.matches("delivered by the inbox").count(), 0);
+    assert_eq!(sent.matches("delivered by the incoming").count(), 0);
 }
 
 #[tokio::test(start_paused = true)]

@@ -1,4 +1,5 @@
-use br_agentic_nodes::{Judgement, StepLimitEnding};
+use br_agentic_contract::Judgement;
+use br_agentic_nodes::StepLimitEnding;
 
 use crate::common::*;
 use crate::items::*;
@@ -177,7 +178,7 @@ async fn given_a_restored_budget_exhausted_turn_when_the_ending_calls_the_critic
 #[tokio::test(start_paused = true)]
 async fn given_a_restored_final_response_and_a_waiting_item_when_the_pair_starts_then_the_first_pass_runs()
  {
-    let mut rig = Rig::new().with_inbox();
+    let mut rig = Rig::new().with_incoming();
     restore_final(&mut rig, "restored");
     let (_, deliver) = human_item(&rig, "more work");
     deliver();
@@ -204,7 +205,7 @@ async fn given_a_restored_final_response_and_a_waiting_item_when_the_pair_starts
 #[tokio::test(start_paused = true)]
 async fn given_a_restored_final_response_and_a_waiting_notice_when_the_pair_starts_then_the_first_pass_runs()
  {
-    let mut rig = Rig::new().with_inbox();
+    let mut rig = Rig::new().with_incoming();
     restore_final(&mut rig, "restored");
     let (_, deliver) = notice_item(&rig, "heads up");
     deliver();
@@ -221,7 +222,7 @@ async fn given_a_restored_final_response_and_a_waiting_notice_when_the_pair_star
 #[tokio::test(start_paused = true)]
 async fn given_a_restored_budget_exhausted_turn_and_a_waiting_item_when_the_pair_starts_then_the_first_pass_runs_and_the_step_limit_does_not_apply()
  {
-    let mut rig = Rig::new().with_inbox();
+    let mut rig = Rig::new().with_incoming();
     restore_exhausted(&mut rig);
     let (_, deliver) = human_item(&rig, "more work");
     deliver();
@@ -239,9 +240,9 @@ async fn given_a_restored_budget_exhausted_turn_and_a_waiting_item_when_the_pair
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_restored_final_response_in_a_pair_with_an_inbox_and_no_item_when_the_pair_starts_then_no_pass_runs()
+async fn given_a_restored_final_response_in_a_pair_with_an_incoming_and_no_item_when_the_pair_starts_then_no_pass_runs()
  {
-    let mut rig = Rig::new().with_inbox();
+    let mut rig = Rig::new().with_incoming();
     restore_final(&mut rig, "restored");
     let generator = Scripted::new(vec![]);
     let critic = Scripted::new(vec![Reply::answer(true, "")]);

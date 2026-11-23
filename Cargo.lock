@@ -4,19 +4,6 @@ version = 4
 
 [[package]]
 name = "br-agentic-contract"
-version = "0.2.0"
-source = "git+https://github.com/BotResources/br-llm-graph-rs?tag=br-agentic-contract%2Fv0.2.0#b5209a1cddead2c0794fe4cbc7e52de5692b4094"
-dependencies = [
- "br-graph-contract",
- "br-llm-clients-core 0.5.0",
- "br-llm-messages 2.1.0",
- "thiserror",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "br-agentic-contract"
 version = "0.3.0"
 dependencies = [
  "br-graph-contract",
@@ -41,9 +28,9 @@ dependencies = [
 
 [[package]]
 name = "br-agentic-nodes"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
- "br-agentic-contract 0.2.0",
+ "br-agentic-contract",
  "br-graph-contract",
  "br-llm-clients-core 0.5.0",
  "br-llm-messages 2.1.0",

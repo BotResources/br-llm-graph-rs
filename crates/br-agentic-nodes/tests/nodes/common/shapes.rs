@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
+use br_agentic_contract::OutputSchemaPort;
 use br_agentic_contract::{AgentLabel, PortError, PortFuture};
-use br_agentic_nodes::OutputSchemaPort;
 use br_llm_clients_core::{
     ClientRequest, OutputMode, Parameter, ParameterKind, Parameters, StructuredShape,
 };

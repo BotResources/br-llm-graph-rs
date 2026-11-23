@@ -7,7 +7,8 @@ use br_agentic_contract::{
     AgentLabel, AiTurnRef, PortError, PortFuture, ResponseStream, ResultStreamBox, ThreadAccess,
     ThreadRef,
 };
-use br_agentic_nodes::{AuthorPort, GeneratorCritic, Ports, PromptPort};
+use br_agentic_contract::{AuthorPort, PromptPort};
+use br_agentic_nodes::{GeneratorCritic, Ports};
 use br_llm_messages::{
     Conversation, EntryId, InputTurn, ModelResponse, RuntimeToolResults, TurnClosure, TurnEntry,
 };
@@ -83,7 +84,6 @@ pub fn ports_over(
         access,
         prompt,
         Arc::new(FixedToolsPort::new(&rig.record, rig.tools.clone())),
-        rig.workspace.clone(),
     )
 }
 

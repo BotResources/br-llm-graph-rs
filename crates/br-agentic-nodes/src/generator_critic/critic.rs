@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use br_agentic_contract::AiTurnRef;
+use br_agentic_contract::CriticRequest;
 use br_llm_clients_core::{BoxFuture, ClientRequest, OutputMode, StructuredShape};
 use br_llm_messages::{
     AgentId, Author, ClosureReason, ContentBlock, Conversation, HumanMessage, IncomingEntry,
@@ -12,7 +13,6 @@ use super::answer::{Answer, critic_shape, unwrap_answer};
 use crate::client::{FallbackList, ModelClient};
 use crate::fault::{AttemptError, CallFailure, Fault};
 use crate::ids::{block_id, entry_id, turn_id};
-use crate::ports::CriticRequest;
 use crate::seats::Seat;
 use crate::sink::DiscardSink;
 use crate::slot::{Attempt, Slot, drive};

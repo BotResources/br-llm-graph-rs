@@ -192,17 +192,17 @@ async fn given_a_refused_critic_author_when_the_pair_starts_then_it_fails_before
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_items_for_the_critic_and_the_generator_when_the_pair_runs_then_only_the_generator_reads_its_inbox()
+async fn given_items_for_the_critic_and_the_generator_when_the_pair_runs_then_only_the_generator_reads_its_incoming()
  {
-    let rig = Rig::new().with_inbox();
+    let rig = Rig::new().with_incoming();
     let (_, for_generator) = human_item(&rig, "for the generator");
     for_generator();
-    let to_critic = br_agentic_contract::InboxEntry::new(br_llm_messages::IncomingEntry::from(
+    let to_critic = br_agentic_contract::EntryItem::new(br_llm_messages::IncomingEntry::from(
         human_message("for the critic"),
     ))
     .unwrap();
     let critic_item = to_critic.id();
-    rig.inbox.deliver_entry(rig.critic, to_critic);
+    rig.incoming.deliver_entry(rig.critic, to_critic);
     let generator = Scripted::new(vec![Reply::text("draft")]);
     let critic = Scripted::new(vec![Reply::answer(true, "")]);
     let node = build(&rig, one(&generator), one(&critic), 3, Setup::default());
@@ -215,5 +215,5 @@ async fn given_items_for_the_critic_and_the_generator_when_the_pair_runs_then_on
     let story = timeline(&rig);
     assert!(story.contains(&"in:for the generator".to_owned()));
     assert!(!story.contains(&"in:for the critic".to_owned()));
-    assert!(!rig.inbox.is_read(rig.critic, critic_item));
+    assert!(!rig.incoming.is_read(rig.critic, critic_item));
 }

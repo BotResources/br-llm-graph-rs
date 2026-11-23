@@ -5,13 +5,13 @@ mod common;
 
 mod access_spy;
 mod access_spy_impl;
+mod building_blocks;
 mod cancel;
 mod clients;
 mod conversation_copy;
 mod conversation_refusal;
 mod drive;
 mod fault_detail;
-mod files_end;
 mod gc_open_turn;
 mod handover_faults;
 mod hanging;

@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use br_agentic_contract::FileSystemMode;
 use br_graph_contract::Event;
 
 use crate::common::*;
@@ -65,27 +64,14 @@ async fn given_a_first_client_that_exceeds_its_timeout_when_a_second_client_exis
 }
 
 #[tokio::test(start_paused = true)]
-async fn given_a_workspace_and_an_outcome_that_work_when_the_agent_ends_then_each_port_is_called_once()
- {
-    let rig = Rig::new().with_files(FileSystemMode::Always, Vec::new());
+async fn given_an_outcome_port_that_works_when_the_agent_ends_then_each_port_is_called_once() {
+    let rig = Rig::new();
     let model = Scripted::new(vec![Reply::text("done")]);
     let node = rig.react(&[&model]);
 
     Driver::result(&node).await;
 
     let seen = names(&rig.record);
-    assert_eq!(
-        seen.iter()
-            .filter(|name| **name == "workspace_load")
-            .count(),
-        1
-    );
-    assert_eq!(
-        seen.iter()
-            .filter(|name| **name == "workspace_save")
-            .count(),
-        1
-    );
     assert_eq!(
         seen.iter().filter(|name| **name == "thread_port").count(),
         1
