@@ -16,6 +16,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "br-agentic-harness"
+version = "0.1.0"
+dependencies = [
+ "br-agentic-contract",
+ "br-agentic-harness-contract",
+ "br-graph-contract",
+ "br-llm-clients-core 0.5.0",
+ "br-llm-messages 2.1.0",
+ "serde",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "br-agentic-harness-contract"
 version = "0.1.0"
 dependencies = [
