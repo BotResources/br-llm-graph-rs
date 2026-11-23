@@ -239,7 +239,7 @@ Why:
 
 ## br-agentic-contract
 
-The contract of the agentic nodes: what every node of kind `agentic` has in common. A port is a trait of this crate that a runner gives to a node; an adapter is what a runner library implements for a port. The ports (thread, agent, tools, workspace, thread access and inbox), the mail, the tool with its result stream, the web access and the file system mode, the rules an instance follows (the session over its conversation copy, the boundary, streaming, ending), and in-memory ports for tests. The contract of the crate, with the list of ports, an adapter example and the in-memory ports, is `crates/br-agentic-contract/README.md`. It depends on `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`, and on no node library. It uses `tokio::sync` only (the `sync` feature of `tokio`) and needs no runtime of its own. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+The contract of the agentic nodes: what every node of kind `agentic` has in common. A port is a trait of this crate that a runner gives to a node; an adapter is what a runner library implements for a port. The ports (thread, agent, tools, thread access, incoming, prompt, output schema, author, the outcome ports and the critic ports), the mail, the tool with its result stream, the web access, the outcome values, the `RunContext` given to the tools port, the five `apply_*` rules that apply one addition to a `Conversation`, and in-memory ports for tests. It holds no logic of a node: the session, the boundary and the ending are in the node libraries. The contract of the crate, with the list of ports, an adapter example and the in-memory ports, is `crates/br-agentic-contract/README.md`. It depends on `br-graph-contract`, `br-llm-messages` and `br-llm-clients-core`, and on no node library. It needs no runtime of its own (`tokio` is a dev-dependency only). Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
 
 ```toml
 [dependencies]
@@ -253,12 +253,14 @@ The public API names types of the three libraries it builds on, so pin them besi
 
 | Part | What the crate gives |
 |---|---|
-| ports | `ThreadPort`, `AgentPort`, `ToolsPort`, `WorkspacePort`, `ThreadAccess`, `InboxPort`: public, object-safe, `Send + Sync`, asynchronous (`PortFuture`), never retried by the instance; one error type, `PortError` (`Refused` with a reason, `Fault` with a cause); only the inbox refuses |
+| ports | `ThreadPort`, `AgentPort`, `ToolsPort`, `ThreadAccess`, `IncomingPort`, `PromptPort`, `OutputSchemaPort`, `AuthorPort`, `ReactOutcomePort`, `GeneratorCriticOutcomePort`, `CriticRequestPort`, `ProgrammaticCriticPort`: public, object-safe, `Send + Sync`, asynchronous (`PortFuture`), never retried by the instance; one error type, `PortError` (`Refused` with a reason, `Fault` with a cause) |
 | `ThreadAccess` | one `read` of the whole `Conversation` at the start; every other operation receives a complete addition and answers accepted or an error; a model response or a tool result is added in two moves (open gives a stream, then complete or discard) |
-| `InboxPort`, `NewMail`, `MailItem` | the unread items of one agent oldest first in batches with a cursor, wait, mark any item as read, send a mail (with the author name and the source conversation; refused without a recipient in `to` or with a repeated recipient), the documents of a mail for a recipient in `to` |
-| `Session`, `Queue`, `store_at_boundary`, `mail_documents`, `result`, `failed`, `cancelled` | the rules of an instance: rules first on its conversation copy, the boundary and the read marks, the documents of a held mail, endings that discard open objects |
+| `IncomingPort`, `IncomingItem`, `NewMail`, `MailItem` | the unread items of one agent (a mail or an entry) oldest first in batches with a cursor, and mark an item as read; no wait, no send, no documents of a mail |
+| `RunContext` | non-exhaustive value (instance, thread, agent, author, conversation) that the instance gives to the tools port |
+| `apply_input_turn`, `apply_entry`, `apply_closure`, `apply_response`, `apply_results` | apply one addition to a `Conversation` under the rules of `br-llm-messages`; error `ApplyError` (non-exhaustive) |
+| `ReactOutcome`, `GeneratorCriticOutcome`, `structured_reply` | plain outcome values with public constructors; the first structured block of a model response |
 | `Tool`, `ToolContent`, `ToolSet` | a tool spec with its code; content as blocks without identity and an error flag; a fault is `ToolFault`; a repeated tool name is refused |
-| `WebAccess`, `FileSystemMode` | the web access and the file system mode a node is built with, and the load at the start and the save before `Result` |
+| `WebAccess` | the web access a node is built with |
 | `memory` | in-memory ports for tests with one shared `Record` of every call; not for production |
 
 ## br-agentic-nodes
