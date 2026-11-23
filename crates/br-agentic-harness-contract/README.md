@@ -65,10 +65,12 @@ The gate of `get_mail_files` accepts only the mail ids that the harness history 
 
 For tests, not for production. One `HarnessRecord` keeps the calls of every in-memory port, in order (`HarnessCall`, non-exhaustive).
 
-- `MemoryHarnessHistory::new(&record, thread, access)` wraps a `MemoryThreadAccess` of `br-agentic-contract`. An entry in the conversation is `Stored`; `expect` registers an entry that is not stored yet (the wait stays pending), `drop_entry` makes it `Dropped`, `close_channel` makes pending waits a fault; any other entry is a fault.
+- `MemoryHarnessHistory::new(&record, thread, access)` wraps a `MemoryThreadAccess` of `br-agentic-contract`. An entry in the conversation is `Stored`; `expect` registers an entry that is not stored yet (the wait stays pending), `drop_entry` makes it `Dropped` (an entry the conversation already holds stays `Stored`), `close_channel` makes pending waits a fault; any other entry is a fault.
 - `MemoryMail::new(&record, incoming)` wraps a `MemoryIncoming`; `put_document` sets the content behind a `DocumentRef`; a document that is not set is a fault.
 - `MemorySkills::new(&record).with_skill(name, description, files)`.
-- `MemorySandbox::new(&record)`: foreground commands answer the result set with `script` (exit code 127 otherwise); `network`, `running`, `end_process`, `saved` and `is_released` let a test look. A released box faults on every operation; a box never opened faults too.
+- `MemorySandbox::new(&record)`: foreground commands answer the result set with `script` (exit code 127 otherwise); `network` (a `Network`: `Closed`, or `Open(WebAccess)`), `running`, `end_process`, `saved`, `files` (the current content of the box), `writes` (every write to the box in order, replaced files included, so a test can assert that a value never reached the box) and `is_released` let a test look; `HarnessCall::SandboxOpen` keeps what was opened. A released box faults on every operation; a box never opened faults too.
+
+The tests `mark_after_stored`, `lifecycle_order` and `rules` run drivers written inside the tests. They are contract examples: they show that the doubles carry the sequence, not that a harness does it. The proof of the harness rules (mark after `Stored`, close order, the gate, the credential rule, deny by default) lives in `br-agentic-harness`.
 
 ## Why
 
@@ -86,7 +88,7 @@ For tests, not for production. One `HarnessRecord` keeps the calls of every in-m
 Not on crates.io. Pin the git tag with the matching `version` beside it, and pin `br-agentic-contract` and `br-llm-messages` on the same git URLs and tags as this crate, or the types split in two copies:
 
 ```toml
-br-agentic-harness-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness-contract", tag = "br-agentic-harness-contract/v0.1.0", version = "0.1.0" }
+br-agentic-harness-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness-contract", tag = "br-agentic-harness-contract/v0.1.1", version = "0.1.1" }
 br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.3.0", version = "0.3.0" }
 br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", package = "br-llm-messages", tag = "br-llm-messages/v2.1.0", version = "2.1.0" }
 ```

@@ -1,6 +1,6 @@
 [package]
 name = "br-agentic-harness-contract"
-version = "0.1.0"
+version = "0.1.1"
 description = "Contract of the harness of an agentic node: the history, mail, skills and sandbox ports a runner gives the harness, the stored signal, the run lifecycle, the rules between ports, and in-memory ports for tests"
 edition.workspace = true
 rust-version.workspace = true

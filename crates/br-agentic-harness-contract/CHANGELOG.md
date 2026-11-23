@@ -8,6 +8,22 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.1.1 - 2026-11-23
+
+Patch of minor 0.1, additive only.
+
+### Added
+
+- `MemorySandbox::files` and `MemorySandbox::writes`: the current content of a box and every write to it in order, so a test can assert that a value never reached a box.
+
+### Fixed
+
+- `MemoryHarnessHistory` answers `Stored` for an entry the conversation holds, also after `drop_entry` on it.
+
+### Documentation
+
+- README: the tests `mark_after_stored`, `lifecycle_order` and `rules` are contract examples, the proof of the harness rules is in `br-agentic-harness`; the `Network` type is described.
+
 ## 0.1.0 - 2026-11-23
 
 First release, to the sealed intent of minor 0.1, on `br-agentic-contract` 0.3.0.

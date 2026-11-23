@@ -81,11 +81,11 @@ impl MemoryHarnessHistory {
             let state = self.lock();
             (state.slots.get(&entry).copied(), state.channel_closed)
         };
-        if slot == Some(Slot::Dropped) {
-            return Some(Ok(StoredAnswer::Dropped));
-        }
         if self.access.conversation().entry(&entry).is_ok() {
             return Some(Ok(StoredAnswer::Stored));
+        }
+        if slot == Some(Slot::Dropped) {
+            return Some(Ok(StoredAnswer::Dropped));
         }
         match slot {
             None => Some(Err(PortError::fault(
