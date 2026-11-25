@@ -8,6 +8,10 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+### Fixed
+
+- `Fault::detail` no longer gives a cause twice. A model fault read `the client failed: <client error>: <client error>`, because the fault's text already holds its source. A cause whose text the previous part holds is now left out.
+
 ## 0.4.0 - 2026-11-23
 
 Breaking minor, to the sealed intent of minor 0.4, on `br-agentic-contract` 0.3.0. It opens its own line.
