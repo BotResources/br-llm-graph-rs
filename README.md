@@ -248,7 +248,7 @@ The agent nodes: the ReAct agent (`ReactAgent`, subkind `react_agent`) and the g
 
 ```toml
 [dependencies]
-br-agentic-nodes = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-nodes", tag = "br-agentic-nodes/v0.3.0", version = "0.3.0" }
+br-agentic-nodes = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-nodes", tag = "br-agentic-nodes/v0.3.1", version = "0.3.1" }
 br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.2.0", version = "0.2.0" }
 br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
 br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-core", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }
