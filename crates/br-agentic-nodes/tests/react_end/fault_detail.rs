@@ -52,3 +52,15 @@ fn given_a_fault_without_a_cause_when_the_detail_is_read_then_it_is_the_text_of_
 
     assert_eq!(fault.detail(), fault.to_string());
 }
+
+#[test]
+fn given_a_model_fault_when_the_detail_is_read_then_the_client_error_is_given_once() {
+    let fault = Fault::Model(CallFailure::Client(ClientError::Transport));
+
+    let detail = fault.detail();
+
+    assert_eq!(
+        detail,
+        "the client failed: the connection failed before the response headers"
+    );
+}
