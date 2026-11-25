@@ -55,12 +55,16 @@ impl Fault {
         Fault::Value(error.to_string())
     }
 
+    /// The text of the fault, then the text of each cause in its chain. A
+    /// cause whose text the previous part already holds is left out: a
+    /// transparent fault, or a text that formats its source (`{0}`), gives
+    /// the same cause twice otherwise.
     pub fn detail(&self) -> String {
         let mut parts = vec![self.to_string()];
         let mut source = self.source();
         while let Some(cause) = source {
             let text = cause.to_string();
-            if parts.last() != Some(&text) {
+            if !parts.last().is_some_and(|last| last.contains(&text)) {
                 parts.push(text);
             }
             source = cause.source();
