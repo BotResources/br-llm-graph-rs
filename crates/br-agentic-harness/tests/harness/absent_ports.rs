@@ -55,7 +55,7 @@ async fn given_a_runner_with_a_mail_port_only_when_the_run_opens_and_closes_then
         .mail(std::sync::Arc::new(world.mail.clone()))
         .build();
 
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
     harness.close(world.instance, RunEnd::Failed).await?;
 
     assert!(world.record.calls().is_empty());
@@ -69,7 +69,7 @@ trait OpenAndClose {
 
 impl OpenAndClose for br_agentic_harness::Harness<Doc> {
     async fn open_and_close(&self, world: &World) -> Res {
-        self.open(world.instance).await?;
+        world.open(self).await?;
         self.close(world.instance, RunEnd::Completed).await?;
         Ok(())
     }

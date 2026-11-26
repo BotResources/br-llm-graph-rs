@@ -18,7 +18,7 @@ let harness = Harness::builder(history, prompt, tools)
     .build();
 ```
 
-`history` is a `HarnessHistory`, `prompt` a `PromptPort<F>`, `tools` a `ToolsPort<F>`; they are required. `mail`, `sandbox`, `skills` and `web_access` are optional. For an absent port the harness adds no tool and no prompt text, and does not fail. No mail port: no mail tool and `incoming()` is `None`. No sandbox port: `open` and `close` do nothing to a sandbox. The skills port is kept (`skills()`) and not used in 0.1.
+`history` is a `HarnessHistory`, `prompt` a `PromptPort<F>`, `tools` a `ToolsPort<F>`; they are required. `mail`, `sandbox`, `skills` and `web_access` are optional. For an absent port the harness adds no tool and no prompt text, and does not fail. No mail port: no mail tool and `incoming()` is `None`. No sandbox port: `open` and `close` do nothing to a sandbox, and `open` answers `StartKind::Fresh(FreshReason::NoSaveEver)`. The skills port is kept (`skills()`) and not used in 0.2.
 
 | Accessor | Gives the node |
 |---|---|
@@ -27,7 +27,7 @@ let harness = Harness::builder(history, prompt, tools)
 | `tools()` | `Arc<dyn ToolsPort<F>>`: the tools of the runner plus the two mail tools |
 | `incoming()` | `Option<Arc<dyn IncomingPort>>`: `items` from the mail port; `mark_read` behind the stored signal |
 
-`Harness` implements `RunLifecycle`; the runner calls `open(instance)` and `close(instance, end)` towards it.
+`Harness` implements `RunLifecycle`; the runner calls `open(instance, turn, seed)` and `close(instance, end)` towards it.
 
 ## Mail set and mail gate
 
@@ -47,12 +47,13 @@ Names, texts and answers are those of the mail tools of `br-agentic-nodes` 0.3. 
 
 ## Run lifecycle and rules between ports
 
-- `open`, with a sandbox port: `SandboxPort::open(instance, web)`; `web` is the `WebAccess` given to the builder, unchanged, and `None` when the node gave none. The harness never enforces it and never adds one. An instance already open is refused.
-- `close`, with a sandbox port, whatever the `RunEnd`: `kill` of each process registered with `track_background`, then `save`, then `release`. A failed step does not skip the next ones; the first failure is returned. A close with no open box does nothing. A close that arrives while an `open` is in flight makes that `open` save and release the box it opened, and it answers `PortError::Refused`. A dropped or cancelled `open` gives its reservation back, so the instance can be opened again.
-- Deny by default: into the box go only the web access setting, the attachments of a mail that passes the gate of `get_mail_files`, and nothing else. The harness never writes the runner credential, a prompt, a tool or a skill file to the box.
-- The harness cannot check two rules of the contract: a runner with internet holds no internal data in the box (runner author), and a provider-side store of the work folder does not go around the per-thread authorization of Threads (provider).
+- `open(instance, turn, seed)`, with a sandbox port: the harness builds one `OpenRequest` from the instance, the `WebAccess` given to the builder, the `TurnRef` and the `Seed`, and gives it to `SandboxPort::open`. The web access setting, the turn reference and the seed go unchanged; the harness reads no content of the seed, never enforces the web access setting and never adds one (`None` when the node gave none). `open` gives the runner the `StartKind` that the port answers, unchanged. A fault or refusal of the port is returned as it is (`OpenFault::ImageUnavailable` and `OpenFault::ImageFailing` stay distinct), no run is kept, and a later `open` of the instance is accepted. An instance already open, or opening, is refused and no second box is opened. With no sandbox port, `open` ignores the turn and the seed and answers `Fresh(NoSaveEver)`.
+- `close`, with a sandbox port, kills each process registered with `track_background`, then, only when the end is `Completed`, saves the work folder, then releases the box. After `Failed` or `Cancelled` it kills and releases and never saves. The end is taken as the runner gives it. A save that the port refuses with `AlreadySaved` counts as done (the first save stays). Any other failure of a step is a failure of `close`; a failed step does not skip the next ones, and the first failure is returned. A `close` with no open box does nothing; a `close` of one instance never touches the box of another.
+- `open` and `close` that meet: a dropped or cancelled `open` leaves no reservation and no box with the harness, so the instance can be opened again and a `close` finds nothing to end. A `close` that arrives while an `open` is in flight does not fail and keeps its end (the first end decides when two arrive); when the port answers that `open` with a box, the harness ends the box by the rule of that end (no background command to stop; save only after `Completed`; then release) and the `open` answers `PortError::Refused`, or the failure of that end if a step failed. When the port answers the `open` with a fault, nothing is saved or released and the `open` returns the fault.
+- Deny by default: into the box go only the seed, the web access setting and the attachments of a mail that passes the gate of `get_mail_files`, and nothing else. The harness never writes the runner credential, a prompt, a tool or a skill file to the box.
+- The harness cannot check three rules of the contract: a runner with internet holds no internal data in the box (runner author), the seed holds no runner credential (runner author), and a provider-side store of the work folder does not go around the per-thread authorization of Threads (provider).
 
-## Not in 0.1
+## Not in 0.2
 
 The box tools (run, read, write, list), the description of the box in the prompt, the skill files in the box and the list of skills in the prompt. The harness builds no sandbox tool and no skills tool.
 
@@ -64,8 +65,11 @@ The box tools (run, read, write, list), the description of the box in the prompt
 | the mail set holds `AgentMail` entries only | a copy notice and a runtime notice carry no attachment the agent may fetch; an id outside the set fails closed |
 | `mark_read` spawns a task | the node must not wait for the history; a task that outlives the harness would mark after the run ended, so the incoming adapter aborts its tasks when its last handle is dropped |
 | an unknown answer is never `Stored` | a mail marked read before its entry is stored is lost on a crash |
-| `track_background` exists | the port gives no list of processes and the harness builds no run tool in 0.1, so the runner that starts a background command tells the harness |
+| `track_background` exists | the port gives no list of processes and the harness builds no run tool in 0.2, so the runner that starts a background command tells the harness |
 | `close` goes on after a failed step | a box that is not released is a leak; a folder that is not saved is lost work |
+| save only after `Completed` | a failed or cancelled turn leaves a half-done folder; the next turn must not restore it |
+| `AlreadySaved` is taken as done | a turn that closes twice, or a retried close, must not turn the first save into a failure |
+| a `close` in flight is kept, not refused | the runner cannot know whether the box exists yet; the end it gave must still decide what is saved |
 | copy to `mail/{id}/{name}` | the place that the reference driver of `br-agentic-harness-contract` uses; the copy is best effort and the text result is always given |
 | `RunContext` is only received | it is `#[non_exhaustive]`; the harness never builds one, the runner does with `RunContext::new`; the doc-test below proves that a struct literal does not compile outside its crate |
 
@@ -88,8 +92,8 @@ RunContext { instance, thread, agent, author, conversation }
 Not on crates.io. Pin the git tag with the matching `version` beside it, and pin the other libraries on the same git URLs and tags as this crate, or the types split in two copies:
 
 ```toml
-br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.1.1", version = "0.1.1" }
-br-agentic-harness-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness-contract", tag = "br-agentic-harness-contract/v0.1.0", version = "0.1.0" }
+br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.2.0", version = "0.2.0" }
+br-agentic-harness-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness-contract", tag = "br-agentic-harness-contract/v0.2.0", version = "0.2.0" }
 br-agentic-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-contract", tag = "br-agentic-contract/v0.3.0", version = "0.3.0" }
 br-graph-contract = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-graph-contract", tag = "br-graph-contract/v0.1.0", version = "0.1.0" }
 br-llm-clients-core = { git = "https://github.com/BotResources/br-llm-clients-rs", package = "br-llm-clients-core", tag = "br-llm-clients-core/v0.5.0", version = "0.5.0" }

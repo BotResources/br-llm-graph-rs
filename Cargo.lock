@@ -26,26 +26,16 @@ dependencies = [
 
 [[package]]
 name = "br-agentic-harness"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "br-agentic-contract",
- "br-agentic-harness-contract 0.1.0",
+ "br-agentic-harness-contract",
  "br-graph-contract",
  "br-llm-clients-core 0.5.0",
  "br-llm-messages 2.1.0",
  "serde",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "br-agentic-harness-contract"
-version = "0.1.0"
-source = "git+https://github.com/BotResources/br-llm-graph-rs?tag=br-agentic-harness-contract%2Fv0.1.0#c396988efe540070223e1b91d4f2cc39cf798c2f"
-dependencies = [
- "br-agentic-contract",
- "br-llm-messages 2.1.0",
- "thiserror",
 ]
 
 [[package]]

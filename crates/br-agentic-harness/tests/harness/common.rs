@@ -3,13 +3,16 @@ use std::sync::Arc;
 
 use br_agentic_contract::memory::{FixedToolsPort, MemoryIncoming, MemoryThreadAccess, Record};
 use br_agentic_contract::{
-    AiTurnRef, Fields, IncomingContext, InstanceId, MailId, NewMail, RunContext, ThreadAccess,
-    ThreadRef, Tool, ToolBlock, ToolContent,
+    AiTurnRef, Fields, IncomingContext, InstanceId, MailId, NewMail, PortError, RunContext,
+    ThreadAccess, ThreadRef, Tool, ToolBlock, ToolContent,
 };
-use br_agentic_harness::{Harness, HarnessBuilder, HarnessHistory, MailPort, SandboxPort};
+use br_agentic_harness::{
+    Harness, HarnessBuilder, HarnessHistory, MailPort, RunLifecycle, SandboxPort,
+};
 use br_agentic_harness_contract::memory::{
     HarnessRecord, MemoryHarnessHistory, MemoryMail, MemorySandbox, MemorySkills,
 };
+use br_agentic_harness_contract::{Seed, StartKind, TurnRef};
 use br_graph_contract::{CancelToken, Reason};
 use br_llm_messages::{
     AgentId, AgentMail, Author, BlockId, Conversation, ConversationId, EntryId, IncomingEntry,
@@ -63,6 +66,10 @@ pub fn thread_ref() -> Result<ThreadRef, Box<dyn Error>> {
     Ok(ThreadRef::from_uuid(uuid())?)
 }
 
+pub fn turn_id() -> Result<TurnId, Box<dyn Error>> {
+    Ok(TurnId::from_uuid(uuid())?)
+}
+
 pub fn conversation_id() -> Result<ConversationId, Box<dyn Error>> {
     Ok(ConversationId::from_uuid(uuid())?)
 }
@@ -85,6 +92,7 @@ pub struct World {
     pub author: Author,
     pub conversation: ConversationId,
     pub instance: InstanceId,
+    pub turn_ref: TurnRef,
     pub history: MemoryHarnessHistory,
     pub mail: MemoryMail,
     pub sandbox: MemorySandbox,
@@ -95,6 +103,7 @@ impl World {
         let contract_record = Record::new();
         let record = HarnessRecord::new();
         let thread = thread_ref()?;
+        let agent = agent_id()?;
         let access = MemoryThreadAccess::new(
             &contract_record,
             thread,
@@ -107,11 +116,18 @@ impl World {
             record,
             contract_record,
             thread,
-            agent: agent_id()?,
+            agent,
             author: Author::new("agent")?,
             conversation: conversation_id()?,
             instance: instance_id()?,
+            turn_ref: TurnRef::new(thread, agent, TurnId::from_uuid(uuid())?, None),
         })
+    }
+
+    pub async fn open(&self, harness: &impl RunLifecycle) -> Result<StartKind, PortError> {
+        harness
+            .open(self.instance, self.turn_ref, Seed::empty())
+            .await
     }
 
     pub fn builder(&self) -> HarnessBuilder<Doc> {

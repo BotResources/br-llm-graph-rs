@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use crate::common::Doc;
-use br_agentic_contract::InstanceId;
 use br_agentic_contract::{
     AgentLabel, AiTurnRef, PortError, PortFuture, PromptPort, ResponseStream, ResultStream,
     ResultStreamBox, RunContext, ThreadAccess, ThreadRef, Tool, ToolBlock, ToolCode, ToolContent,
-    ToolFault, ToolsPort, WebAccess,
+    ToolFault, ToolsPort,
 };
-use br_agentic_harness::{BoxId, HarnessHistory, ProcessId, SandboxPort};
-use br_agentic_harness_contract::memory::{MemoryHarnessHistory, MemorySandbox};
-use br_agentic_harness_contract::{Command, FilePath, RunMode, RunOutcome, StoredAnswer};
+use br_agentic_harness::HarnessHistory;
+use br_agentic_harness_contract::StoredAnswer;
+use br_agentic_harness_contract::memory::MemoryHarnessHistory;
 use br_graph_contract::CancelView;
 use br_llm_clients_core::{Parameters, ToolSpec};
 use br_llm_messages::{
@@ -111,106 +110,6 @@ impl ThreadAccess for RefusingStored {
         entry: EntryId,
     ) -> PortFuture<'a, Result<(), PortError>> {
         self.0.discard_result(t, entry)
-    }
-}
-
-#[derive(Clone)]
-pub struct Broken {
-    pub inner: MemorySandbox,
-    pub kill: bool,
-    pub save: bool,
-    pub slow_open: bool,
-}
-
-pub fn broken(inner: &MemorySandbox, kill: bool, save: bool) -> Arc<dyn SandboxPort> {
-    Arc::new(Broken {
-        inner: inner.clone(),
-        kill,
-        save,
-        slow_open: false,
-    })
-}
-
-pub fn slow_open(inner: &MemorySandbox) -> Arc<dyn SandboxPort> {
-    Arc::new(Broken {
-        inner: inner.clone(),
-        kill: false,
-        save: false,
-        slow_open: true,
-    })
-}
-
-impl SandboxPort for Broken {
-    fn open<'a>(
-        &'a self,
-        instance: InstanceId,
-        web: Option<&'a WebAccess>,
-    ) -> PortFuture<'a, Result<BoxId, PortError>> {
-        let slow = self.slow_open;
-        Box::pin(async move {
-            if slow {
-                for _ in 0..8 {
-                    tokio::task::yield_now().await;
-                }
-            }
-            self.inner.open(instance, web).await
-        })
-    }
-
-    fn run<'a>(
-        &'a self,
-        sandbox: &'a BoxId,
-        command: &'a Command,
-        mode: RunMode,
-    ) -> PortFuture<'a, Result<RunOutcome, PortError>> {
-        self.inner.run(sandbox, command, mode)
-    }
-
-    fn read<'a>(
-        &'a self,
-        sandbox: &'a BoxId,
-        path: &'a FilePath,
-    ) -> PortFuture<'a, Result<Vec<u8>, PortError>> {
-        self.inner.read(sandbox, path)
-    }
-
-    fn write<'a>(
-        &'a self,
-        sandbox: &'a BoxId,
-        path: &'a FilePath,
-        content: Vec<u8>,
-    ) -> PortFuture<'a, Result<(), PortError>> {
-        self.inner.write(sandbox, path, content)
-    }
-
-    fn list<'a>(
-        &'a self,
-        sandbox: &'a BoxId,
-        under: Option<&'a FilePath>,
-    ) -> PortFuture<'a, Result<Vec<FilePath>, PortError>> {
-        self.inner.list(sandbox, under)
-    }
-
-    fn kill<'a>(
-        &'a self,
-        sandbox: &'a BoxId,
-        process: &'a ProcessId,
-    ) -> PortFuture<'a, Result<(), PortError>> {
-        if self.kill {
-            return Box::pin(async move { Err(PortError::fault("the process cannot be killed")) });
-        }
-        self.inner.kill(sandbox, process)
-    }
-
-    fn save<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<(), PortError>> {
-        if self.save {
-            return Box::pin(async move { Err(PortError::fault("the folder cannot be saved")) });
-        }
-        self.inner.save(sandbox)
-    }
-
-    fn release<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<(), PortError>> {
-        self.inner.release(sandbox)
     }
 }
 

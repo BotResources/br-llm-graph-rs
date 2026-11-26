@@ -72,7 +72,7 @@ async fn given_a_runner_whose_prompt_tools_and_mails_hold_its_credential_when_a_
     world.deliver(mail)?;
     store_mail(&world.history, &world.thread, id).await?;
 
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
     harness
         .prompt()
         .prompt(&Doc { n: 0 }, &AgentLabel::new("main")?)
@@ -119,7 +119,7 @@ async fn given_a_whole_run_when_it_ends_then_only_the_web_access_setting_and_the
     let world = World::new()?;
     let harness = world.full().web_access(WebAccess::None).build();
     let id = mail_in_thread(&world, &["a.txt"]).await?;
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
     harness.history().read(&world.thread).await?;
     let tools = offered(&harness, &world).await?;
     call(
@@ -156,7 +156,7 @@ async fn given_a_mail_the_gate_passes_when_its_files_are_asked_with_an_open_box_
     let world = World::new()?;
     let harness = world.full().build();
     let id = mail_in_thread(&world, &["a.txt", "b.txt"]).await?;
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
     harness.history().read(&world.thread).await?;
     let tools = offered(&harness, &world).await?;
 
@@ -180,7 +180,7 @@ async fn given_a_mail_the_gate_refuses_when_its_files_are_asked_with_an_open_box
     let world = World::new()?;
     let harness = world.full().build();
     mail_in_thread(&world, &["a.txt"]).await?;
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
     harness.history().read(&world.thread).await?;
     let stranger = new_mail(&[world.agent], "stranger")?;
     let stranger_id = stranger.id.entry_id();
@@ -225,7 +225,7 @@ async fn given_an_attachment_name_that_leaves_its_folder_when_the_files_are_aske
     let world = World::new()?;
     let harness = world.full().build();
     let id = mail_in_thread(&world, &["../escape.txt", "fine.txt"]).await?;
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
     harness.history().read(&world.thread).await?;
     let tools = offered(&harness, &world).await?;
 
@@ -246,14 +246,10 @@ async fn given_a_node_with_no_web_access_setting_when_the_run_opens_then_the_har
     let world = World::new()?;
     let harness = world.full().build();
 
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
 
-    assert!(
-        world
-            .record
-            .calls()
-            .iter()
-            .all(|call| !matches!(call, HarnessCall::SandboxOpen { web: Some(_), .. }))
-    );
+    assert!(world.record.calls().iter().all(
+        |call| !matches!(call, HarnessCall::SandboxOpen { request } if request.web_access.is_some())
+    ));
     Ok(())
 }

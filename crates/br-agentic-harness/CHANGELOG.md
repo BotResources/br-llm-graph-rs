@@ -8,6 +8,26 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-26
+
+Breaking minor, to the sealed intent of minor 0.2, on `br-agentic-contract` 0.3.0 and `br-agentic-harness-contract` 0.2.0: the work folder of an agent is kept from one turn to the next only when the turn completed. The crate moves to the tag `br-agentic-harness-contract/v0.2.0`; a runner that uses the harness resolves one copy of the contract.
+
+### Changed
+
+- `RunLifecycle::open` takes the instance, the `TurnRef` and the `Seed` and gives the `StartKind` that the sandbox port answers, unchanged. The harness builds one `OpenRequest` from the instance, the web access setting, the turn reference and the seed, and gives it to the sandbox port. With no sandbox port, `open` ignores the turn and the seed and gives `Fresh(NoSaveEver)`. Breaking.
+- `close` saves the work folder only when the end is `Completed`. After `Failed` or `Cancelled` it stops the background commands and releases the box, and never saves. Breaking in behaviour.
+- A save that the port refuses with `AlreadySaved` is taken as done in `close`; any other failure of the save is a failure of `close`.
+- A `close` that arrives while an `open` is in flight keeps its end; when the port answers that `open` with a box, the box is ended by the rule of that end (a save only after `Completed`), then released. When two closes arrive, the first end decides.
+
+### Fixed
+
+- A fault of the sandbox port at `open` is returned unchanged, so `OpenFault::ImageUnavailable` and `OpenFault::ImageFailing` reach the runner as two distinct kinds.
+
+### Tests
+
+- The sandbox doubles move to the 0.2.0 port. New tests prove: the single open request and what it holds, the start kinds, the open faults, the save only after `Completed`, `AlreadySaved`, a dropped open, a close in flight (each end), two closes, and a fault answered to an open that a close met.
+- The credential test puts the canary in the prompt, a tool name and description, a mail, a skill and the history, and searches every call that reaches the sandbox port, its files, its saves and its seed.
+
 ## 0.1.1 - 2026-11-23
 
 Patch of the audit of 0.1.0 (findings F1, F2, F3, F6); no public surface change.

@@ -1,9 +1,11 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
-use br_agentic_contract::{InstanceId, PortError, PortFuture, WebAccess};
+use br_agentic_contract::{PortError, PortFuture};
 use br_agentic_harness::{BoxId, ProcessId, SandboxPort};
 use br_agentic_harness_contract::memory::MemorySandbox;
-use br_agentic_harness_contract::{Command, FilePath, RunMode, RunOutcome};
+use br_agentic_harness_contract::{
+    Command, FilePath, OpenRequest, Opened, RunMode, RunOutcome, SaveReceipt,
+};
 
 #[derive(Clone, Default)]
 pub struct Seen(Arc<Mutex<Vec<String>>>);
@@ -16,7 +18,7 @@ impl Seen {
             .clone()
     }
 
-    fn push(&self, line: String) {
+    pub fn push(&self, line: String) {
         self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -37,13 +39,9 @@ pub fn spy(inner: &MemorySandbox, seen: &Seen) -> Arc<dyn SandboxPort> {
 }
 
 impl SandboxPort for Spy {
-    fn open<'a>(
-        &'a self,
-        instance: InstanceId,
-        web: Option<&'a WebAccess>,
-    ) -> PortFuture<'a, Result<BoxId, PortError>> {
-        self.seen.push(format!("open {instance:?} {web:?}"));
-        self.inner.open(instance, web)
+    fn open<'a>(&'a self, request: &'a OpenRequest) -> PortFuture<'a, Result<Opened, PortError>> {
+        self.seen.push(format!("open {request:?}"));
+        self.inner.open(request)
     }
 
     fn run<'a>(
@@ -97,7 +95,7 @@ impl SandboxPort for Spy {
         self.inner.kill(sandbox, process)
     }
 
-    fn save<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<(), PortError>> {
+    fn save<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<SaveReceipt, PortError>> {
         self.seen.push(format!("save {sandbox:?}"));
         self.inner.save(sandbox)
     }

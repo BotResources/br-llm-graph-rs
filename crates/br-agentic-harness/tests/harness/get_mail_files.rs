@@ -1,5 +1,5 @@
 use br_agentic_contract::{Attachment, DocumentRef, ThreadAccess};
-use br_agentic_harness::{GET_MAIL_FILES, RunLifecycle};
+use br_agentic_harness::GET_MAIL_FILES;
 use br_agentic_harness_contract::memory::HarnessCall;
 
 use crate::common::*;
@@ -165,7 +165,7 @@ async fn given_attachment_names_that_are_empty_dots_or_hold_a_separator_when_its
     )
     .await?;
     let harness = world.full().build();
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
 
     let result = files(&world, &harness, &format!("{{\"mail_id\":\"{id}\"}}")).await?;
 
