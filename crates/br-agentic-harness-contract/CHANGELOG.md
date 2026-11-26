@@ -10,7 +10,7 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## 0.2.0 - 2026-11-26
 
-Breaking minor of the sandbox port and of the run lifecycle, to the sealed intent of minor 0.2: the work folder of an agent can be kept from one turn to the next. The history, mail, skills, prompt and tools ports, the stored signal and the gate of `get_mail_files` do not change. Dependents to move: `br-agentic-harness`, `br-runner-jobs`, `br-runner-threads`.
+Breaking minor of the sandbox port and of the run lifecycle, to the sealed intent of minor 0.2: the work folder of an agent can be kept from one turn to the next. The history, mail, skills, prompt and tools ports, the stored signal and the gate of `get_mail_files` do not change. Dependents to move: `br-agentic-harness`, `br-runner-jobs`, `br-runner-threads`. Every implementer of the sandbox port, such as a provider adapter, moves with this release to the new `open` and `save` signatures of the sandbox port, and to the new `RunLifecycle::open` signature where it implements the lifecycle.
 
 ### Added
 
