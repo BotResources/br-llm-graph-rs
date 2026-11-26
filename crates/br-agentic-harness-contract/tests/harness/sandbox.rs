@@ -24,7 +24,7 @@ async fn given_a_foreground_command_when_it_runs_then_its_result_comes_back() ->
             stderr: Vec::new(),
         },
     );
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
 
     let outcome = world
         .sandbox
@@ -39,7 +39,7 @@ async fn given_a_foreground_command_when_it_runs_then_its_result_comes_back() ->
 async fn given_a_background_command_when_it_runs_then_it_returns_a_process_identity_at_once_and_keeps_running()
 -> Res {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
 
     let outcome = world
         .sandbox
@@ -57,7 +57,7 @@ async fn given_a_background_command_when_it_runs_then_it_returns_a_process_ident
 async fn given_a_file_when_it_is_written_then_it_is_read_back_replaced_and_listed_under_a_path()
 -> Res {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     world
         .sandbox
         .write(&sandbox, &path("work/a.txt")?, b"one".to_vec())
@@ -85,7 +85,7 @@ async fn given_a_file_when_it_is_written_then_it_is_read_back_replaced_and_liste
 async fn given_a_file_that_does_not_exist_when_it_is_read_then_it_is_a_refusal_with_a_reason() -> Res
 {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
 
     let read = world.sandbox.read(&sandbox, &path("missing.txt")?).await;
 
@@ -97,7 +97,7 @@ async fn given_a_file_that_does_not_exist_when_it_is_read_then_it_is_a_refusal_w
 async fn given_a_background_process_when_it_is_killed_then_it_stops_and_killing_an_ended_process_changes_nothing()
 -> Res {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     let RunOutcome::Started(process) = world
         .sandbox
         .run(&sandbox, &command("server")?, RunMode::Background)
@@ -117,7 +117,7 @@ async fn given_a_background_process_when_it_is_killed_then_it_stops_and_killing_
 async fn given_a_work_folder_when_it_is_saved_then_the_provider_holds_a_copy_of_the_files_at_that_moment()
 -> Res {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     world
         .sandbox
         .write(&sandbox, &path("a.txt")?, b"kept".to_vec())
@@ -140,7 +140,7 @@ async fn given_a_work_folder_when_it_is_saved_then_the_provider_holds_a_copy_of_
 async fn given_a_released_box_when_any_operation_is_called_then_it_is_a_fault_and_releasing_again_is_accepted()
 -> Res {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     world.sandbox.release(&sandbox).await?;
 
     world.sandbox.release(&sandbox).await?;
@@ -159,7 +159,7 @@ async fn given_a_released_box_when_any_operation_is_called_then_it_is_a_fault_an
 #[tokio::test]
 async fn given_a_box_that_was_never_opened_when_it_is_used_then_it_is_a_fault() -> Res {
     let world = World::new()?;
-    let other = world.sandbox.open(instance_id()?, None).await?;
+    let other = world.open_box().await?;
     let unknown = br_agentic_harness_contract::BoxId::new("elsewhere");
 
     let read = world.sandbox.read(&unknown, &path("a.txt")?).await;
@@ -173,8 +173,8 @@ async fn given_a_box_that_was_never_opened_when_it_is_used_then_it_is_a_fault() 
 async fn given_two_instances_when_their_boxes_are_opened_then_the_boxes_differ_and_hold_their_own_files()
 -> Res {
     let world = World::new()?;
-    let first = world.sandbox.open(instance_id()?, None).await?;
-    let second = world.sandbox.open(instance_id()?, None).await?;
+    let first = world.open_box().await?;
+    let second = world.open_box().await?;
     world
         .sandbox
         .write(&first, &path("a.txt")?, b"x".to_vec())
@@ -188,7 +188,7 @@ async fn given_two_instances_when_their_boxes_are_opened_then_the_boxes_differ_a
 #[tokio::test]
 async fn given_every_operation_when_it_is_called_then_the_record_keeps_the_calls_in_order() -> Res {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     world
         .sandbox
         .write(&sandbox, &path("a.txt")?, Vec::new())
@@ -219,7 +219,7 @@ async fn given_a_web_access_setting_when_the_box_is_opened_then_the_provider_get
     let site = br_agentic_harness_contract::Site::new("example.org")?;
     let setting = WebAccess::Whitelist(vec![site]);
 
-    let sandbox = world.sandbox.open(instance_id()?, Some(&setting)).await?;
+    let sandbox = world.open_with(Some(setting.clone())).await?;
 
     assert_eq!(
         world.sandbox.network(&sandbox),
@@ -230,7 +230,7 @@ async fn given_a_web_access_setting_when_the_box_is_opened_then_the_provider_get
         .calls()
         .into_iter()
         .find_map(|call| match call {
-            HarnessCall::SandboxOpen { web, .. } => web,
+            HarnessCall::SandboxOpen { request } => request.web_access,
             _ => None,
         });
     assert_eq!(passed, Some(setting));
@@ -244,9 +244,9 @@ async fn given_no_setting_or_a_setting_that_reaches_nothing_when_the_box_is_open
     let nothing = WebAccess::None;
     let empty = WebAccess::Whitelist(Vec::new());
 
-    let unset = world.sandbox.open(instance_id()?, None).await?;
-    let none = world.sandbox.open(instance_id()?, Some(&nothing)).await?;
-    let blank = world.sandbox.open(instance_id()?, Some(&empty)).await?;
+    let unset = world.open_box().await?;
+    let none = world.open_with(Some(nothing.clone())).await?;
+    let blank = world.open_with(Some(empty.clone())).await?;
 
     for sandbox in [unset, none, blank] {
         assert_eq!(world.sandbox.network(&sandbox), Some(Network::Closed));

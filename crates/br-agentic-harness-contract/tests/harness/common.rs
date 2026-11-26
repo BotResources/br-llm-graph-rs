@@ -2,10 +2,13 @@ use std::error::Error;
 use std::num::NonZeroUsize;
 
 use br_agentic_contract::memory::{MemoryIncoming, MemoryThreadAccess, Record};
-use br_agentic_contract::{AiTurnRef, IncomingContext, InstanceId, MailId, NewMail, ThreadRef};
+use br_agentic_contract::{
+    AiTurnRef, IncomingContext, InstanceId, MailId, NewMail, ThreadRef, WebAccess,
+};
 use br_agentic_harness_contract::memory::{
     HarnessRecord, MemoryHarnessHistory, MemoryMail, MemorySandbox,
 };
+use br_agentic_harness_contract::{BoxId, OpenRequest, SandboxPort, Seed, TurnRef};
 use br_llm_messages::{
     AgentId, Author, BlockId, ContentBlock, Conversation, ConversationId, EntryId, ModelResponse,
     ResponseEnding, ResponseMetadata, TextBlock, TurnEntry, TurnId, Uuid,
@@ -27,6 +30,10 @@ pub fn agent_id() -> Result<AgentId, Box<dyn Error>> {
 
 pub fn thread_ref() -> Result<ThreadRef, Box<dyn Error>> {
     Ok(ThreadRef::from_uuid(uuid())?)
+}
+
+pub fn turn_id() -> Result<TurnId, Box<dyn Error>> {
+    Ok(TurnId::from_uuid(uuid())?)
 }
 
 pub fn instance_id() -> Result<InstanceId, Box<dyn Error>> {
@@ -123,5 +130,27 @@ impl World {
 
     pub fn response_entry(&self, entry: EntryId) -> Result<TurnEntry, Box<dyn Error>> {
         Ok(TurnEntry::from(response(entry, "stored")?))
+    }
+
+    pub fn turn_ref(&self, parent: Option<TurnId>) -> Result<TurnRef, Box<dyn Error>> {
+        Ok(TurnRef::new(self.thread, self.agent, turn_id()?, parent))
+    }
+
+    pub fn request(&self, web: Option<WebAccess>) -> Result<OpenRequest, Box<dyn Error>> {
+        Ok(OpenRequest::new(
+            instance_id()?,
+            web,
+            self.turn_ref(None)?,
+            Seed::empty(),
+        ))
+    }
+
+    pub async fn open_box(&self) -> Result<BoxId, Box<dyn Error>> {
+        self.open_with(None).await
+    }
+
+    pub async fn open_with(&self, web: Option<WebAccess>) -> Result<BoxId, Box<dyn Error>> {
+        let request = self.request(web)?;
+        Ok(self.sandbox.open(&request).await?.box_id)
     }
 }

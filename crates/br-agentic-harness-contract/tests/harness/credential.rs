@@ -2,14 +2,9 @@ use br_agentic_contract::{Attachment, DocumentRef};
 use br_agentic_harness_contract::memory::HarnessCall;
 use br_agentic_harness_contract::{FilePath, MailPort, SandboxPort};
 
+use crate::canary::{CANARY as CREDENTIAL, holds};
 use crate::common::*;
 use crate::drivers::{Gate, copy_attachments};
-
-const CREDENTIAL: &[u8] = b"runner-credential-4f9a";
-
-fn holds(bytes: &[u8], needle: &[u8]) -> bool {
-    bytes.windows(needle.len()).any(|window| window == needle)
-}
 
 #[tokio::test]
 async fn given_a_run_that_copies_an_attachment_when_the_writes_are_inspected_then_the_credential_is_in_no_file_of_the_box()
@@ -23,7 +18,7 @@ async fn given_a_run_that_copies_an_attachment_when_the_writes_are_inspected_the
         .mail
         .put_document(DocumentRef::new("doc-a"), b"attachment".to_vec());
     world.mail.send(&world.context()?, mail).await?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     let mut gate = Gate::default();
     gate.see(id);
 
@@ -60,7 +55,7 @@ async fn given_a_run_that_copies_an_attachment_when_the_writes_are_inspected_the
 async fn given_a_credential_written_into_the_box_when_the_writes_are_inspected_then_the_record_shows_it_even_after_the_file_is_replaced()
 -> Res {
     let world = World::new()?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     let path = FilePath::new("env")?;
     world
         .sandbox
