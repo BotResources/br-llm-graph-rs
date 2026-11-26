@@ -48,13 +48,6 @@ fn given_a_refusal_a_fault_of_the_provider_and_the_two_named_errors_when_the_typ
     assert_eq!(name(&PortError::from(OpenFault::ImageFailing)), "failing");
 }
 
-fn variant_name(fault: OpenFault) -> &'static str {
-    match fault {
-        OpenFault::ImageUnavailable => "unavailable",
-        OpenFault::ImageFailing => "failing",
-    }
-}
-
 #[test]
 fn given_the_errors_of_open_when_they_are_made_into_port_errors_then_the_caller_gets_two_different_values_and_a_shortage_of_capacity_has_no_value_of_its_own()
  {
@@ -67,8 +60,6 @@ fn given_the_errors_of_open_when_they_are_made_into_port_errors_then_the_caller_
 
     assert_eq!(told, vec![Some(all[0]), Some(all[1])]);
     assert_ne!(told[0], told[1]);
-    let names: Vec<&str> = all.iter().map(|fault| variant_name(*fault)).collect();
-    assert_eq!(names, vec!["unavailable", "failing"]);
 }
 
 #[tokio::test]

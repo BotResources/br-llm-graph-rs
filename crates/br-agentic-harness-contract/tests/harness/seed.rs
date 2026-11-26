@@ -159,7 +159,13 @@ fn given_the_seeds_of_the_frozen_vectors_when_the_hash_is_made_then_it_is_the_va
     assert_eq!(hash_of(Vec::new())?, EMPTY_HASH);
     assert_eq!(hash_of(mixed()?)?, MIXED_HASH);
     let hash = Seed::new(mixed()?)?.content_hash();
+    let from_bytes: String = hash
+        .as_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(from_bytes, MIXED_HASH);
     assert_eq!(hash.to_string(), MIXED_HASH);
-    assert_eq!(hash.as_bytes().len(), 32);
+    assert_eq!(hash.to_hex(), MIXED_HASH);
     Ok(())
 }
