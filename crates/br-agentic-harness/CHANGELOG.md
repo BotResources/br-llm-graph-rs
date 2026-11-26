@@ -21,7 +21,7 @@ Breaking minor, to the sealed intent of minor 0.2, on `br-agentic-contract` 0.3.
 
 ### Known limit
 
-- 0.2.0 closes: an `open` whose future is dropped before the port answers (no reservation is kept, no box is made, a later `open` is accepted), and a `close` in flight during an `open` (the box is ended by the end of that `close`). A cancel that lands while a box is being ended, after a `close` met an `open` (the future of the `open` or of the `close` is dropped during the kill, save or release), can stop the remaining steps and leave the box. This is a known limit left for a later minor.
+- 0.2.0 closes: an `open` whose future is dropped before the port answers (no reservation is kept, no box is made, a later `open` is accepted), and a `close` in flight during an `open` (the box is ended by the end of that `close`). Known limit, left for a later minor: a cancel that lands while a box is being ended leaves the box open. This covers an `open` or a `close` that met an `open`, and a plain `close` whose future is dropped during the stop, save or release steps, because the run is removed from the table before those steps run.
 
 ### Tests
 
