@@ -1,8 +1,10 @@
 use std::fmt;
 
-use br_agentic_contract::{InstanceId, PortError, PortFuture, WebAccess};
+use br_agentic_contract::{PortError, PortFuture};
 
+use crate::open::{OpenRequest, Opened};
 use crate::path::FilePath;
+use crate::save::SaveReceipt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BoxId(String);
@@ -83,11 +85,7 @@ pub enum RunOutcome {
 }
 
 pub trait SandboxPort: Send + Sync {
-    fn open<'a>(
-        &'a self,
-        instance: InstanceId,
-        web: Option<&'a WebAccess>,
-    ) -> PortFuture<'a, Result<BoxId, PortError>>;
+    fn open<'a>(&'a self, request: &'a OpenRequest) -> PortFuture<'a, Result<Opened, PortError>>;
 
     fn run<'a>(
         &'a self,
@@ -121,7 +119,7 @@ pub trait SandboxPort: Send + Sync {
         process: &'a ProcessId,
     ) -> PortFuture<'a, Result<(), PortError>>;
 
-    fn save<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<(), PortError>>;
+    fn save<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<SaveReceipt, PortError>>;
 
     fn release<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<(), PortError>>;
 }

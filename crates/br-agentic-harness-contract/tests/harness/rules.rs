@@ -24,7 +24,7 @@ async fn given_a_mail_the_gate_has_seen_when_its_attachments_are_copied_then_the
 -> Res {
     let world = World::new()?;
     let (recipient, id) = mail_with_file(&world).await?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     let mut gate = Gate::default();
     gate.see(id);
 
@@ -48,7 +48,7 @@ async fn given_a_mail_id_the_gate_has_not_seen_when_its_attachments_are_copied_t
 -> Res {
     let world = World::new()?;
     let (recipient, id) = mail_with_file(&world).await?;
-    let sandbox = world.sandbox.open(instance_id()?, None).await?;
+    let sandbox = world.open_box().await?;
     let mut gate = Gate::default();
     gate.see(mail_id()?);
 

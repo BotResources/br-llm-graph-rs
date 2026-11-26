@@ -1,9 +1,10 @@
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use br_agentic_contract::{Cursor, IncomingContext, InstanceId, MailId, ThreadRef, WebAccess};
+use br_agentic_contract::{Cursor, IncomingContext, InstanceId, MailId, ThreadRef};
 use br_llm_messages::EntryId;
 
+use crate::open::OpenRequest;
 use crate::path::FilePath;
 use crate::sandbox::{BoxId, Command, ProcessId, RunMode};
 use crate::skills::SkillName;
@@ -41,8 +42,7 @@ pub enum HarnessCall {
         path: FilePath,
     },
     SandboxOpen {
-        instance: InstanceId,
-        web: Option<WebAccess>,
+        request: OpenRequest,
     },
     SandboxRun {
         sandbox: BoxId,
@@ -56,6 +56,7 @@ pub enum HarnessCall {
     SandboxWrite {
         sandbox: BoxId,
         path: FilePath,
+        content: Vec<u8>,
     },
     SandboxList {
         sandbox: BoxId,

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use br_agentic_harness_contract::{
     BoxId, FilePath, HarnessHistory, IncomingContext, MailId, MailPort, PortError, ProcessId,
-    SandboxPort, StoredAnswer,
+    RunEnd, SandboxPort, StoredAnswer,
 };
 use br_llm_messages::EntryId;
 
@@ -25,11 +25,14 @@ pub async fn close_run(
     sandbox: &dyn SandboxPort,
     boxed: &BoxId,
     background: &[ProcessId],
+    end: RunEnd,
 ) -> Result<(), PortError> {
     for process in background {
         sandbox.kill(boxed, process).await?;
     }
-    sandbox.save(boxed).await?;
+    if end == RunEnd::Completed {
+        sandbox.save(boxed).await?;
+    }
     sandbox.release(boxed).await
 }
 
