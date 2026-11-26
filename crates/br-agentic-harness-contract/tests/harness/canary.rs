@@ -1,5 +1,7 @@
 use br_agentic_harness_contract::memory::HarnessCall;
-use br_agentic_harness_contract::{Command, RunMode, SandboxPort, SeedKind};
+use br_agentic_harness_contract::{
+    BoxId, Command, RunMode, SandboxPort, Seed, SeedEntry, SeedKind,
+};
 
 use crate::common::*;
 use crate::scenario::*;
@@ -10,28 +12,46 @@ pub fn holds(bytes: &[u8], needle: &[u8]) -> bool {
     bytes.windows(needle.len()).any(|window| window == needle)
 }
 
-pub fn places_with(
-    world: &World,
-    sandbox: &br_agentic_harness_contract::BoxId,
-    needle: &[u8],
-) -> Vec<&'static str> {
+struct SeedLabels {
+    file: &'static str,
+    path: &'static str,
+    target: &'static str,
+}
+
+fn seed_places(seed: &Seed, needle: &[u8], labels: &SeedLabels, places: &mut Vec<&'static str>) {
+    for entry in seed.entries() {
+        if holds(entry.path.as_str().as_bytes(), needle) {
+            places.push(labels.path);
+        }
+        match &entry.kind {
+            SeedKind::File(bytes) if holds(bytes, needle) => places.push(labels.file),
+            SeedKind::Symlink(target) if holds(target.as_str().as_bytes(), needle) => {
+                places.push(labels.target);
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn places_with(world: &World, sandbox: &BoxId, needle: &[u8]) -> Vec<&'static str> {
     let mut places = Vec::new();
+    let in_request = SeedLabels {
+        file: "open request seed file",
+        path: "open request seed path",
+        target: "open request seed symlink target",
+    };
     for call in world.record.calls() {
         match call {
             HarnessCall::SandboxOpen { request } => {
-                for entry in request.seed.entries() {
-                    if let SeedKind::File(bytes) = &entry.kind
-                        && holds(bytes, needle)
-                    {
-                        places.push("open request seed file");
-                    }
-                    if holds(entry.path.as_str().as_bytes(), needle) {
-                        places.push("open request seed path");
-                    }
-                }
+                seed_places(&request.seed, needle, &in_request, &mut places);
             }
-            HarnessCall::SandboxWrite { content, .. } if holds(&content, needle) => {
-                places.push("write");
+            HarnessCall::SandboxWrite { path, content, .. } => {
+                if holds(path.as_str().as_bytes(), needle) {
+                    places.push("write path");
+                }
+                if holds(&content, needle) {
+                    places.push("write");
+                }
             }
             HarnessCall::SandboxRun { command, .. }
                 if holds(command.as_str().as_bytes(), needle) =>
@@ -42,17 +62,26 @@ pub fn places_with(
         }
     }
     let files = world.sandbox.files(sandbox).unwrap_or_default();
+    if files
+        .iter()
+        .any(|(path, _)| holds(path.as_str().as_bytes(), needle))
+    {
+        places.push("file path of the box");
+    }
     if files.iter().any(|(_, content)| holds(content, needle)) {
         places.push("file of the box");
     }
-    let seed = world.sandbox.seed(sandbox).unwrap_or_default();
-    let in_seed = seed.entries().iter().any(|entry| match &entry.kind {
-        SeedKind::File(bytes) => holds(bytes, needle),
-        SeedKind::Directory | SeedKind::Symlink(_) => false,
-    });
-    if in_seed {
-        places.push("seed file of the box");
-    }
+    let in_box = SeedLabels {
+        file: "seed file of the box",
+        path: "seed path of the box",
+        target: "seed symlink target of the box",
+    };
+    seed_places(
+        &world.sandbox.seed(sandbox).unwrap_or_default(),
+        needle,
+        &in_box,
+        &mut places,
+    );
     places
 }
 
@@ -105,6 +134,43 @@ async fn given_a_canary_in_a_seed_file_a_write_a_replaced_write_and_a_command_wh
             "write",
             "command",
             "seed file of the box",
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_a_canary_in_a_symlink_target_a_seed_path_and_a_write_path_when_the_record_and_the_box_are_searched_then_each_place_is_found()
+-> Res {
+    let world = World::new()?;
+    let canary_text = String::from_utf8_lossy(CANARY).into_owned();
+    let seeded = Seed::new(vec![
+        SeedEntry::symlink(path("link")?, 0o777, path(&canary_text)?),
+        SeedEntry::file(
+            path(&format!("dir/{canary_text}"))?,
+            0o444,
+            b"clean".to_vec(),
+        ),
+    ])?;
+    let opened = open_turn(&world, world.turn_ref(None)?, seeded).await?;
+    write_files(
+        &world,
+        &opened.box_id,
+        &[(&format!("out/{canary_text}"), b"clean")],
+    )
+    .await?;
+
+    let places = places_with(&world, &opened.box_id, CANARY);
+
+    assert_eq!(
+        places,
+        vec![
+            "open request seed path",
+            "open request seed symlink target",
+            "write path",
+            "file path of the box",
+            "seed path of the box",
+            "seed symlink target of the box",
         ]
     );
     Ok(())

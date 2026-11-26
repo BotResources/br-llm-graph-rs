@@ -5,6 +5,8 @@ mod drivers;
 mod dropped_open;
 mod dyn_compat;
 mod instances;
+mod lifecycle_driver;
+mod lifecycle_interrupted;
 mod lifecycle_open;
 mod lifecycle_order;
 mod mail;

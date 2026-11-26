@@ -71,7 +71,15 @@ There is no operation to wait for a new item.
 - `open` fails only with the refusals and faults of `PortError` and with two named faults, `OpenFault::ImageUnavailable` (no box was ready in the time the provider gives to open; the runner can try again) and `OpenFault::ImageFailing` (the boxes of the provider do not start; the operator must act). They travel as the cause of `PortError::Fault`, never as a refusal; `OpenFault::of(&error)` answers `Some(ImageUnavailable)`, `Some(ImageFailing)` or `None`. A shortage of capacity has no value of its own: it is `ImageUnavailable`.
 - If the future of `open` is dropped before it ends, the provider releases everything the call claimed, and no later `open` of the same instance is blocked or refused because of it. This binds every implementation of the port.
 
-```compile_fail
+```
+use br_agentic_harness_contract::{InstanceId, OpenRequest, Seed, TurnRef};
+
+fn by_constructor(instance: InstanceId, turn: TurnRef) -> OpenRequest {
+    OpenRequest::new(instance, None, turn, Seed::empty())
+}
+```
+
+```compile_fail,E0639
 use br_agentic_harness_contract::{InstanceId, OpenRequest, Seed, TurnRef};
 
 fn by_fields(instance: InstanceId, turn: TurnRef) -> OpenRequest {
@@ -115,7 +123,7 @@ For tests, not for production. One `HarnessRecord` keeps the calls of every in-m
 - Arranging an error of open: `fail_next_open(OpenFault)` makes the next `open` fail with that fault and claims nothing. `hold_next_open()` gives an `OpenHold`: the next `open` makes its box, then waits; `box_made().await` gives the box, `proceed()` lets the open end, and dropping the open future instead releases the box, so that the next open of the same instance succeeds.
 - The record: `HarnessCall::SandboxOpen` keeps each open request in full (turn reference, seed, and the bytes of the seed files), `SandboxWrite` each write with its path and its bytes (a file written and then replaced stays in the record with the bytes that were written) and `SandboxRun` each command with its text. The rule "no runner credential in the box" is checkable: a test searches a canary in the recorded writes, commands and open requests and in the files and the seed of the box.
 
-The tests `mark_after_stored`, `lifecycle_order`, `lifecycle_open` and `rules` run drivers written inside the tests. They are contract examples: they show that the doubles carry the sequence, not that a harness does it. The proof of the harness rules (mark after `Stored`, close order, the gate, the credential rule, the open request, save only after a completed run, deny by default) lives in `br-agentic-harness`.
+The tests `mark_after_stored`, `lifecycle_order`, `lifecycle_open`, `lifecycle_interrupted` (a dropped open, a close during an open) and `rules` run drivers written inside the tests. They are contract examples: they show that the doubles carry the sequence, not that a harness does it. The proof of the harness rules (mark after `Stored`, close order, the gate, the credential rule, the open request, save only after a completed run, deny by default) lives in `br-agentic-harness`.
 
 ## Why
 
