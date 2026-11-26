@@ -30,6 +30,14 @@ impl MemorySandbox {
         }
     }
 
+    pub fn forget_save(&self, turn: &TurnRef) {
+        let mut state = self.lock();
+        let key = SaveKey::of(turn);
+        state.saves.remove(&key);
+        state.kept.remove(&key);
+        state.failed_restores.remove(&key);
+    }
+
     pub fn fail_save(&self, turn: &TurnRef) {
         let mut state = self.lock();
         let key = SaveKey::of(turn);

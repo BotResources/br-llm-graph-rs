@@ -148,6 +148,26 @@ async fn given_an_expired_save_when_the_next_turn_opens_then_the_start_is_fresh_
 }
 
 #[tokio::test]
+async fn given_a_provider_that_holds_no_record_of_a_save_any_more_when_the_next_turn_opens_then_the_start_is_fresh_with_no_save_ever_and_not_save_expired()
+-> Res {
+    let world = World::new()?;
+    let (first, _) = saved_turn(&world, None, WORK).await?;
+    world.sandbox.forget_save(&first);
+
+    let opened = open_turn(&world, world.turn_ref(Some(first.turn))?, Seed::empty()).await?;
+
+    assert_eq!(opened.start, StartKind::Fresh(FreshReason::NoSaveEver));
+    assert!(
+        world
+            .sandbox
+            .files(&opened.box_id)
+            .is_some_and(|files| files.is_empty())
+    );
+    assert!(world.sandbox.save_of(&first).is_none());
+    Ok(())
+}
+
+#[tokio::test]
 async fn given_a_save_that_expired_at_an_unknown_time_when_the_next_turn_opens_then_save_expired_carries_nothing()
 -> Res {
     let world = World::new()?;
