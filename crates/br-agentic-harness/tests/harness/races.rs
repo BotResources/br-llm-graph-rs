@@ -3,7 +3,7 @@ use br_agentic_harness_contract::OpenFault;
 
 use crate::common::*;
 use crate::ledger::{seen_steps, steps};
-use crate::ports::{OpenAnswer, Rigged};
+use crate::ports::{OpenAnswer, Rigged, SaveAnswer};
 use crate::spy::Seen;
 
 fn expected_after(end: RunEnd) -> Vec<&'static str> {
@@ -201,6 +201,55 @@ async fn given_a_close_while_an_open_is_in_flight_when_the_port_answers_a_fault_
             .ok_or("the open must fail")?;
         assert_eq!(OpenFault::of(&later), Some(OpenFault::ImageUnavailable));
         assert_eq!(seen_steps(&seen), vec!["open", "open"]);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_a_close_while_an_open_is_in_flight_when_ending_the_box_fails_then_the_open_still_answers_a_refusal_and_every_step_is_tried_and_a_later_open_reaches_the_port()
+-> Res {
+    let cases = [
+        (RunEnd::Completed, SaveAnswer::Fault, false),
+        (RunEnd::Completed, SaveAnswer::Works, true),
+        (RunEnd::Completed, SaveAnswer::Fault, true),
+        (RunEnd::Failed, SaveAnswer::Works, true),
+        (RunEnd::Cancelled, SaveAnswer::Works, true),
+    ];
+    for (end, save, release_fails) in cases {
+        let world = World::new()?;
+        let seen = Seen::default();
+        let mut rig = Rigged::new(&world.sandbox, &seen).save(save);
+        if release_fails {
+            rig = rig.release_fails();
+        }
+        let (rig, gate) = rig.gated();
+        let harness = world.builder().sandbox(rig.port()).build();
+        let driver = async {
+            gate.entered().await;
+            let closed = harness.close(world.instance, end).await;
+            gate.go();
+            closed
+        };
+
+        let (opened, closed) = tokio::join!(world.open(&harness), driver);
+
+        let label = format!("{end:?} {save:?} {release_fails}");
+        assert!(closed.is_ok(), "{label}: {closed:?}");
+        assert!(
+            matches!(opened, Err(ref error) if error.is_refusal()),
+            "{label}: {opened:?}"
+        );
+        let tried: Vec<&str> = if end == RunEnd::Completed {
+            vec!["open", "save", "release"]
+        } else {
+            vec!["open", "release"]
+        };
+        assert_eq!(seen_steps(&seen), tried, "{label}");
+        gate.go();
+        let _ = world.open(&harness).await;
+        let mut again = tried;
+        again.push("open");
+        assert_eq!(seen_steps(&seen), again, "{label}");
     }
     Ok(())
 }

@@ -9,6 +9,7 @@ use br_agentic_harness_contract::memory::{HarnessCall, MemorySkills};
 use br_agentic_harness_contract::{FilePath, Seed, SeedEntry, SkillName};
 
 use crate::common::*;
+use crate::doubles::runner_tool_described;
 use crate::ports::Rigged;
 use crate::spy::Seen;
 
@@ -56,7 +57,10 @@ async fn canary_reached_the_box(
         Arc::new(FixedPrompt(format!("the key is {CANARY}"))),
         Arc::new(FixedToolsPort::new(
             &world.contract_record,
-            vec![runner_tool(&format!("tool_{CANARY}"))?],
+            vec![runner_tool_described(
+                &format!("tool_{CANARY}"),
+                &format!("a tool that uses {CANARY}"),
+            )?],
         )),
     )
     .mail(Arc::new(world.mail.clone()) as Arc<dyn MailPort>)

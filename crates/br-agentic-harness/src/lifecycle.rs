@@ -59,9 +59,10 @@ impl<F: Fields> RunLifecycle for Harness<F> {
             match reservation.commit(opened.box_id) {
                 Committed::Kept => Ok(opened.start),
                 Committed::ClosedMeanwhile(run, end) => {
-                    Err(shut(sandbox.as_ref(), &run, end).await.unwrap_or_else(|| {
-                        PortError::refused("the instance was closed while it opened")
-                    }))
+                    let _ = shut(sandbox.as_ref(), &run, end).await;
+                    Err(PortError::refused(
+                        "the instance was closed while it opened",
+                    ))
                 }
             }
         })

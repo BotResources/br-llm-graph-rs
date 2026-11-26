@@ -162,6 +162,14 @@ impl ToolCode for Echo {
 }
 
 pub fn runner_tool(name: &str) -> Result<Tool, Box<dyn Error>> {
-    let spec = ToolSpec::new(ToolName::new(name)?, "a tool", Parameters::new(Vec::new())?)?;
+    runner_tool_described(name, "a tool")
+}
+
+pub fn runner_tool_described(name: &str, description: &str) -> Result<Tool, Box<dyn Error>> {
+    let spec = ToolSpec::new(
+        ToolName::new(name)?,
+        description,
+        Parameters::new(Vec::new())?,
+    )?;
     Ok(Tool::new(spec, Arc::new(Echo)))
 }

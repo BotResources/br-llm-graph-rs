@@ -13,9 +13,10 @@ use crate::spy::Seen;
 
 pub const KILL_FAILURE: &str = "the process cannot be killed";
 pub const SAVE_FAILURE: &str = "the folder cannot be saved";
+pub const RELEASE_FAILURE: &str = "the box cannot be released";
 const OTHER_REFUSAL: &str = "the save is refused for another reason";
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum SaveAnswer {
     Works,
     Fault,
@@ -54,6 +55,7 @@ pub struct Rigged {
     inner: MemorySandbox,
     seen: Seen,
     kill_fails: bool,
+    release_fails: bool,
     save: SaveAnswer,
     open: OpenAnswer,
     gate: Option<Gate>,
@@ -67,6 +69,7 @@ impl Rigged {
             inner: inner.clone(),
             seen: seen.clone(),
             kill_fails: false,
+            release_fails: false,
             save: SaveAnswer::Works,
             open: OpenAnswer::Real,
             gate: None,
@@ -84,6 +87,11 @@ impl Rigged {
 
     pub fn kill_fails(mut self) -> Self {
         self.kill_fails = true;
+        self
+    }
+
+    pub fn release_fails(mut self) -> Self {
+        self.release_fails = true;
         self
     }
 
@@ -220,6 +228,9 @@ impl SandboxPort for Rigged {
 
     fn release<'a>(&'a self, sandbox: &'a BoxId) -> PortFuture<'a, Result<(), PortError>> {
         self.seen.push(format!("release {sandbox:?}"));
+        if self.release_fails {
+            return Box::pin(async move { Err(PortError::fault(RELEASE_FAILURE)) });
+        }
         self.inner.release(sandbox)
     }
 }
