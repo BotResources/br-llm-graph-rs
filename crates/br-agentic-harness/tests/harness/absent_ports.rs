@@ -1,5 +1,6 @@
 use br_agentic_harness::{GET_MAIL_FILES, RunEnd, RunLifecycle, SEND_MAIL};
 use br_agentic_harness_contract::memory::HarnessCall;
+use br_agentic_harness_contract::{FilePath, FreshReason, Seed, SeedEntry, StartKind, TurnRef};
 
 use crate::common::*;
 
@@ -55,11 +56,34 @@ async fn given_a_runner_with_a_mail_port_only_when_the_run_opens_and_closes_then
         .mail(std::sync::Arc::new(world.mail.clone()))
         .build();
 
-    harness.open(world.instance).await?;
+    world.open(&harness).await?;
     harness.close(world.instance, RunEnd::Failed).await?;
 
     assert!(world.record.calls().is_empty());
     assert!(harness.incoming().is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_a_runner_with_no_sandbox_port_when_the_run_opens_with_a_turn_and_a_seed_then_the_start_is_fresh_with_no_save_ever_and_no_call_is_made()
+-> Res {
+    let world = World::new()?;
+    let harness = world
+        .builder()
+        .mail(std::sync::Arc::new(world.mail.clone()))
+        .build();
+    let turn = TurnRef::new(world.thread, world.agent, turn_id()?, Some(turn_id()?));
+    let seed = Seed::new(vec![SeedEntry::file(
+        FilePath::new("notes.txt")?,
+        0o644,
+        b"notes".to_vec(),
+    )])?;
+
+    let start = harness.open(world.instance, turn, seed).await?;
+    harness.close(world.instance, RunEnd::Completed).await?;
+
+    assert_eq!(start, StartKind::Fresh(FreshReason::NoSaveEver));
+    assert!(world.record.calls().is_empty());
     Ok(())
 }
 
@@ -69,7 +93,7 @@ trait OpenAndClose {
 
 impl OpenAndClose for br_agentic_harness::Harness<Doc> {
     async fn open_and_close(&self, world: &World) -> Res {
-        self.open(world.instance).await?;
+        world.open(self).await?;
         self.close(world.instance, RunEnd::Completed).await?;
         Ok(())
     }

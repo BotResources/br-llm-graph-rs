@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use br_agentic_contract::InstanceId;
-use br_agentic_harness_contract::{BoxId, ProcessId};
+use br_agentic_harness_contract::{BoxId, ProcessId, RunEnd};
 
 pub(crate) enum Closing {
     Open(Run),
@@ -12,7 +12,7 @@ pub(crate) enum Closing {
 
 pub(crate) enum Committed {
     Kept,
-    ClosedMeanwhile(Run),
+    ClosedMeanwhile(Run, RunEnd),
 }
 
 pub(crate) struct Reservation<'a> {
@@ -25,13 +25,13 @@ impl Reservation<'_> {
     pub(crate) fn commit(mut self, boxed: BoxId) -> Committed {
         self.settled = true;
         let mut state = self.runs.state();
-        let closed = state.opening.remove(&self.instance).unwrap_or(false);
+        let closed = state.opening.remove(&self.instance).flatten();
         let run = Run {
             boxed,
             background: Vec::new(),
         };
-        if closed {
-            return Committed::ClosedMeanwhile(run);
+        if let Some(end) = closed {
+            return Committed::ClosedMeanwhile(run, end);
         }
         state.open.insert(self.instance, run);
         Committed::Kept
@@ -59,7 +59,7 @@ pub(crate) struct Runs {
 #[derive(Default)]
 struct State {
     open: HashMap<InstanceId, Run>,
-    opening: HashMap<InstanceId, bool>,
+    opening: HashMap<InstanceId, Option<RunEnd>>,
 }
 
 impl Runs {
@@ -72,7 +72,7 @@ impl Runs {
         if state.open.contains_key(&instance) || state.opening.contains_key(&instance) {
             return None;
         }
-        state.opening.insert(instance, false);
+        state.opening.insert(instance, None);
         Some(Reservation {
             runs: self,
             instance,
@@ -80,14 +80,14 @@ impl Runs {
         })
     }
 
-    pub(crate) fn close(&self, instance: InstanceId) -> Closing {
+    pub(crate) fn close(&self, instance: InstanceId, end: RunEnd) -> Closing {
         let mut state = self.state();
         if let Some(run) = state.open.remove(&instance) {
             return Closing::Open(run);
         }
         match state.opening.get_mut(&instance) {
             Some(closed) => {
-                *closed = true;
+                closed.get_or_insert(end);
                 Closing::Opening
             }
             None => Closing::Nothing,

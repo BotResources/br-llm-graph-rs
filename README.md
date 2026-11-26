@@ -276,11 +276,11 @@ br-llm-messages = { git = "https://github.com/BotResources/br-llm-messages-rs", 
 
 ## br-agentic-harness
 
-The logic of the harness of an agentic node: it fills the history, prompt, tools and incoming node ports from the harness ports of a runner, builds the mail tools (`send_mail`, `get_mail_files`), keeps the mail gate (a mail is marked read only after its entry is stored) and runs the run lifecycle (open and close of the sandbox). It defines no port. The contract of the crate is `crates/br-agentic-harness/README.md`. It depends on `br-agentic-harness-contract`, `br-agentic-contract`, `br-graph-contract`, `br-llm-clients-core` and `br-llm-messages`, and needs a Tokio runtime. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
+The logic of the harness of an agentic node: it fills the history, prompt, tools and incoming node ports from the harness ports of a runner, builds the mail tools (`send_mail`, `get_mail_files`), keeps the mail gate (a mail is marked read only after its entry is stored) and runs the run lifecycle (open and close of the sandbox: a run is saved only when it ends `Completed`). It defines no port. The contract of the crate is `crates/br-agentic-harness/README.md`. It depends on `br-agentic-harness-contract`, `br-agentic-contract`, `br-graph-contract`, `br-llm-clients-core` and `br-llm-messages`, and needs a Tokio runtime. Not on crates.io; pin the git tag `{crate}/v{version}` with the matching `version` beside it:
 
 ```toml
 [dependencies]
-br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.1.1", version = "0.1.1" }
+br-agentic-harness = { git = "https://github.com/BotResources/br-llm-graph-rs", package = "br-agentic-harness", tag = "br-agentic-harness/v0.2.0", version = "0.2.0" }
 ```
 
 ## br-agentic-nodes

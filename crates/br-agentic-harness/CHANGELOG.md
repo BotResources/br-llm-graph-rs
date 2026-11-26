@@ -8,6 +8,27 @@ the `## X.Y.Z` prefix to decide whether a version ships.
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-26
+
+Breaking minor, to the sealed intent of minor 0.2, on `br-agentic-contract` 0.3.0 and `br-agentic-harness-contract` 0.2.0: the work folder of an agent is kept from one turn to the next only when the turn completed. The crate moves to the tag `br-agentic-harness-contract/v0.2.0`; a runner that uses the harness resolves one copy of the contract.
+
+### Changed
+
+- `RunLifecycle::open` takes the instance, the `TurnRef` and the `Seed` and gives the `StartKind` that the sandbox port answers, unchanged. The harness builds one `OpenRequest` from the instance, the web access setting, the turn reference and the seed, and gives it to the sandbox port. With no sandbox port, `open` ignores the turn and the seed and gives `Fresh(NoSaveEver)`. Breaking.
+- `close` saves the work folder only when the end is `Completed`. After `Failed` or `Cancelled` it stops the background commands and releases the box, and never saves. Breaking in behaviour.
+- A save that the port refuses with `AlreadySaved` is taken as done in `close`; any other failure of the save is a failure of `close`.
+- A `close` that arrives while an `open` is in flight keeps its end; when the port answers that `open` with a box, the box is ended by the rule of that end (a save only after `Completed`), then released. When two closes arrive, the first end decides. The `open` then answers `PortError::Refused`, also when a step of ending the box fails; the failure of that step is not returned by the `open`.
+
+### Known limit
+
+- 0.2.0 closes: an `open` whose future is dropped before the port answers (no reservation is kept, no box is made, a later `open` is accepted), and a `close` in flight during an `open` (the box is ended by the end of that `close`). Known limit, left for a later minor: a cancel that lands while a box is being ended leaves the box open. This covers an `open` whose future is dropped after the port made the box and while the box is ended, and a plain `close` whose future is dropped during the stop, save or release steps, because the run is removed from the table before those steps run. A `close` that met an `open` ends nothing: the `open` ends that box, so only the dropped `open` can leave it.
+
+### Tests
+
+- A fault of the sandbox port at `open` is returned unchanged, so `OpenFault::ImageUnavailable` and `OpenFault::ImageFailing` reach the runner as two distinct kinds. The code line is the same as in 0.1.1; the tests are new.
+- The sandbox doubles move to the 0.2.0 port. New tests prove: the single open request and what it holds, the start kinds, the open faults, the save only after `Completed`, `AlreadySaved`, a dropped open, a close in flight (each end), two closes, a fault answered to an open that a close met, and the refusal that the open answers when ending its box fails.
+- The credential test puts the canary in the prompt, a tool name and description, a mail, a skill and the history, and searches every call that reaches the sandbox port, its files, its saves and its seed.
+
 ## 0.1.1 - 2026-11-23
 
 Patch of the audit of 0.1.0 (findings F1, F2, F3, F6); no public surface change.
