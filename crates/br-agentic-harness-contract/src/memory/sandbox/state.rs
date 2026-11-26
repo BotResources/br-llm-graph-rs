@@ -57,10 +57,16 @@ pub(super) struct BoxState {
     pub(super) released: bool,
 }
 
+pub(super) struct Kept {
+    key: SaveKey,
+    previous: Option<BoxState>,
+}
+
 pub(super) struct Begun {
     pub(super) sandbox: BoxId,
     pub(super) start: StartKind,
     pub(super) hold: Option<OpenHold>,
+    pub(super) kept: Option<Kept>,
 }
 
 #[derive(Default)]
@@ -95,12 +101,12 @@ impl State {
         if self.claims.contains_key(&request.instance) {
             return Err(PortError::refused("the instance already holds an open box"));
         }
-        let (start, files, kept) = self.resolve(&request.turn);
-        let sandbox = match kept {
-            Some(sandbox) => sandbox,
-            None => BoxId::new(self.mint("box")),
+        let (start, files, taken) = self.resolve(&request.turn);
+        let (sandbox, key) = match taken {
+            Some((key, sandbox)) => (sandbox, Some(key)),
+            None => (BoxId::new(self.mint("box")), None),
         };
-        self.boxes.insert(
+        let previous = self.boxes.insert(
             sandbox.clone(),
             BoxState {
                 instance: request.instance,
@@ -118,10 +124,11 @@ impl State {
             sandbox,
             start,
             hold: self.hold.take(),
+            kept: key.map(|key| Kept { key, previous }),
         })
     }
 
-    fn resolve(&mut self, turn: &TurnRef) -> (StartKind, Files, Option<BoxId>) {
+    fn resolve(&mut self, turn: &TurnRef) -> (StartKind, Files, Option<(SaveKey, BoxId)>) {
         let fresh = |reason| (StartKind::Fresh(reason), Files::new(), None);
         let Some(key) = SaveKey::parent_of(turn) else {
             return fresh(FreshReason::NoSaveEver);
@@ -139,7 +146,7 @@ impl State {
             Some(SaveState::Saved { files }) => {
                 let files = files.clone();
                 if let Some(sandbox) = self.kept.remove(&key) {
-                    (StartKind::Continued, files, Some(sandbox))
+                    (StartKind::Continued, files, Some((key, sandbox)))
                 } else if self.failed_restores.contains(&key) {
                     fresh(FreshReason::RestoreFailed { turn: parent })
                 } else {
@@ -147,6 +154,24 @@ impl State {
                 }
             }
         }
+    }
+
+    pub(super) fn abandon_open(&mut self, sandbox: &BoxId, kept: Option<Kept>) {
+        let Some(Kept {
+            key,
+            previous: Some(previous),
+        }) = kept
+        else {
+            self.release_box(sandbox);
+            return;
+        };
+        if let Some(claimant) = self.boxes.get(sandbox).map(|opened| opened.instance)
+            && self.claims.get(&claimant) == Some(sandbox)
+        {
+            self.claims.remove(&claimant);
+        }
+        self.boxes.insert(sandbox.clone(), previous);
+        self.kept.insert(key, sandbox.clone());
     }
 
     pub(super) fn release_box(&mut self, sandbox: &BoxId) -> bool {

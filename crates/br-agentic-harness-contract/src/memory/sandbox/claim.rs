@@ -1,17 +1,20 @@
 use super::MemorySandbox;
+use super::state::Kept;
 use crate::sandbox::BoxId;
 
 pub(super) struct Claim {
     sandbox: MemorySandbox,
     held: BoxId,
+    kept: Option<Kept>,
     armed: bool,
 }
 
 impl Claim {
-    pub(super) fn new(sandbox: &MemorySandbox, held: BoxId) -> Self {
+    pub(super) fn new(sandbox: &MemorySandbox, held: BoxId, kept: Option<Kept>) -> Self {
         Self {
             sandbox: sandbox.clone(),
             held,
+            kept,
             armed: true,
         }
     }
@@ -24,7 +27,8 @@ impl Claim {
 impl Drop for Claim {
     fn drop(&mut self) {
         if self.armed {
-            self.sandbox.lock().release_box(&self.held);
+            let kept = self.kept.take();
+            self.sandbox.lock().abandon_open(&self.held, kept);
         }
     }
 }

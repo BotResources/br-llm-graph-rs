@@ -53,10 +53,6 @@ impl MemorySandbox {
         self.lock().store_unavailable = true;
     }
 
-    pub fn make_store_available(&self) {
-        self.lock().store_unavailable = false;
-    }
-
     pub fn end_keep(&self, turn: &TurnRef) {
         self.lock().kept.remove(&SaveKey::of(turn));
     }

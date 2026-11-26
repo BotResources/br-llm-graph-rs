@@ -1,4 +1,4 @@
-use br_agentic_harness_contract::{SandboxPort, Seed};
+use br_agentic_harness_contract::{SandboxPort, Seed, StartKind};
 
 use crate::common::*;
 use crate::scenario::*;
@@ -58,5 +58,34 @@ async fn given_an_instance_with_an_open_box_when_it_opens_again_then_it_is_refus
 
     assert!(matches!(second, Err(ref error) if error.is_refusal()));
     assert!(third.is_ok());
+    Ok(())
+}
+
+#[tokio::test]
+async fn given_a_continued_open_held_after_its_box_is_made_when_its_future_is_dropped_then_the_keep_is_given_back_and_the_next_open_of_the_parent_is_continued_with_the_same_box()
+-> Res {
+    let world = World::new()?;
+    let (first, kept) = saved_turn(&world, None, &[("work.txt", b"saved work")]).await?;
+    let child = world.turn_ref(Some(first.turn))?;
+    let request = request_of(child, Seed::empty())?;
+    let hold = world.sandbox.hold_next_open();
+    let mut pending = Box::pin(world.sandbox.open(&request));
+
+    let made = tokio::select! {
+        _ = &mut pending => return Err("the held open ended".into()),
+        made = hold.box_made() => made,
+    };
+    assert_eq!(made, kept);
+    assert!(!world.sandbox.is_released(&made));
+    drop(pending);
+
+    assert!(world.sandbox.is_released(&made));
+    let next = world.sandbox.open(&request).await?;
+    assert_eq!(next.start, StartKind::Continued);
+    assert_eq!(next.box_id, kept);
+    assert_eq!(
+        world.sandbox.files(&next.box_id),
+        Some(content(&[("work.txt", b"saved work")])?)
+    );
     Ok(())
 }

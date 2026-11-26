@@ -19,7 +19,7 @@ Breaking minor of the sandbox port and of the run lifecycle, to the sealed inten
 - `StartKind` (`Continued`, `Restored`, `Fresh`) and `FreshReason` (`NoSaveEver`, `SaveExpired`, `SaveFailed`, `RestoreFailed`, `StoreUnavailable`).
 - `OpenFault` (`ImageUnavailable`, `ImageFailing`), carried as the cause of `PortError::Fault`, with `OpenFault::of(&PortError)` as the typed test; `AlreadySaved` with `AlreadySaved::is(&PortError)` and `AlreadySaved::refusal()`.
 - Re-exports of `AgentId` and `TurnId` of `br-llm-messages`.
-- In-memory sandbox: the saves of all boxes by thread, agent and turn; the `Continued` keep of a saved and released box; arrangements `expire_save`, `fail_save`, `fail_restore`, `forget_save`, `make_store_unavailable`, `make_store_available`, `end_keep`, `fail_next_open`, `hold_next_open` (`OpenHold`) and `set_clock`; lookups `seed` and `save_of`.
+- In-memory sandbox: the saves of all boxes by thread, agent and turn; the `Continued` keep of a saved and released box; arrangements `expire_save`, `fail_save`, `fail_restore`, `forget_save`, `make_store_unavailable`, `end_keep`, `fail_next_open`, `hold_next_open` (`OpenHold`) and `set_clock`; lookups `seed` and `save_of`.
 
 ### Changed
 

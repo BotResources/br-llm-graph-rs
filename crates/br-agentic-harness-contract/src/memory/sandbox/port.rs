@@ -37,7 +37,7 @@ impl SandboxPort for MemorySandbox {
         });
         Box::pin(async move {
             let begun = self.lock().begin(request)?;
-            let claim = Claim::new(self, begun.sandbox.clone());
+            let claim = Claim::new(self, begun.sandbox.clone(), begun.kept);
             if let Some(hold) = &begun.hold {
                 hold.reach(begun.sandbox.clone());
                 hold.proceeded().await;
